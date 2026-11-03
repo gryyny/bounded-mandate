@@ -2,7 +2,7 @@
 
 This is the canonical product specification for one competition-ready bounded trading mandate.
 
-Status: selected for implementation; no implementation gate has passed. The source-verified primitives below are inputs, not proof that our code works.
+Status: selected and in implementation. Execution results belong in the status register, not here. The source-verified primitives below are inputs, not proof that our code works.
 
 ## Product and claim
 
@@ -39,6 +39,8 @@ Distinguish:
 
 Every continuation checks its epoch, order identity, state and deadline. No agent-reachable route may disable predecessor authorization. Owner actions remain available after the agent exhausts its allowed gas budget.
 
+If a registration callback fails, the registration stays unresolved until positive evidence arrives. The owner may reconcile on observing the grant key registered on the verifier: only the contract's own registration can add that derived key, so presence proves the registration executed. Absence, a timeout or elapsed time never resolves it, because a pending registration could still complete. When registration and its callback both failed, resolution needs the trusted owner's deployment authority (a key on the mandate account) after confirming from final receipt outcomes that no registration can still execute. Report this emergency procedure separately from ordinary revocation and recovery. A deployment without that key cannot perform it.
+
 ## Authorization and accounting
 
 1. Validate the agent and proposed asset direction/amounts. Allocate an order identity and reserve exposure at `propose_order`, before a signature can be requested. Pending proposals also consume the relevant capacity.
@@ -49,6 +51,8 @@ Every continuation checks its epoch, order identity, state and deadline. No agen
 6. Release a specific reservation exactly once, only on trusted evidence that it cannot execute again: an authenticated verifier response for that exact used nonce, block time beyond the deadline, or confirmed removal of the covering key.
 7. Restore usable trading capacity after confirmed settlement; do not intentionally wait until expiry. Never release on a filler's assertion or a balance change.
 8. Cumulative authorized turnover is separate from outstanding reservations. Freeing a reservation must not refund the turnover budget and enable unlimited churning. Charge issued authority conservatively; document how unsigned rejections are handled.
+9. Every proposal permanently consumes at least a fixed share of turnover (the proposal charge), even when rejected before signing. It consumes authorization capacity; no tokens move and no fee is paid. It bounds the order records one grant can create to turnover cap / proposal charge, so the agent cannot exhaust contract storage within a grant. It does not bound storage across grants; each regrant is an owner decision. The owner funds storage for that bound.
+10. At most 32 orders may be open per grant, so that releasing every reservation on confirmed removal fits in one callback's fixed gas. Test revocation, failed removal and retry, and recovery at that limit.
 
 Use integer token units and checked arithmetic; amounts in JSON are decimal strings. Account for asset decimals, exponent scaling, rounding and verifier fees. Do not duplicate the contract's policy in the CLI and call that independent verification.
 
@@ -63,20 +67,21 @@ Required demonstration thresholds:
 - Oracle maximum age: 60 seconds. Reject missing, invalid or stale prices. Check confidence and both asset feeds; do not assume USDC always equals one dollar.
 - Loss breaker: stop new authorizations on observing 2% drawdown from the grant's initial reference value. Report the observation time and still-executable orders. It is not a total-loss cap.
 - A finite cumulative turnover cap and finite order deadlines, chosen and recorded before acceptance tests.
+- A proposal charge (`proposal_charge_bps`) greater than zero and at most both the per-order and turnover caps.
 
-Proposed defaults, subject to local validation: cumulative authorized turnover 100% of initial value per grant; confidence/price at most 0.5%; deadline no later than 60 seconds after authorization and no later than the references' validity window, refusing insufficient remaining time. These are demo choices, not proven production risk settings. Do not loosen the 0.5% price-concession test to accommodate fees or a failing implementation.
+Proposed defaults, subject to local validation: cumulative authorized turnover 100% of initial value per grant; proposal charge 0.5% of initial value (at most 200 proposals per grant); confidence/price at most 0.5%; deadline no later than 60 seconds after authorization and no later than the references' validity window, refusing insufficient remaining time. These are demo choices, not proven production risk settings. Do not loosen the 0.5% price-concession test to accommodate fees or a failing implementation.
 
 Record the reference price/time/age at authorization, signature response time, fill time and fees separately. Market moves, stale-reference exploitation, fees and outstanding orders at the breaker can cause losses beyond any stated execution concession.
 
 ## Recovery
 
-Stop new authorization and confirm removal before recovering. The destination is the fixed owner, never agent input. Choose either direct `ft_withdraw` to the owner's NEAR account or `mt_transfer` to the owner's Intents account followed by the owner's withdrawal. The complete demo ends with assets controlled by the owner, and makes that destination explicit.
+Stop new authorization and confirm removal before recovering. The destination is the fixed owner, never agent input. Recovery uses `mt_transfer` of each asset's full verifier balance to the owner's Intents account. That account is owner-controlled, but it is not an external wallet: moving funds out of Intents is the owner's own later withdrawal and is not part of recovery claims. The complete demo ends with assets in the owner's Intents account and states that destination explicitly.
 
-Handle each asset's registration, failed receipt and retry without double payment or stranded accounting. Recovery must not read a price or request a signature. Its success still depends on NEAR, Intents, token contracts and sufficient owner/recovery gas.
+Handle each asset's failed receipt and retry without double payment or stranded accounting. Recovery must not read a price or request a signature. Its success still depends on NEAR, Intents, token contracts and sufficient owner/recovery gas.
 
 ## Acceptance tests
 
-`make test` runs all local gates; none may be replaced by a recorded pass string. Mock external dependencies explicitly, while executing actual contract logic and the pinned verifier WASM. Retain seeds and replayable failures.
+`make test` runs all local gates; none may be replaced by a recorded pass string. Mock external dependencies explicitly, while executing actual contract logic and the pinned verifier WASM. Retain seeds and replayable failures. A gate passes only when every one of its required cases passed in one run of a clean source revision, with spec, fixture and WASM hashes bound to that run. Missing cases leave the gate incomplete. Demo checks are not acceptance results.
 
 | ID | Attempt | Required result |
 | --- | --- | --- |
@@ -84,8 +89,8 @@ Handle each asset's registration, failed receipt and retry without double paymen
 | T2 | At least 200 seeded randomized interleavings of proposals, price/sign callbacks, nonce checks, fills, expiry and revocation; include duplicate callbacks and stale epochs. | Zero per-order, outstanding or turnover cap violations; no executable authority omitted from accounting; release at most once; legitimate capacity returns on trusted settlement evidence. |
 | T2b | Publish a signature, fail the mandate's callback, then relay the order independently. | The order remains fully accounted for or is unusable. No dependence on whether our filler or page observed it. |
 | T3 | Adversarial but permitted trading, rounding boundaries, price shocks, stale feeds and delayed signatures. | Execution concession at most 0.5% on every fill against the declared reference. Report mark-to-market drawdown, fees and count/value of still-executable orders when the breaker trips. Unknown valuation is not zero. |
-| T4 | Stop agent and MPC; make oracle fail/stale; exhaust agent allowance; exercise partial withdrawal failure and retry. | All recoverable remaining asset units reach owner control, without oracle/signature/agent dependence, and no duplicate withdrawal. |
-| T5 | Apply the same threat model to a pinned baseline with comparable trading authority, such as an explicitly adapted [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) pattern. | Executed outcomes and unsupported cases distinguished; adaptation disclosed. Establish a meaningful demonstrated increment or mark differentiation unproven. Do not invent a fixed number of baseline failures. |
+| T4 | Stop agent and MPC; make oracle fail/stale; exhaust agent allowance; exercise partial withdrawal failure and retry. Repeat at the open-order limit and after a failed registration callback whose key is present. | All recoverable remaining asset units reach owner control, without oracle/signature/agent dependence, and no duplicate withdrawal. |
+| T5 | Apply the same threat model to a pinned baseline with comparable trading authority, such as an explicitly adapted [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) pattern. | Executed outcomes and unsupported cases distinguished; adaptation disclosed. Establish a meaningful demonstrated increment or mark differentiation unproven. Do not invent a fixed number of baseline failures. Describe the baseline as our reimplementation of a pinned design, not as evidence about its deployed product. |
 
 Also require:
 - Forbidden asset, recipient, raw payload, transfer/withdrawal intent, key mutation and over-cap requests fail at the relevant boundary.
