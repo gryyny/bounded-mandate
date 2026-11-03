@@ -1,0 +1,416 @@
+{
+  "gate": "BOUNDARY",
+  "part": null,
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/boundary-4e2c096cec8c005a",
+  "generated_at_unix": 1793744583,
+  "data": {
+    "cases": [
+      {
+        "case": "recipient field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `recipient`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 85`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1620005212561 }, "
+      },
+      {
+        "case": "receiver_id field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `receiver_id`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 87`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1620534440683 }"
+      },
+      {
+        "case": "raw payload field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `payload`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 83`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1618643578930 }, tr"
+      },
+      {
+        "case": "derivation path field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `path`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 80`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1617685116565 }, trans"
+      },
+      {
+        "case": "public key field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `public_key`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 86`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1621417654327 },"
+      },
+      {
+        "case": "token id field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `token_id`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 84`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1619528824429 }, t"
+      },
+      {
+        "case": "intent field",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `intents`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 83`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1619487450658 }, tr"
+      },
+      {
+        "case": "forbidden asset usdt",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown variant `usdt`, expected `usdc` or `wnear` at line 1 column 26`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1598935839685 }, transaction: ExecutionOutcome { tran"
+      },
+      {
+        "case": "forbidden asset native near",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown variant `near`, expected `usdc` or `wnear` at line 1 column 26`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1598886474325 }, transaction: ExecutionOutcome { tran"
+      },
+      {
+        "case": "token account as asset",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown variant `wrap.near`, expected `usdc` or `wnear` at line 1 column 31`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1601114987608 }, transaction: ExecutionOutcome {"
+      },
+      {
+        "case": "negative amount",
+        "boundary": "json-schema",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `invalid type: integer `-5`, expected a string at line 1 column 43`\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1599308400514 }, transaction: ExecutionOutcome { transacti"
+      },
+      {
+        "case": "over per-order cap",
+        "boundary": "contract-policy",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: per-order cap exceeded\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1759790726429 }, transaction: ExecutionOutcome { transaction_hash: 3kruKnp8hRkYkKXoTYsDYwshjqWo64BubgvHSX1XiWj2, block_hash: DMYswrTzGWyKwTCPDRugBDJj"
+      },
+      {
+        "case": "concession above policy",
+        "boundary": "contract-policy",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: concession above policy maximum\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1693772725463 }, transaction: ExecutionOutcome { transaction_hash: D6rTkE3vuQrkCJqLG9KDjyiBtAs6UepKuca4bGeBWKKN, block_hash: AaFz5SUtCTsx1Rw"
+      },
+      {
+        "case": "zero amount",
+        "boundary": "contract-policy",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: sell_amount must be positive\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1691424102743 }, transaction: ExecutionOutcome { transaction_hash: EmvoxrH3FqaZsQgTP5383cs22up9yt8bNkQ5VzWFc6mD, block_hash: 6Wfe8j68E6ThfNe843"
+      },
+      {
+        "case": "absurd amount",
+        "boundary": "contract-policy",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: per-order cap exceeded\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1768628871083 }, transaction: ExecutionOutcome { transaction_hash: BUa4DfGe8SuYsmkgx6BLAMUgnKH7tFNa8Wwn4joLP1eF, block_hash: HcDr3k2Z8VfRkAvgg5j2dPYN"
+      },
+      {
+        "case": "over outstanding cap",
+        "boundary": "contract-policy",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: outstanding cap exceeded\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1761623056960 }, transaction: ExecutionOutcome { transaction_hash: GzvD6tvr8k3xgt1RgnbXLtYhrcipLmtj9tYA5V89Yrrc, block_hash: 2F5AJfy27UY6f4FRLRFM5B"
+      },
+      {
+        "case": "agent grant",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(MethodNameMismatch { method_name: \"grant\" }) })) } }"
+      },
+      {
+        "case": "agent revoke",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(MethodNameMismatch { method_name: \"revoke\" }) })) } }"
+      },
+      {
+        "case": "agent recover",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(MethodNameMismatch { method_name: \"recover\" }) })) } }"
+      },
+      {
+        "case": "agent settle",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(MethodNameMismatch { method_name: \"settle_order\" }) })) } }"
+      },
+      {
+        "case": "agent callback",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(MethodNameMismatch { method_name: \"on_signed\" }) })) } }"
+      },
+      {
+        "case": "agent mt_transfer on verifier (1 yocto)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+      },
+      {
+        "case": "agent mt_transfer on verifier (no deposit)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\"intents.test.near\"), ak_receiver: \"mandate.test.near\" }) })) } }"
+      },
+      {
+        "case": "agent ft_withdraw on verifier (1 yocto)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+      },
+      {
+        "case": "agent ft_withdraw on verifier (no deposit)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\"intents.test.near\"), ak_receiver: \"mandate.test.near\" }) })) } }"
+      },
+      {
+        "case": "agent add_public_key on verifier (1 yocto)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+      },
+      {
+        "case": "agent add_public_key on verifier (no deposit)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\"intents.test.near\"), ak_receiver: \"mandate.test.near\" }) })) } }"
+      },
+      {
+        "case": "agent disable predecessor auth (1 yocto)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+      },
+      {
+        "case": "agent disable predecessor auth (no deposit)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\"intents.test.near\"), ak_receiver: \"mandate.test.near\" }) })) } }"
+      },
+      {
+        "case": "agent execute_intents (1 yocto)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+      },
+      {
+        "case": "agent execute_intents (no deposit)",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\"intents.test.near\"), ak_receiver: \"mandate.test.near\" }) })) } }"
+      },
+      {
+        "case": "agent NEAR transfer",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(RequiresFullAccess) })) } }"
+      },
+      {
+        "case": "agent adds itself a full key",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(RequiresFullAccess) })) } }"
+      },
+      {
+        "case": "agent attaches deposit",
+        "boundary": "protocol-access-key",
+        "rejected_at_boundary": true,
+        "detail": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+      },
+      {
+        "case": "on_grant_prepared by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_grant_prepared is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569854880175 }, transaction: ExecutionOutcome { transaction_hash: ygftr354joXZuyDwKYHrA5mb1w2kizG9oNW8PXV2K2L, block_hash: 9TD9YH79yahk"
+      },
+      {
+        "case": "on_grant_prepared by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_grant_prepared is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569915025063 }, transaction: ExecutionOutcome { transaction_hash: 8xuA8qW4oNrwzwM5BAYApLLN87UUyezRrwzfyZQPupL4, block_hash: 9kCLzyTyajx"
+      },
+      {
+        "case": "on_key_added by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_key_added is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1568116854286 }, transaction: ExecutionOutcome { transaction_hash: FTzzTZi3D5Nnax89Rprr2HfHnW1B54xLsufddfMucR5V, block_hash: 3cbgedKHrAqzy4Wt"
+      },
+      {
+        "case": "on_key_added by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_key_added is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1568176999174 }, transaction: ExecutionOutcome { transaction_hash: 96T7L3s1TzfEpCqpNyHUg5BYin6rc9kCDAgfQUh1JMkn, block_hash: 6FHv7gNxhWYCycZj"
+      },
+      {
+        "case": "on_key_removed by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_key_removed is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569408138508 }, transaction: ExecutionOutcome { transaction_hash: 5Au5VLFKX3cKnBufQXQS3yneU65cDygzkV7kX6XMMcm2, block_hash: CKhsf7DF9ZJXGo"
+      },
+      {
+        "case": "on_key_removed by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_key_removed is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569468283396 }, transaction: ExecutionOutcome { transaction_hash: 6ZA687MrpQEnCajk1rVoV5wkWVp99GEtYVLX7k6AV97b, block_hash: 2cqQR3grEUWTb4"
+      },
+      {
+        "case": "on_key_presence by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_key_presence is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569753439969 }, transaction: ExecutionOutcome { transaction_hash: Az9pS2drTAUL3WDAwyMkmdfHfTzM8DPwizw3ARZ114BY, block_hash: ExcB53E6gmTHA"
+      },
+      {
+        "case": "on_key_presence by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_key_presence is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569813584857 }, transaction: ExecutionOutcome { transaction_hash: 4wfJVB3LYiayVMadkWzUmjYPuUiw41cAD1nkGZGZ8pvZ, block_hash: 7cA3fCiUaFKJ2"
+      },
+      {
+        "case": "on_order_priced by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_order_priced is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569922122304 }, transaction: ExecutionOutcome { transaction_hash: 13unWiDJUr8LzAov7n7SduR5mNfnfDQeY885UiRURSq4, block_hash: BuXaxXqEUGpe6"
+      },
+      {
+        "case": "on_order_priced by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_order_priced is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1569982267192 }, transaction: ExecutionOutcome { transaction_hash: EH1AJbH3bThgcB4BZXw7MLTcJg2TuFB4KUx3Hfs65Q7S, block_hash: 5f8BTsv337w3v"
+      },
+      {
+        "case": "on_signed by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_signed is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1567837972198 }, transaction: ExecutionOutcome { transaction_hash: 3JgC2FKhQegsGAnkvNHTKD2Pbex6vQZEUjhWqz5bPaJG, block_hash: 8cBCiTn5GgLx5d1kKPS"
+      },
+      {
+        "case": "on_signed by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_signed is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1567898117086 }, transaction: ExecutionOutcome { transaction_hash: HC2fSpdXuPYE77r9UXYq79SDMeCmJJcCgJRfuAdA8qdD, block_hash: HXE8wTiY6KyzzhCAJMG"
+      },
+      {
+        "case": "on_settle_checked by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_settle_checked is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1570594624594 }, transaction: ExecutionOutcome { transaction_hash: 6yXYJWE4Ftd1KM1CxUMqXMqMZkDPSdztSi8njQDipzuN, block_hash: EUeK8ZZnrnr"
+      },
+      {
+        "case": "on_settle_checked by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_settle_checked is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1570654769482 }, transaction: ExecutionOutcome { transaction_hash: GerQsvN5HU2jyXyr49AdLr9pw2gQMHRh7TUB6qQCbgAQ, block_hash: DkBEfkctxW7"
+      },
+      {
+        "case": "on_recovery_balance by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_recovery_balance is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1572088878436 }, transaction: ExecutionOutcome { transaction_hash: 4esvdDSGCnvg2wc58TnYUQzdUF4tEYhkNRdawufBwNBF, block_hash: 2zAY1jbze"
+      },
+      {
+        "case": "on_recovery_balance by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_recovery_balance is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1572149023324 }, transaction: ExecutionOutcome { transaction_hash: 7bk79zqmUcUqMctSzdRNLX9gLf2LaKsc5UzAJtPYTw91, block_hash: Dd8wDaQpe"
+      },
+      {
+        "case": "on_recovery_transferred by owner.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_recovery_transferred is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1573417696363 }, transaction: ExecutionOutcome { transaction_hash: 59uKGnsXH2TKFND5QvC6MG68732oCeFpeYmTwgZFcSAL, block_hash: Ejs6Z"
+      },
+      {
+        "case": "on_recovery_transferred by relayer.test.near",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_recovery_transferred is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1573477841251 }, transaction: ExecutionOutcome { transaction_hash: HaBNZEQgEv5NvidSJMHABWBkTyeG5z9rFHU1hkvAtvYM, block_hash: 8w3th"
+      },
+      {
+        "case": "settle unfilled order",
+        "boundary": "verifier-evidence",
+        "rejected_at_boundary": true,
+        "detail": "state after settle: signed"
+      },
+      {
+        "case": "expire only after deadline (refused=true)",
+        "boundary": "contract-policy",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: deadline not passed\")) }) } }) | Some(Exec"
+      },
+      {
+        "case": "forged mandate intent with foreign key",
+        "boundary": "verifier-authorization",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:71mehdrwrKU49Xy1th2f6rxVQVNkNB11rijPoW4fs3WB' doesn't exist for account 'mandate.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3643979613923 }, transaction: ExecutionOutcome { transaction"
+      },
+      {
+        "case": "negative-control mandate active",
+        "boundary": "setup",
+        "rejected_at_boundary": true,
+        "detail": "{\"epoch\":1,\"path\":\"mandate/v1/1\",\"public_key\":\"ed25519:36RJV4gYbm2wcgxESp9Us4giHUeLbLWSH5AVtZdAhHA2\",\"status\":\"active\",\"policy\":{\"per_order_cap_bps\":2000,\"outstanding_cap_bps\":2000,\"max_concession_bps\":50,\"oracle_max_age_sec\":60,\"max_confidence_bps\":50,\"breaker_drawdown_bps\":200,\"turnover_cap_bps\":10000,\"order_ttl_sec\":60,\"min_remaining_sec\":15,\"max_pricing_delay_sec\":30,\"proposal_charge_bps\":50},\"initial_reference\":{\"usdc\":{\"price_id\":\"eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a\",\"price\":\"100000000\",\"conf\":\"20000\",\"expo\":-8,\"publish_time_sec\":\"1793744577\"},\"wnear\":{\"price_id\":\"c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750\",\"price\":\"300000000\",\"conf\":\"60000\",\"expo\":-8,\"publish_time_sec\":\"1793744577\"},\"observed_at_ns\":\"1793744578977481000\"},\"initial_value\":\"1900000000000000\",\"turnover_used\":\"0\",\"outstanding\":\"0\",\"breaker\":null,\"key_op_in_flight\":false}"
+      },
+      {
+        "case": "full-key agent grant",
+        "boundary": "contract-role",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1711217505271 }, transaction: ExecutionOutcome { transaction_hash: E31wYSTpnyFtJfMKQcxE1Rac7SLKWxdWtLijPSnHeXeE, block_hash: 6k9fuGBJBKZWziAA63eHuksYWbKEeEak"
+      },
+      {
+        "case": "full-key agent revoke",
+        "boundary": "contract-role",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1676166900652 }, transaction: ExecutionOutcome { transaction_hash: 9XQdB1kqFib9rvX3RWEWPWAuFzJgcXa5dh82moVn42a6, block_hash: 2jT5EieakSqVJc4cZyFFKJDXTrhuVLqy"
+      },
+      {
+        "case": "full-key agent recover",
+        "boundary": "contract-role",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1678622111719 }, transaction: ExecutionOutcome { transaction_hash: FFuhrH39FwcuGz1eWV3BMMXBF8r9Fhz7rqJ7FBRqJQv6, block_hash: Cm9dUSgdmuQM392u8VB2NhJgoF5mqT9x"
+      },
+      {
+        "case": "full-key agent callback",
+        "boundary": "private-callback",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Method on_signed is private\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1568044693204 }, transaction: ExecutionOutcome { transaction_hash: DQjxCPAsHncMh8zxvs56pdeDECMTrLZ41HRSWatvvaPY, block_hash: GiAzeqdAhQRxVFe1Grj"
+      },
+      {
+        "case": "full-key agent add_public_key affects only itself",
+        "boundary": "verifier-authorization",
+        "rejected_at_boundary": true,
+        "detail": "tx_ok=true mandate keys [\"ed25519:36RJV4gYbm2wcgxESp9Us4giHUeLbLWSH5AVtZdAhHA2\"]"
+      },
+      {
+        "case": "full-key agent mt_transfer cannot move mandate funds",
+        "boundary": "verifier-authorization",
+        "rejected_at_boundary": true,
+        "detail": "tx_ok=false"
+      },
+      {
+        "case": "full-key agent of mandate2 cannot propose on mandate1",
+        "boundary": "contract-role",
+        "rejected_at_boundary": true,
+        "detail": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the agent may propose\")) }) } }) | So"
+      },
+      {
+        "case": "full-key agent can propose on its own mandate",
+        "boundary": "contract-role",
+        "rejected_at_boundary": true,
+        "detail": ""
+      },
+      {
+        "case": "mandate keys unchanged",
+        "boundary": "summary",
+        "rejected_at_boundary": true,
+        "detail": "[\"ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB\"]"
+      },
+      {
+        "case": "mandate funds unchanged",
+        "boundary": "summary",
+        "rejected_at_boundary": true,
+        "detail": "(10000000000, 3000000000000000000000000000)"
+      },
+      {
+        "case": "predecessor auth enabled",
+        "boundary": "summary",
+        "rejected_at_boundary": true,
+        "detail": ""
+      }
+    ]
+  }
+}

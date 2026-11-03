@@ -1,0 +1,217 @@
+{
+  "gate": "T1",
+  "part": "revoke-during-activation",
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t1_revocation-47286f49319fd2b2",
+  "generated_at_unix": 1793744635,
+  "data": {
+    "cases": [
+      {
+        "attempt": 0,
+        "delay_ms": 0,
+        "grant_tx_ok": true,
+        "grant_tx_events": [
+          "grant_requested",
+          "stale_callback"
+        ],
+        "grant_view_before_retry": {
+          "epoch": 1,
+          "path": "mandate/v1/1",
+          "public_key": null,
+          "status": "revoked",
+          "policy": {
+            "per_order_cap_bps": 2000,
+            "outstanding_cap_bps": 2000,
+            "max_concession_bps": 50,
+            "oracle_max_age_sec": 60,
+            "max_confidence_bps": 50,
+            "breaker_drawdown_bps": 200,
+            "turnover_cap_bps": 10000,
+            "order_ttl_sec": 60,
+            "min_remaining_sec": 15,
+            "max_pricing_delay_sec": 30,
+            "proposal_charge_bps": 50
+          },
+          "initial_reference": null,
+          "initial_value": null,
+          "turnover_used": "0",
+          "outstanding": "0",
+          "breaker": null,
+          "key_op_in_flight": false
+        },
+        "revoke_hit": "deriving",
+        "revoke_events": [
+          "revocation_requested",
+          "grant_revoked"
+        ],
+        "revoke_error": null,
+        "epoch": 1,
+        "final_status": "revoked",
+        "retries": 0,
+        "key_registered": false,
+        "verifier_keys": [],
+        "propose_after_ok": false
+      },
+      {
+        "attempt": 1,
+        "delay_ms": 150,
+        "grant_tx_ok": true,
+        "grant_tx_events": [
+          "grant_requested",
+          "stale_callback"
+        ],
+        "grant_view_before_retry": {
+          "epoch": 2,
+          "path": "mandate/v1/2",
+          "public_key": null,
+          "status": "revoked",
+          "policy": {
+            "per_order_cap_bps": 2000,
+            "outstanding_cap_bps": 2000,
+            "max_concession_bps": 50,
+            "oracle_max_age_sec": 60,
+            "max_confidence_bps": 50,
+            "breaker_drawdown_bps": 200,
+            "turnover_cap_bps": 10000,
+            "order_ttl_sec": 60,
+            "min_remaining_sec": 15,
+            "max_pricing_delay_sec": 30,
+            "proposal_charge_bps": 50
+          },
+          "initial_reference": null,
+          "initial_value": null,
+          "turnover_used": "0",
+          "outstanding": "0",
+          "breaker": null,
+          "key_op_in_flight": false
+        },
+        "revoke_hit": "deriving",
+        "revoke_events": [
+          "revocation_requested",
+          "grant_revoked"
+        ],
+        "revoke_error": null,
+        "epoch": 2,
+        "final_status": "revoked",
+        "retries": 0,
+        "key_registered": false,
+        "verifier_keys": [],
+        "propose_after_ok": false
+      },
+      {
+        "attempt": 2,
+        "delay_ms": 300,
+        "grant_tx_ok": true,
+        "grant_tx_events": [
+          "grant_requested",
+          "stale_callback"
+        ],
+        "grant_view_before_retry": {
+          "epoch": 3,
+          "path": "mandate/v1/3",
+          "public_key": null,
+          "status": "revoked",
+          "policy": {
+            "per_order_cap_bps": 2000,
+            "outstanding_cap_bps": 2000,
+            "max_concession_bps": 50,
+            "oracle_max_age_sec": 60,
+            "max_confidence_bps": 50,
+            "breaker_drawdown_bps": 200,
+            "turnover_cap_bps": 10000,
+            "order_ttl_sec": 60,
+            "min_remaining_sec": 15,
+            "max_pricing_delay_sec": 30,
+            "proposal_charge_bps": 50
+          },
+          "initial_reference": null,
+          "initial_value": null,
+          "turnover_used": "0",
+          "outstanding": "0",
+          "breaker": null,
+          "key_op_in_flight": false
+        },
+        "revoke_hit": "deriving",
+        "revoke_events": [
+          "revocation_requested",
+          "grant_revoked"
+        ],
+        "revoke_error": null,
+        "epoch": 3,
+        "final_status": "revoked",
+        "retries": 0,
+        "key_registered": false,
+        "verifier_keys": [],
+        "propose_after_ok": false
+      },
+      {
+        "attempt": 3,
+        "delay_ms": 450,
+        "grant_tx_ok": true,
+        "grant_tx_events": [
+          "grant_requested",
+          "grant_key_registering"
+        ],
+        "grant_view_before_retry": {
+          "epoch": 4,
+          "path": "mandate/v1/4",
+          "public_key": "ed25519:Da8eZLUXGWfnvoVDUtgvJHbF4JKjffbFMiLpXKqcJi8i",
+          "status": "revoking",
+          "policy": {
+            "per_order_cap_bps": 2000,
+            "outstanding_cap_bps": 2000,
+            "max_concession_bps": 50,
+            "oracle_max_age_sec": 60,
+            "max_confidence_bps": 50,
+            "breaker_drawdown_bps": 200,
+            "turnover_cap_bps": 10000,
+            "order_ttl_sec": 60,
+            "min_remaining_sec": 15,
+            "max_pricing_delay_sec": 30,
+            "proposal_charge_bps": 50
+          },
+          "initial_reference": {
+            "usdc": {
+              "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+              "price": "100000000",
+              "conf": "20000",
+              "expo": -8,
+              "publish_time_sec": "1793744633"
+            },
+            "wnear": {
+              "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+              "price": "300000000",
+              "conf": "60000",
+              "expo": -8,
+              "publish_time_sec": "1793744633"
+            },
+            "observed_at_ns": "1793744634706680000"
+          },
+          "initial_value": "19000000000000000",
+          "turnover_used": "0",
+          "outstanding": "0",
+          "breaker": null,
+          "key_op_in_flight": true
+        },
+        "revoke_hit": "registering",
+        "revoke_events": [
+          "revocation_requested"
+        ],
+        "revoke_error": null,
+        "epoch": 4,
+        "final_status": "revoked",
+        "retries": 1,
+        "key_registered": false,
+        "verifier_keys": [],
+        "propose_after_ok": false
+      }
+    ],
+    "lifecycle_points_hit": [
+      "deriving",
+      "registering"
+    ]
+  }
+}

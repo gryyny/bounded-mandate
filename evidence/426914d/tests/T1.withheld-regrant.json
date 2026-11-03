@@ -1,0 +1,58 @@
+{
+  "gate": "T1",
+  "part": "withheld-regrant",
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t1_revocation-47286f49319fd2b2",
+  "generated_at_unix": 1793744639,
+  "data": {
+    "relays": [
+      {
+        "label": "before-removal",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": false,
+        "executed": true
+      },
+      {
+        "label": "withheld-after-revoke",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "withheld-after-regrant",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "new-grant-order",
+        "order_id": 2,
+        "epoch": 2,
+        "after_confirmed_removal": false,
+        "executed": true
+      },
+      {
+        "label": "epoch1-after-epoch3",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "epoch2-after-epoch3",
+        "order_id": 3,
+        "epoch": 2,
+        "after_confirmed_removal": true,
+        "executed": false
+      }
+    ],
+    "executions_after_confirmed_removal": 0,
+    "notes": []
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "gate": "T3",
+  "part": "feeds-timing",
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t3_trading-54eda26eb0e31d36",
+  "generated_at_unix": 1793745212,
+  "data": {
+    "cases": [
+      {
+        "case": "fresh",
+        "signed": true,
+        "state": "signed",
+        "deadline_seconds_left_at_view": 57,
+        "expected_signed": true
+      },
+      {
+        "case": "stale 61s",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "near-stale 59s (deadline too short)",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "aged 40s (short deadline)",
+        "signed": true,
+        "state": "signed",
+        "deadline_seconds_left_at_view": 17,
+        "expected_signed": null
+      },
+      {
+        "case": "confidence 1%",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "confidence exactly 0.5%",
+        "signed": true,
+        "state": "signed",
+        "deadline_seconds_left_at_view": 57,
+        "expected_signed": true
+      },
+      {
+        "case": "zero price",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "negative price",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "published 30s in future",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": null
+      },
+      {
+        "case": "USDC depeg 0.90 (trips breaker)",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "breaker after depeg",
+        "breaker": {
+          "observed_at_ns": "1793745198120923000",
+          "observed_value": "18014250000000000",
+          "executable_orders": 0,
+          "executable_value": "0"
+        }
+      },
+      {
+        "case": "missing NEAR price",
+        "signed": false
+      },
+      {
+        "case": "oracle failing",
+        "signed": false
+      },
+      {
+        "case": "signature delivered after deadline",
+        "respond_ok": false,
+        "state_after_callback": "sign_unknown",
+        "relay_executed": null,
+        "expire_ok": true,
+        "final": "released:expired"
+      }
+    ],
+    "failures": []
+  }
+}

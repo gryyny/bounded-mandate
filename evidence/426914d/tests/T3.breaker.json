@@ -1,0 +1,211 @@
+{
+  "gate": "T3",
+  "part": "breaker",
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t3_trading-54eda26eb0e31d36",
+  "generated_at_unix": 1793745202,
+  "data": {
+    "initial_value_contract": "19000000000000000",
+    "initial_value_independent": "19000000000000000",
+    "trip": {
+      "observed_at_ns": "1793745201541683000",
+      "observed_value": "18193600000000000",
+      "executable_orders": 2,
+      "executable_value": "700000000000000"
+    },
+    "trip_propose_error": null,
+    "independent_mark_to_market_at_trip": "18193600000000000",
+    "independent_drawdown_bps": 424.4210526315789,
+    "fees_paid_by_filler_before_trip": {
+      "usdc_units": "17958",
+      "wnear_yocto": "5985002985002985002988"
+    },
+    "fees_paid_by_mandate": "0 (verifier fees are charged on the counterparty's negative deltas)",
+    "independent_still_executable_orders": 2,
+    "independent_still_executable_reserved_value": "700000000000000",
+    "proposal_after_trip_rejected": true,
+    "post_trip_withheld_execution": {
+      "order": 6,
+      "executed": true
+    },
+    "churn_fills": [
+      {
+        "case": "churn",
+        "order": 0,
+        "sell": "usdc",
+        "sold": "3000000000",
+        "bought": "995000000000000000000000000",
+        "reference": {
+          "usdc": {
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            "price": "100000000",
+            "conf": "20000",
+            "expo": -8,
+            "publish_time_sec": "1793745179"
+          },
+          "wnear": {
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+            "price": "300000000",
+            "conf": "60000",
+            "expo": -8,
+            "publish_time_sec": "1793745179"
+          },
+          "observed_at_ns": "1793745181239200000"
+        },
+        "concession_bps_approx": 50.0,
+        "within_50bps": true,
+        "fees_collected_usdc_units": "3000",
+        "fees_collected_wnear_yocto": "995000995000995000996",
+        "state_after_settle": "released:settled"
+      },
+      {
+        "case": "churn",
+        "order": 1,
+        "sell": "wnear",
+        "sold": "1000000000000000000000000000",
+        "bought": "2985000000",
+        "reference": {
+          "usdc": {
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            "price": "100000000",
+            "conf": "20000",
+            "expo": -8,
+            "publish_time_sec": "1793745182"
+          },
+          "wnear": {
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+            "price": "300000000",
+            "conf": "60000",
+            "expo": -8,
+            "publish_time_sec": "1793745182"
+          },
+          "observed_at_ns": "1793745184086506000"
+        },
+        "concession_bps_approx": 50.0,
+        "within_50bps": true,
+        "fees_collected_usdc_units": "2986",
+        "fees_collected_wnear_yocto": "1000000000000000000000",
+        "state_after_settle": "released:settled"
+      },
+      {
+        "case": "churn",
+        "order": 2,
+        "sell": "usdc",
+        "sold": "3000000000",
+        "bought": "995000000000000000000000000",
+        "reference": {
+          "usdc": {
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            "price": "100000000",
+            "conf": "20000",
+            "expo": -8,
+            "publish_time_sec": "1793745185"
+          },
+          "wnear": {
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+            "price": "300000000",
+            "conf": "60000",
+            "expo": -8,
+            "publish_time_sec": "1793745185"
+          },
+          "observed_at_ns": "1793745186962435000"
+        },
+        "concession_bps_approx": 50.0,
+        "within_50bps": true,
+        "fees_collected_usdc_units": "3000",
+        "fees_collected_wnear_yocto": "995000995000995000996",
+        "state_after_settle": "released:settled"
+      },
+      {
+        "case": "churn",
+        "order": 3,
+        "sell": "wnear",
+        "sold": "1000000000000000000000000000",
+        "bought": "2985000000",
+        "reference": {
+          "usdc": {
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            "price": "100000000",
+            "conf": "20000",
+            "expo": -8,
+            "publish_time_sec": "1793745188"
+          },
+          "wnear": {
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+            "price": "300000000",
+            "conf": "60000",
+            "expo": -8,
+            "publish_time_sec": "1793745188"
+          },
+          "observed_at_ns": "1793745189868739000"
+        },
+        "concession_bps_approx": 50.0,
+        "within_50bps": true,
+        "fees_collected_usdc_units": "2986",
+        "fees_collected_wnear_yocto": "1000000000000000000000",
+        "state_after_settle": "released:settled"
+      },
+      {
+        "case": "churn",
+        "order": 4,
+        "sell": "usdc",
+        "sold": "3000000000",
+        "bought": "995000000000000000000000000",
+        "reference": {
+          "usdc": {
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            "price": "100000000",
+            "conf": "20000",
+            "expo": -8,
+            "publish_time_sec": "1793745191"
+          },
+          "wnear": {
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+            "price": "300000000",
+            "conf": "60000",
+            "expo": -8,
+            "publish_time_sec": "1793745191"
+          },
+          "observed_at_ns": "1793745192763403000"
+        },
+        "concession_bps_approx": 50.0,
+        "within_50bps": true,
+        "fees_collected_usdc_units": "3000",
+        "fees_collected_wnear_yocto": "995000995000995000996",
+        "state_after_settle": "released:settled"
+      },
+      {
+        "case": "churn",
+        "order": 5,
+        "sell": "wnear",
+        "sold": "1000000000000000000000000000",
+        "bought": "2985000000",
+        "reference": {
+          "usdc": {
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            "price": "100000000",
+            "conf": "20000",
+            "expo": -8,
+            "publish_time_sec": "1793745194"
+          },
+          "wnear": {
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+            "price": "300000000",
+            "conf": "60000",
+            "expo": -8,
+            "publish_time_sec": "1793745194"
+          },
+          "observed_at_ns": "1793745195643562000"
+        },
+        "concession_bps_approx": 50.0,
+        "within_50bps": true,
+        "fees_collected_usdc_units": "2986",
+        "fees_collected_wnear_yocto": "1000000000000000000000",
+        "state_after_settle": "released:settled"
+      }
+    ]
+  }
+}

@@ -11,7 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -31,6 +31,8 @@ jobs:
             ~/.cargo/bin/cargo-near
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - name: System packages for cargo-near
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
       - name: cargo-near
         run: command -v cargo-near || cargo install cargo-near --version 0.22.0 --locked
       - name: make test

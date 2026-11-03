@@ -1,0 +1,46 @@
+{
+  "gate": "T4",
+  "part": "record-bound",
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t4_recovery-4c89a80cdb726e52",
+  "generated_at_unix": 1793745309,
+  "data": {
+    "policy_proposal_charge_bps": 200,
+    "initial_value_independent": "19000000000000000",
+    "proposal_floor_value": "380000000000000",
+    "turnover_cap_value": "19000000000000000",
+    "expected_max_proposals": "41",
+    "bound_if_all_proposals_pay_floor": "50",
+    "large_order_charge": "3798000000000000",
+    "accepted_proposals": "41",
+    "refusal": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: turnover cap exceeded\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1762599287422 }, transaction: ExecutionOutcome { t",
+    "turnover_used_at_refusal": "18998000000000000",
+    "record_bytes_measured": {
+      "tiny_signed": "761",
+      "rejected": "157",
+      "large_signed": "780",
+      "used": "780"
+    },
+    "funding_rule": "balance >= (storage after grant + remaining proposals * record_bytes + 4096) * 1e19 yocto",
+    "required_bytes": "342220",
+    "required_near": 3.4222,
+    "storage_bytes": {
+      "after_grant": "306786",
+      "end_of_spam": "337568",
+      "final": "337512"
+    },
+    "storage_failures_at_call": [],
+    "settled": 2,
+    "expired": 30,
+    "owner_revoke_ok": true,
+    "owner_recovery_ok": true,
+    "demo_policy_minimum_funding": {
+      "max_proposals": "200",
+      "bytes": "466882",
+      "near": 4.66882
+    }
+  }
+}

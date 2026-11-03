@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "kind": "fresh-clone-run",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "clone": "git clone https://github.com/gryyny/bounded-mandate.git into an empty directory outside the meta workspace; own target/ directory; no meta-repo access, funds or model credentials",
+  "commands": [
+    "make test",
+    "make demo"
+  ],
+  "results": [
+    "make test  541.13s user 101.67s system 62% cpu 17:06.13 total",
+    "test-exit=0",
+    "make demo  28.25s user 7.28s system 67% cpu 53.011 total",
+    "demo-exit=0"
+  ],
+  "environment": {
+    "os": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo_near": "cargo-near-near 0.22.0",
+    "node": "v24.22.1"
+  },
+  "modes": "sandbox: our contract and the pinned mainnet verifier WASM executed locally with labelled MPC/oracle/token stubs; model step replays a genuine recorded interaction (fixtures/model); no mainnet execution",
+  "built_wasm_sha256": {
+    "mock_oracle.wasm": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc.wasm": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_ft.wasm": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "bounded_mandate.wasm": "61182f8b7c0db3b0913b7309e0c95a5c293feeab1c29cbd240a24954f6299138",
+    "claw_guard_adapted.wasm": "92504db0a732b8e5570d7d86a5373c3289bef39ff5a1f7b80d301d3966a6681c"
+  },
+  "files_sha256": {
+    "demo.json": "2e6306e88749b1131e84fc2cdc87cc98dd7ac733e5e367efa2a009595399f41c",
+    "page/index.html": "484e2179a0faa1f7c82d0a4b3719533e19a2569d71b2b7f5087ddf37f835b6bc",
+    "tests/BOUNDARY.json": "9f1d0219bbff8aafe087e1b48dd5b501601d69c4c4b8c065b9955e8986565411",
+    "tests/T1.failed-removal-retry.json": "5d503df46cf94bc353d6a4322a46cfdb6ab617cb9408076af641a30416f93f6d",
+    "tests/T1.pending-sign.json": "4aefbd69a0fd0278583e630e0db37f17890181f453ed63dd404c1617bd8c613e",
+    "tests/T1.revoke-during-activation.json": "4f54c2acbd464c895e75ab57c55922339e142c291c87119016bdb47562ea74d2",
+    "tests/T1.withheld-regrant.json": "edbd781fc203aff18ea2d5fee79710abbd2b56816d055700131869153985f0d3",
+    "tests/T2.sandbox-interleavings.json": "c78d10969dc629aa345382db03240f66d357d255239a98454c987fdebf2af214",
+    "tests/T2.unit-interleavings.json": "cb0940fa1852646fb6875318c3d9f3b226e2225f86c8aaa80550fa5b4ea4262f",
+    "tests/T2b.json": "28c35300a8f1949981efa1256eab3f1bb6b58d93c82ae5d9bbd249cf6d72dc0f",
+    "tests/T3.breaker.json": "5f2fbdcd43c202d18aca5cc7a62c1023dce5dedd1b2d6ce8afceb469371096ed",
+    "tests/T3.concession.json": "a764192b93265e3b09368fbbc67301febb517275c5ffb95ba89193c96d585bc6",
+    "tests/T3.feeds-timing.json": "9dc83882cf255a52fe97a08aa1f65c6bbd0a857e6e86e6930d47aafa7c4461b7",
+    "tests/T4.json": "2a8761c86edeab52f32c17d028757d0b316fe99f33de6b9b4c2a3b8f4742d48b",
+    "tests/T4.record-bound.json": "0cade51012b1a60c2b68248dac1be2f5c7e7a7e90d095cb80df6e5fa7e813841",
+    "tests/T5.json": "86d149830295fb8ad5a26c28665369c737d9713cdda6c566f057d309810f3f06"
+  }
+}

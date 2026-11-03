@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Bounded mandate — evidence (sandbox)</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #f3efe6; --sheet: #fbf9f4; --ink: #1c1d21; --muted: #5f5b52; --rule: #d9d2c3; --rule-strong: #b9b09d;
+  --accent: #7d2a1c; --pass: #1d6a48; --pass-bg: #e3efe7; --fail: #b02a1e; --fail-bg: #f7e2de;
+  --stale: #8a5d00; --stale-bg: #f5ead0; --none: #6f6b62; --none-bg: #ebe7de;
+  --m-source: #6f6b62; --m-sandbox: #24577a; --m-model: #8a5d00; --m-mainnet: #1c1d21;
+  --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "URW Palladio L", Georgia, serif;
+  --text: Charter, "Bitstream Charter", "Sitka Text", Cambria, "Noto Serif", serif;
+  --mono: "Berkeley Mono", "SF Mono", ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1216; --sheet: #151a20; --ink: #ebe6da; --muted: #a39d8f; --rule: #2a3039; --rule-strong: #3d4552;
+    --accent: #e0866f; --pass: #6fcf9f; --pass-bg: #15291f; --fail: #ff8a7a; --fail-bg: #3a1a16;
+    --stale: #e6b450; --stale-bg: #332710; --none: #9a958a; --none-bg: #22262c;
+    --m-source: #9a958a; --m-sandbox: #7fb6dc; --m-model: #e6b450; --m-mainnet: #ebe6da;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body {
+  margin: 0; color: var(--ink); font: 17px/1.6 var(--text);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 31px, color-mix(in srgb, var(--rule) 35%, transparent) 31px 32px),
+    var(--paper);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.skip { position: absolute; left: -999px; top: 0; background: var(--sheet); padding: .5rem 1rem; }
+.skip:focus { left: 1rem; z-index: 10; }
+.dossier { max-width: 1180px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+header.docket {
+  position: relative; background: var(--sheet); border: 1px solid var(--rule-strong);
+  box-shadow: 0 1px 0 var(--rule), 0 18px 40px -28px rgb(0 0 0 / .45); padding: 2.5rem 2.5rem 2rem; overflow: hidden;
+}
+header.docket::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 6px;
+  background: repeating-linear-gradient(180deg, var(--accent) 0 14px, transparent 14px 20px);
+}
+.kicker { font: 600 .74rem/1.2 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin: 0 0 .9rem; }
+h1 { font: 600 clamp(2rem, 4.6vw, 3.4rem)/1.04 var(--serif); letter-spacing: -.015em; margin: 0 0 1rem; max-width: 17ch; }
+h2 { font: 600 1.7rem/1.15 var(--serif); margin: 0 0 1rem; letter-spacing: -.01em; }
+h3 { font: 600 1.12rem/1.3 var(--serif); margin: 1.4rem 0 .5rem; }
+.lede { max-width: 62ch; font-size: 1.08rem; color: var(--ink); margin: 0 0 1.4rem; }
+.facts { display: flex; flex-wrap: wrap; gap: .5rem 1.6rem; margin: 0; font: .82rem/1.4 var(--mono); color: var(--muted); }
+.facts div { display: flex; gap: .45rem; }
+.facts dt { text-transform: uppercase; letter-spacing: .12em; }
+.facts dd { margin: 0; color: var(--ink); word-break: break-all; }
+.stamp {
+  position: absolute; right: 2.2rem; top: 2.2rem; transform: rotate(-6deg);
+  font: 700 .82rem/1.25 var(--mono); letter-spacing: .16em; text-transform: uppercase; text-align: center;
+  padding: .7rem 1rem; border: 3px double currentColor; border-radius: 6px; max-width: 15rem;
+  mix-blend-mode: multiply; opacity: .9;
+}
+@media (prefers-color-scheme: dark) { .stamp { mix-blend-mode: normal; } }
+.stamp.ok { color: var(--pass); } .stamp.no { color: var(--fail); } .stamp.partial { color: var(--stale); }
+.banner { margin: 1.4rem 0 0; padding: .8rem 1rem; border-left: 4px solid var(--stale); background: var(--stale-bg); font-size: .95rem; }
+.banner.fail { border-color: var(--fail); background: var(--fail-bg); }
+section.folio { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 0 2rem; margin-top: 3.2rem; }
+.folio > .num {
+  font: 600 3.2rem/1 var(--serif); color: var(--accent); text-align: right; border-right: 1px solid var(--rule-strong);
+  padding-right: 1.4rem; position: sticky; top: 1rem; align-self: start;
+}
+.folio > .num small { display: block; font: 600 .68rem/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-top: .5rem; }
+.folio > .body { min-width: 0; }
+.source { font: .74rem/1.4 var(--mono); color: var(--muted); margin: -.4rem 0 1rem; }
+.claims { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
+.card { background: var(--sheet); border: 1px solid var(--rule); padding: 1.1rem 1.2rem; }
+.card h3 { margin-top: 0; }
+.card ul { margin: .4rem 0 0; padding-left: 1.1rem; }
+.card li { margin: .25rem 0; }
+.not li::marker { content: "\2715  "; color: var(--fail); }
+table { width: 100%; border-collapse: collapse; background: var(--sheet); border: 1px solid var(--rule); font-size: .94rem; }
+caption { text-align: left; font: 600 .72rem/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); padding: 0 0 .5rem; }
+th, td { text-align: left; vertical-align: top; padding: .62rem .8rem; border-bottom: 1px solid var(--rule); }
+thead th { font: 600 .72rem/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: color-mix(in srgb, var(--rule) 30%, var(--sheet)); }
+tbody tr:hover { background: color-mix(in srgb, var(--rule) 22%, var(--sheet)); }
+.scroll { overflow-x: auto; }
+code, .mono { font-family: var(--mono); font-size: .84em; word-break: break-all; }
+.status {
+  display: inline-flex; align-items: center; gap: .35rem; font: 700 .72rem/1 var(--mono); letter-spacing: .1em;
+  text-transform: uppercase; padding: .32rem .5rem; border-radius: 3px; white-space: nowrap; border: 1px solid currentColor;
+}
+.status.passed, .status.blocked, .status.executed, .status.demonstrated, .status.success { color: var(--pass); background: var(--pass-bg); }
+.status.failed, .status.attack_succeeded, .status.failure { color: var(--fail); background: var(--fail-bg); }
+.status.stale, .status.unproven, .status.parity { color: var(--stale); background: var(--stale-bg); }
+.status.not-run, .status.unsupported_by_design, .status.not_run, .status.not-comparable {
+  color: var(--none); background: repeating-linear-gradient(135deg, var(--none-bg) 0 6px, transparent 6px 9px);
+}
+.mode {
+  display: inline-block; font: 700 .68rem/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+  padding: .3rem .45rem; border-radius: 2px; white-space: nowrap;
+}
+.mode.source { color: var(--m-source); border: 1px dashed currentColor; }
+.mode.sandbox { color: var(--m-sandbox); border: 1px solid currentColor; }
+.mode.recorded-model, .mode.live-model { color: var(--m-model); border: 1px dotted currentColor; }
+.mode.live-model { border-style: solid; }
+.mode.mainnet { color: var(--sheet); background: var(--m-mainnet); border: 3px double var(--sheet); outline: 1px solid var(--m-mainnet); }
+.mode.other { color: var(--muted); border: 1px solid var(--rule-strong); white-space: normal; line-height: 1.4; }
+th[scope="row"], td code { white-space: nowrap; }
+ol.timeline { list-style: none; margin: 0; padding: 0; position: relative; counter-reset: step; }
+ol.timeline::before { content: ""; position: absolute; left: 1.05rem; top: .4rem; bottom: .4rem; width: 2px; background: var(--rule-strong); }
+ol.timeline > li {
+  position: relative; padding: 0 0 1.3rem 3.2rem; counter-increment: step;
+  animation: rise .5s both cubic-bezier(.2,.7,.2,1); animation-delay: calc(var(--i, 0) * 60ms);
+}
+ol.timeline > li::before {
+  content: counter(step); position: absolute; left: 0; top: 0; width: 2.2rem; height: 2.2rem; border-radius: 50%;
+  display: grid; place-items: center; background: var(--sheet); border: 2px solid var(--ink); font: 700 .85rem/1 var(--mono);
+}
+ol.timeline > li.failure::before { border-color: var(--fail); color: var(--fail); }
+.step-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .7rem; }
+.step-head strong { font: 600 1.05rem/1.3 var(--serif); }
+.step-meta { font: .76rem/1.5 var(--mono); color: var(--muted); margin: .25rem 0 0; word-break: break-all; }
+details { margin-top: .4rem; }
+summary { cursor: pointer; font: 600 .74rem/1.6 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+pre { margin: .5rem 0 0; padding: .8rem; background: color-mix(in srgb, var(--rule) 25%, var(--sheet)); border: 1px solid var(--rule); overflow-x: auto; font: .78rem/1.5 var(--mono); max-height: 26rem; }
+.lifecycle { background: var(--sheet); border: 1px solid var(--rule); padding: 1rem; overflow-x: auto; }
+.lifecycle svg { min-width: 760px; width: 100%; height: auto; display: block; color: var(--ink); }
+.lifecycle .node rect { fill: var(--sheet); stroke: var(--ink); stroke-width: 1.5; }
+.lifecycle .node.warn rect { stroke: var(--stale); stroke-width: 2; }
+.lifecycle .node.safe rect { stroke: var(--pass); stroke-width: 2.5; }
+.lifecycle .node text { fill: var(--ink); font: 600 15px var(--serif); }
+.lifecycle .note { fill: var(--muted); font: 11.5px var(--mono); }
+.lifecycle .edge { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+.lifecycle .edge.back { stroke: var(--accent); stroke-dasharray: 5 4; }
+.lifecycle .label { fill: var(--accent); font: 600 11px var(--mono); letter-spacing: .04em; }
+.verdict { display: flex; align-items: center; gap: 1rem; margin: 0 0 1.2rem; padding: 1rem 1.2rem; background: var(--sheet); border: 1px solid var(--rule-strong); }
+.verdict p { margin: 0; }
+dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1.2rem; margin: 0; background: var(--sheet); border: 1px solid var(--rule); padding: 1rem 1.2rem; }
+dl.kv dt { font: 600 .74rem/1.6 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+dl.kv dd { margin: 0; font: .82rem/1.6 var(--mono); word-break: break-all; }
+ul.unknowns { margin: 0; padding: 0; list-style: none; }
+ul.unknowns li { padding: .6rem .9rem; margin-bottom: .5rem; background: var(--sheet); border: 1px solid var(--rule); border-left: 4px solid var(--stale); }
+footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule-strong); font: .76rem/1.6 var(--mono); color: var(--muted); }
+.muted { color: var(--muted); }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  .dossier { padding: 1.2rem .8rem 3rem; }
+  header.docket { padding: 1.6rem 1.2rem 1.4rem 1.6rem; }
+  .stamp { position: static; display: inline-block; margin: 0 0 1rem; transform: rotate(-2deg); }
+  section.folio { grid-template-columns: 1fr; margin-top: 2.4rem; }
+  .folio > .num { position: static; text-align: left; border-right: 0; border-bottom: 1px solid var(--rule-strong); padding: 0 0 .5rem; margin-bottom: 1rem; font-size: 2.2rem; }
+  .folio > .num small { display: inline; margin-left: .6rem; }
+}
+@media print {
+  body { background: #fff; } .stamp { mix-blend-mode: normal; } details { display: block; } ol.timeline > li { animation: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#claim">Skip to the claim</a>
+<main class="dossier">
+<header class="docket">
+<p class="kicker">Evidence dossier · NEAR Intents · USDC / wNEAR</p>
+<div class="stamp ok" role="status">All gates passed · sandbox</div>
+<h1>A bounded trading mandate whose signed authority can be withdrawn</h1>
+<p class="lede">The agent can only propose. The contract prices, caps, builds and signs every order itself, and the owner can cut off outstanding signed orders and recover assets without the agent, oracle or signer. This page shows what was executed and what was not.</p>
+<dl class="facts">
+<div><dt>Mode</dt><dd><span class="mode sandbox" title="execution mode">sandbox</span></dd></div>
+<div><dt>Commit</dt><dd>426914d534ea</dd></div>
+<div><dt>Gates passed</dt><dd>8 / 8</dd></div>
+<div><dt>Generated</dt><dd>2026-11-03T22:37:34.104Z</dd></div>
+</dl>
+
+
+</header>
+<section class="folio" id="claim" aria-labelledby="claim-h"><div class="num" aria-hidden="true">§1<small>claim</small></div><div class="body"><h2 id="claim-h">What is claimed, and what is not</h2><p class="source">Claim text: SPEC.md sha256 <code>404640515bd5595b60ce516aaa0e8a9cfd24964db93cb6c0a9534afb775b48ef</code>. Status per part: gate results in §4.</p>
+<div class="claims">
+<div class="card"><h3>Claim under test</h3><p>One owner delegates a bounded USDC/wNEAR trading mandate inside NEAR Intents. The mandate contract owns its Intents account, builds every policy-approved trade itself and obtains its own derived MPC signatures. The differentiator is control over the lifetime of outstanding signed authority.</p></div>
+<div class="card not"><h3>Not guaranteed</h3><ul><li>No guarantee of principal, profit or execution availability.</li><li>No maximum total loss: market moves, stale references, fees and orders still executable when the breaker trips can lose more than the stated concession.</li><li>The loss breaker stops new authorizations only; it is not a total-loss cap.</li><li>The owner stays trusted and keeps deployment/upgrade authority.</li><li>An adversarial agent can still make economically poor permitted trades.</li><li>NEAR, the Intents verifier and the token contracts must keep functioning; recovery also needs owner gas.</li><li>While revoking (before confirmed removal), already-signed orders may still execute.</li></ul></div>
+</div>
+<h3>Claim parts and blocking gates</h3>
+<div class="scroll"><table><caption>A part is supported only when every listed gate passed in this source revision</caption>
+<thead><tr><th scope="col">Part of the claim</th><th scope="col">Gates</th><th scope="col">Status</th></tr></thead><tbody><tr><td>After confirmed key removal, withheld signed orders fail, including after regrant</td><td><code>T1</code></td><td><span class="status passed">✓ passed</span></td></tr><tr><td>The owner recovers remaining assets without the agent, oracle or MPC</td><td><code>T4</code></td><td><span class="status passed">✓ passed</span></td></tr><tr><td>Signing safety: caps, reservations and published-signature relay stay accounted</td><td><code>T2</code> <code>T2b</code></td><td><span class="status passed">✓ passed</span></td></tr><tr><td>Stated policy: execution concession at most 0.5% against the declared reference</td><td><code>T3</code></td><td><span class="status passed">✓ passed</span></td></tr><tr><td>The agent cannot authorize withdrawals, transfers, raw payloads, key or policy changes</td><td><code>BOUNDARY</code></td><td><span class="status passed">✓ passed</span></td></tr><tr><td>A genuine recorded model proposal reaches the real application interface</td><td><code>MODEL</code></td><td><span class="status passed">✓ passed</span></td></tr><tr><td>Differentiation against a comparable baseline</td><td><code>T5</code></td><td><span class="status passed">✓ passed</span></td></tr></tbody></table></div></div></section>
+<section class="folio" id="lifecycle" aria-labelledby="lifecycle-h"><div class="num" aria-hidden="true">§2<small>lifecycle</small></div><div class="body"><h2 id="lifecycle-h">Authority lifecycle</h2><p class="source">Specified behaviour (SPEC.md “Authority lifecycle”); executed results are in §3–§5.</p><figure class="lifecycle"><svg viewBox="0 0 1190 330" role="img" aria-labelledby="lc-title lc-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="lc-title">Specified authority lifecycle of one grant</title>
+<desc id="lc-desc">No grant, then Activating, Active, Revoking and Revoked. Revocation is possible during activation. In Revoking, new authorization has stopped but already-signed orders may still execute; Revoked means removal of the key was confirmed and covered orders cannot execute. From Revoked the owner can recover assets without agent, oracle or MPC, or regrant with a new epoch and a never-reused derivation path.</desc>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+<g class="node"><rect x="20" y="70" width="150" height="56" rx="3"/><text x="95" y="104" text-anchor="middle">No grant</text></g>
+<g class="node"><rect x="270" y="70" width="150" height="56" rx="3"/><text x="345" y="104" text-anchor="middle">Activating</text><text class="note" x="345" y="146" text-anchor="middle">key registration</text><text class="note" x="345" y="161" text-anchor="middle">in flight</text></g>
+<g class="node"><rect x="520" y="70" width="150" height="56" rx="3"/><text x="595" y="104" text-anchor="middle">Active</text><text class="note" x="595" y="146" text-anchor="middle">agent may propose</text><text class="note" x="595" y="161" text-anchor="middle">within limits</text></g>
+<g class="node warn"><rect x="770" y="70" width="150" height="56" rx="3"/><text x="845" y="104" text-anchor="middle">Revoking</text><text class="note" x="845" y="146" text-anchor="middle">new authorization stopped</text><text class="note" x="845" y="161" text-anchor="middle">signed orders may execute</text><text class="note" x="845" y="176" text-anchor="middle">failed removal: retry</text></g>
+<g class="node safe"><rect x="1020" y="70" width="150" height="56" rx="3"/><text x="1095" y="104" text-anchor="middle">Revoked</text><text class="note" x="1095" y="146" text-anchor="middle">key removal confirmed</text><text class="note" x="1095" y="161" text-anchor="middle">covered orders cannot execute</text></g>
+<path class="edge" d="M170 98 H268" marker-end="url(#arr)"/><text class="label" x="220" y="90" text-anchor="middle">grant</text>
+<path class="edge" d="M420 98 H518" marker-end="url(#arr)"/><text class="label" x="470" y="90" text-anchor="middle">key confirmed</text>
+<path class="edge" d="M670 98 H768" marker-end="url(#arr)"/><text class="label" x="720" y="90" text-anchor="middle">revoke</text>
+<path class="edge" d="M920 98 H1018" marker-end="url(#arr)"/><text class="label" x="970" y="90" text-anchor="middle">removal ok</text>
+<path class="edge" d="M345 70 C 400 10, 790 10, 845 68" marker-end="url(#arr)"/>
+<text class="label" x="595" y="28" text-anchor="middle">revoke during activation</text>
+<g class="node safe"><rect x="1020" y="236" width="150" height="46" rx="3"/><text x="1095" y="265" text-anchor="middle">Owner recovery</text></g>
+<text class="note" x="1095" y="302" text-anchor="middle">no agent, oracle or MPC</text>
+<path class="edge" d="M1095 172 V234" marker-end="url(#arr)"/>
+<text class="label" x="1105" y="202" text-anchor="start">recover</text>
+<path class="edge back" d="M1020 259 H345 V178" marker-end="url(#arr)"/>
+<text class="label" x="682" y="251" text-anchor="middle">regrant: epoch + 1, new never-reused path</text>
+</svg></figure></div></section>
+<section class="folio" id="story" aria-labelledby="story-h"><div class="num" aria-hidden="true">§3<small>story</small></div><div class="body"><h2 id="story-h">Demonstration, step by step</h2><p class="source">Source: evidence.receipts (12), run mode <span class="mode sandbox" title="execution mode">sandbox</span>, command <code>make demo</code>.</p>
+<p><strong>No mainnet receipts in this evidence.</strong> Sandbox steps executed the contract and the pinned verifier WASM locally with labelled test doubles; recorded-model steps replay a genuine model response captured earlier.</p>
+<ol class="timeline"><li class="success" style="--i:0"><div class="step-head"><strong>owner grant</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx HmTx5QNyTj49WmiujHCwR5WBDFeyoawhjMRu5uWbEFJ8 · block 93</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;owner.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;grant&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;grant_requested&quot;,
+      &quot;data&quot;: {
+        &quot;epoch&quot;: 1,
+        &quot;path&quot;: &quot;mandate/v1/1&quot;,
+        &quot;policy&quot;: {
+          &quot;per_order_cap_bps&quot;: 2000,
+          &quot;outstanding_cap_bps&quot;: 2000,
+          &quot;max_concession_bps&quot;: 50,
+          &quot;oracle_max_age_sec&quot;: 60,
+          &quot;max_confidence_bps&quot;: 50,
+          &quot;breaker_drawdown_bps&quot;: 200,
+          &quot;turnover_cap_bps&quot;: 10000,
+          &quot;order_ttl_sec&quot;: 60,
+          &quot;min_remaining_sec&quot;: 15,
+          &quot;max_pricing_delay_sec&quot;: 30,
+          &quot;proposal_charge_bps&quot;: 50
+        }
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;grant_key_registering&quot;,
+      &quot;data&quot;: {
+        &quot;epoch&quot;: 1,
+        &quot;public_key&quot;: &quot;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK&quot;,
+        &quot;initial_reference&quot;: {
+          &quot;usdc&quot;: {
+            &quot;price_id&quot;: &quot;eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a&quot;,
+            &quot;price&quot;: &quot;99980000&quot;,
+            &quot;conf&quot;: &quot;20000&quot;,
+            &quot;expo&quot;: -8,
+            &quot;publish_time_sec&quot;: &quot;1793745437&quot;
+          },
+          &quot;wnear&quot;: {
+            &quot;price_id&quot;: &quot;c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750&quot;,
+            &quot;price&quot;: &quot;300000000&quot;,
+            &quot;conf&quot;: &quot;450000&quot;,
+            &quot;expo&quot;: -8,
+            &quot;publish_time_sec&quot;: &quot;1793745437&quot;
+          },
+          &quot;observed_at_ns&quot;: &quot;1793745438793699000&quot;
+        },
+        &quot;initial_value&quot;: &quot;1899800000000000&quot;
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;public_key_added&quot;,
+      &quot;data&quot;: {
+        &quot;account_id&quot;: &quot;mandate.sandbox&quot;,
+        &quot;public_key&quot;: &quot;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK&quot;
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;grant_activated&quot;,
+      &quot;data&quot;: {
+        &quot;epoch&quot;: 1,
+        &quot;public_key&quot;: &quot;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK&quot;
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;HmTx5QNyTj49WmiujHCwR5WBDFeyoawhjMRu5uWbEFJ8&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;AGVn9KcaeLbG9m9qCvvdmYMXApM4oXDFVWPbHhxeJ6v3&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;5w5uj4WGz4fiPDUBmCjJq61Gc9YaKaghzhx6c9mekV5H&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;8262Eu6rbCNaUb5kAXovr6gmegQqHj97Ugg4HUD5fU5j&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;4ttq3hCyjW3dqnMF9uP86reafYLTh64zmMZX1e1M57Ej&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;7UioY3BfMh3nivXZDCkDkTkHwGZoFPegbyN7gzqp5GuW&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;7rdUUCav9hofBEmw3E2h9im32jcrdHPGfX49YZKWgMKw&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;9CUoScnkrbnbqXz5yNxqAYqkF9mbwLaM2PiAZH5hgwFV&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;AeTtGVtm23fFwwo74FdcmgEhrSDeHu1LjgeWiDbBRVcL&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;64uT1L9QRxFv5dbFcQKqoMYSK4GLkpVHUErcDc9yF5X1&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;2fmYMcEHst6CYZHPaHMshCGCNDxLCnhDTfqNngV6f2Mv&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;2hUupspGYmGCuztvPwM5YV2pCtkW3QMNvwJqDQ46QSbj&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;75EEce1andMhMRPyAPH8nzxzRUGsfLJVWFBBWDGWtaPQ&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;5ztVDT7t88NBLWMvSD5vCyWoA8yKDVieGZVQ5zpxEZp9&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;833eu6erVTeSrmQhcjYcKB3NAeCF9q6H6gHymsKV7dtg&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;4n35AgkdsgWeQRxmjPzjACcZnQSs1qpRdqobYvqdeQSX&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ],
+  &quot;step&quot;: &quot;grant&quot;
+}</pre></details></li>
+<li class="success" style="--i:1"><div class="step-head"><strong>agent propose_order (order 1)</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx FJD1Pcx9eQWrrt5w5zFf8fYKL5x3wwAqaLG6w45Bs7eM · block 100</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;agent.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;propose_order&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_proposed&quot;,
+      &quot;data&quot;: {
+        &quot;order&quot;: {
+          &quot;id&quot;: &quot;0&quot;,
+          &quot;epoch&quot;: 1,
+          &quot;sell&quot;: &quot;usdc&quot;,
+          &quot;sell_amount&quot;: &quot;49900000&quot;,
+          &quot;buy&quot;: &quot;wnear&quot;,
+          &quot;buy_amount&quot;: null,
+          &quot;concession_bps&quot;: 50,
+          &quot;reserved_value&quot;: &quot;49890020000000&quot;,
+          &quot;deadline_ns&quot;: null,
+          &quot;reference&quot;: null,
+          &quot;payload&quot;: null,
+          &quot;payload_hash&quot;: null,
+          &quot;signature&quot;: null,
+          &quot;state&quot;: {
+            &quot;state&quot;: &quot;pricing&quot;
+          },
+          &quot;created_at_ns&quot;: &quot;1793745439412611000&quot;,
+          &quot;sign_requested_at_ns&quot;: null,
+          &quot;signed_at_ns&quot;: null
+        }
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_sign_requested&quot;,
+      &quot;data&quot;: {
+        &quot;order&quot;: {
+          &quot;id&quot;: &quot;0&quot;,
+          &quot;epoch&quot;: 1,
+          &quot;sell&quot;: &quot;usdc&quot;,
+          &quot;sell_amount&quot;: &quot;49900000&quot;,
+          &quot;buy&quot;: &quot;wnear&quot;,
+          &quot;buy_amount&quot;: &quot;16546856633333333333333334&quot;,
+          &quot;concession_bps&quot;: 50,
+          &quot;reserved_value&quot;: &quot;49890020000000&quot;,
+          &quot;deadline_ns&quot;: &quot;1793745497000000000&quot;,
+          &quot;reference&quot;: {
+            &quot;usdc&quot;: {
+              &quot;price_id&quot;: &quot;eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a&quot;,
+              &quot;price&quot;: &quot;99980000&quot;,
+              &quot;conf&quot;: &quot;20000&quot;,
+              &quot;expo&quot;: -8,
+              &quot;publish_time_sec&quot;: &quot;1793745437&quot;
+            },
+            &quot;wnear&quot;: {
+              &quot;price_id&quot;: &quot;c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750&quot;,
+              &quot;price&quot;: &quot;300000000&quot;,
+              &quot;conf&quot;: &quot;450000&quot;,
+              &quot;expo&quot;: -8,
+              &quot;publish_time_sec&quot;: &quot;1793745437&quot;
+            },
+            &quot;observed_at_ns&quot;: &quot;1793745439657467000&quot;
+          },
+          &quot;payload&quot;: {
+            &quot;message&quot;: &quot;{\&quot;signer_id\&quot;:\&quot;mandate.sandbox\&quot;,\&quot;deadline\&quot;:\&quot;2026-11-03T22:38:17Z\&quot;,\&quot;intents\&quot;:[{\&quot;intent\&quot;:\&quot;token_diff\&quot;,\&quot;diff\&quot;:{\&quot;nep141:usdc.sandbox\&quot;:\&quot;-49900000\&quot;,\&quot;nep141:wnear.sandbox\&quot;:\&quot;16546856633333333333333334\&quot;}}]}&quot;,
+            &quot;nonce&quot;: &quot;Vij2xgAa5ZEJADokngaq5BhgCy3Ues9N/eu87nV3abY=&quot;,
+            &quot;recipient&quot;: &quot;intents.sandbox&quot;
+          },
+          &quot;payload_hash&quot;: &quot;70c6585fc6ff98719b8e165dc47b32a11fb75bb37eea7a990b1f602e40f3830f&quot;,
+          &quot;signature&quot;: null,
+          &quot;state&quot;: {
+            &quot;state&quot;: &quot;signing&quot;
+          },
+          &quot;created_at_ns&quot;: &quot;1793745439412611000&quot;,
+          &quot;sign_requested_at_ns&quot;: &quot;1793745439657467000&quot;,
+          &quot;signed_at_ns&quot;: null
+        }
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_signed&quot;,
+      &quot;data&quot;: {
+        &quot;order_id&quot;: &quot;0&quot;,
+        &quot;epoch&quot;: 1,
+        &quot;signature&quot;: &quot;ed25519:4HaeoTS8oAtcX3YRsqLwfjQRDNvjXoMw9uSfpSrWP2Ri1Mx2xGoNEoQhAiS8eCDFphvotKWnfiYxAeQmuZnGAzaE&quot;,
+        &quot;multi_payload&quot;: &quot;{\&quot;standard\&quot;:\&quot;nep413\&quot;,\&quot;payload\&quot;:{\&quot;message\&quot;:\&quot;{\\\&quot;signer_id\\\&quot;:\\\&quot;mandate.sandbox\\\&quot;,\\\&quot;deadline\\\&quot;:\\\&quot;2026-11-03T22:38:17Z\\\&quot;,\\\&quot;intents\\\&quot;:[{\\\&quot;intent\\\&quot;:\\\&quot;token_diff\\\&quot;,\\\&quot;diff\\\&quot;:{\\\&quot;nep141:usdc.sandbox\\\&quot;:\\\&quot;-49900000\\\&quot;,\\\&quot;nep141:wnear.sandbox\\\&quot;:\\\&quot;16546856633333333333333334\\\&quot;}}]}\&quot;,\&quot;nonce\&quot;:\&quot;Vij2xgAa5ZEJADokngaq5BhgCy3Ues9N/eu87nV3abY=\&quot;,\&quot;recipient\&quot;:\&quot;intents.sandbox\&quot;},\&quot;public_key\&quot;:\&quot;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK\&quot;,\&quot;signature\&quot;:\&quot;ed25519:4HaeoTS8oAtcX3YRsqLwfjQRDNvjXoMw9uSfpSrWP2Ri1Mx2xGoNEoQhAiS8eCDFphvotKWnfiYxAeQmuZnGAzaE\&quot;}&quot;
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;FJD1Pcx9eQWrrt5w5zFf8fYKL5x3wwAqaLG6w45Bs7eM&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;6LiPupzwTL3uxcumPrJcNKT9fN3jzquV9h8Kfpekz1FX&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;F4ZtfnhZyxfMzrRaPw6mKRAJpZhhdqvLNmwPsy5UJpey&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;3hbMMCcJmDPxLNwCXCacgrFH1PhPnEirbgnQkSXz4gx1&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;8rnaWnB7ouLPRb6CXSiE8RkEQoKX1iuRpdWKbAJFVCuP&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;AjeX9zN1Z7uLwFLKiUDFV924YfvhwPUH97Rgf7ozkvXN&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;FpqkwMmR4LfdAm85TwGz99cYDrqsqyhLGt4JQp96kse2&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;B81GCcbd7YBYhXxgqrTz6UjLkphjvof4bJ6r8jH2eM9K&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;Cff2xgRh8bBvcbCG9k6qSwVLkABBUT98mzLVm6ZYMCso&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;8vtBwpSphYTBtHADD7uetj8SFHJZ825tKLRP8cFrQ91z&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;Hf2XiUABwweXRjXQw2WVgtdQ96eE4xVK8gmSgZxen3xZ&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ALJwJ2HTFeEHn8iKWHTnVQ6mnVmtKdUCSEAgnT95Cm1D&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;CnynHHMN42MTAh19fKeCRjN153M6QfTx17ZPyUEUNP6T&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;5F29rmYPAKGsPHj5rrLixf9Cfs9UpDsA9MXaWYm5BubR&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;31DtLCgToUGZABqujUnopwTbFzUmJmFfwSb5fNZULuHM&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;KhotRs5R7CpmXbGnC4X8rkCwPj5bk4n6qT8McyQLrZG&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;fLWFdjUVRcqRudn6TBNATXrMBmvHoCEGX3kbV61wcyq&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;GDzh3LVf9uwHRzwGtHb8EvTH8jbb8vY6PtdXhNavATCS&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+... (truncated)</pre></details></li>
+<li class="success" style="--i:2"><div class="step-head"><strong>filler execute_intents order 0</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx BQnodaEc7DjdyV5Y4YjoZKxR2hFYfHMgutwvxBvXpfo1 · block 109</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;filler.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;intents.sandbox&quot;,
+  &quot;method&quot;: &quot;execute_intents&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;token_diff&quot;,
+      &quot;data&quot;: [
+        {
+          &quot;intent_hash&quot;: &quot;8bE5cyaF5HghyvxMwyFF1WTk9xFsgELxrmAvHfXCs2Pp&quot;,
+          &quot;account_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;diff&quot;: {
+            &quot;nep141:usdc.sandbox&quot;: &quot;-49900000&quot;,
+            &quot;nep141:wnear.sandbox&quot;: &quot;16546856633333333333333334&quot;
+          },
+          &quot;fees_collected&quot;: {
+            &quot;nep141:usdc.sandbox&quot;: &quot;50&quot;
+          }
+        }
+      ]
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;token_diff&quot;,
+      &quot;data&quot;: [
+        {
+          &quot;intent_hash&quot;: &quot;CHTNSNzq6jc8ffxTMJA1Qgr4H6xtKLcDhRAG9ygjviFK&quot;,
+          &quot;account_id&quot;: &quot;filler.sandbox&quot;,
+          &quot;diff&quot;: {
+            &quot;nep141:usdc.sandbox&quot;: &quot;49899950&quot;,
+            &quot;nep141:wnear.sandbox&quot;: &quot;-16546873180206513539846874&quot;
+          },
+          &quot;fees_collected&quot;: {
+            &quot;nep141:wnear.sandbox&quot;: &quot;16546873180206513540&quot;
+          }
+        }
+      ]
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;intents_executed&quot;,
+      &quot;data&quot;: [
+        {
+          &quot;intent_hash&quot;: &quot;8bE5cyaF5HghyvxMwyFF1WTk9xFsgELxrmAvHfXCs2Pp&quot;,
+          &quot;account_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;nonce&quot;: &quot;Vij2xgAa5ZEJADokngaq5BhgCy3Ues9N/eu87nV3abY=&quot;
+        },
+        {
+          &quot;intent_hash&quot;: &quot;CHTNSNzq6jc8ffxTMJA1Qgr4H6xtKLcDhRAG9ygjviFK&quot;,
+          &quot;account_id&quot;: &quot;filler.sandbox&quot;,
+          &quot;nonce&quot;: &quot;Vij2xgAa5ZEJSNAyUhWq5BgUazfT3xs4LPoFgC5I0Ag=&quot;
+        }
+      ]
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;mt_transfer&quot;,
+      &quot;data&quot;: [
+        {
+          &quot;old_owner_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;new_owner_id&quot;: &quot;fees.sandbox&quot;,
+          &quot;token_ids&quot;: [
+            &quot;nep141:usdc.sandbox&quot;
+          ],
+          &quot;amounts&quot;: [
+            &quot;50&quot;
+          ]
+        },
+        {
+          &quot;old_owner_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;new_owner_id&quot;: &quot;filler.sandbox&quot;,
+          &quot;token_ids&quot;: [
+            &quot;nep141:usdc.sandbox&quot;
+          ],
+          &quot;amounts&quot;: [
+            &quot;49899950&quot;
+          ]
+        },
+        {
+          &quot;old_owner_id&quot;: &quot;filler.sandbox&quot;,
+          &quot;new_owner_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;token_ids&quot;: [
+            &quot;nep141:wnear.sandbox&quot;
+          ],
+          &quot;amounts&quot;: [
+            &quot;16546856633333333333333334&quot;
+          ]
+        },
+        {
+          &quot;old_owner_id&quot;: &quot;filler.sandbox&quot;,
+          &quot;new_owner_id&quot;: &quot;fees.sandbox&quot;,
+          &quot;token_ids&quot;: [
+            &quot;nep141:wnear.sandbox&quot;
+          ],
+          &quot;amounts&quot;: [
+            &quot;16546873180206513540&quot;
+          ]
+        }
+      ]
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;BQnodaEc7DjdyV5Y4YjoZKxR2hFYfHMgutwvxBvXpfo1&quot;,
+      &quot;executor_id&quot;: &quot;filler.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;J83urXTaah49UsFovUoxNKBqaahk6zfruT9govu8vBnM&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ],
+  &quot;filler_record&quot;: {
+    &quot;mandate_nonce&quot;: &quot;Vij2xgAa5ZEJADokngaq5BhgCy3Ues9N/eu87nV3abY=&quot;,
+    &quot;filler_nonce&quot;: &quot;Vij2xgAa5ZEJSNAyUhWq5BgUazfT3xs4LPoFgC5I0Ag=&quot;,
+    &quot;counter_diff&quot;: {
+      &quot;nep141:usdc.sandbox&quot;: &quot;49899950&quot;,
+      &quot;nep141:wnear.sandbox&quot;: &quot;-16546873180206513539846874&quot;
+    },
+    &quot;order_id&quot;: &quot;0&quot;,
+    &quot;state&quot;: &quot;filled&quot;,
+    &quot;updated_at&quot;: &quot;2026-11-03T22:37:20.630Z&quot;,
+    &quot;tx_hash&quot;: &quot;BQnodaEc7DjdyV5Y4YjoZKxR2hFYfHMgutwvxBvXpfo1&quot;
+  }
+}</pre></details></li>
+<li class="success" style="--i:3"><div class="step-head"><strong>settle_order 0</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx 2YhWBj4n6iH2uonDB11jFxYkQyKVaUKEmW1BjL6X1H1E · block 112</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;relayer.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;settle_order&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_released&quot;,
+      &quot;data&quot;: {
+        &quot;order_id&quot;: &quot;0&quot;,
+        &quot;epoch&quot;: 1,
+        &quot;reason&quot;: &quot;settled&quot;,
+        &quot;reserved_value&quot;: &quot;49890020000000&quot;
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;2YhWBj4n6iH2uonDB11jFxYkQyKVaUKEmW1BjL6X1H1E&quot;,
+      &quot;executor_id&quot;: &quot;relayer.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;D9SCQKMT654fPgPnKboKDvc82N3QoA4buvfmKUAJSQSz&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;DLTE3Wf272RK3sdpaGTdh8c8A8Bt3Jk82XKF9tRwd2qp&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;71DahM4oaHGq1KLZPW3nzxtgzpV5k7iMnCTSZGw8jbNq&quot;,
+      &quot;executor_id&quot;: &quot;relayer.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;5xh7J38cUHCZk82e1Av6W7CSwM82nNLhxCPxBDeybiK1&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;H3ikd86N5r4oGnpLfjP3YyngF9sVyhpEyRfs1M5gV1wU&quot;,
+      &quot;executor_id&quot;: &quot;relayer.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ]
+}</pre></details></li>
+<li class="success" style="--i:4"><div class="step-head"><strong>agent propose_order (order 2, scripted, withheld)</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx 7RMrEiBAqTG7WEpjdRtqaXgYRrJABJgvM2u8piy1uFwx · block 123</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;agent.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;propose_order&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_proposed&quot;,
+      &quot;data&quot;: {
+        &quot;order&quot;: {
+          &quot;id&quot;: &quot;1&quot;,
+          &quot;epoch&quot;: 1,
+          &quot;sell&quot;: &quot;wnear&quot;,
+          &quot;sell_amount&quot;: &quot;20000000000000000000000000&quot;,
+          &quot;buy&quot;: &quot;usdc&quot;,
+          &quot;buy_amount&quot;: null,
+          &quot;concession_bps&quot;: 30,
+          &quot;reserved_value&quot;: &quot;60000000000000&quot;,
+          &quot;deadline_ns&quot;: null,
+          &quot;reference&quot;: null,
+          &quot;payload&quot;: null,
+          &quot;payload_hash&quot;: null,
+          &quot;signature&quot;: null,
+          &quot;state&quot;: {
+            &quot;state&quot;: &quot;pricing&quot;
+          },
+          &quot;created_at_ns&quot;: &quot;1793745442246148000&quot;,
+          &quot;sign_requested_at_ns&quot;: null,
+          &quot;signed_at_ns&quot;: null
+        }
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_sign_requested&quot;,
+      &quot;data&quot;: {
+        &quot;order&quot;: {
+          &quot;id&quot;: &quot;1&quot;,
+          &quot;epoch&quot;: 1,
+          &quot;sell&quot;: &quot;wnear&quot;,
+          &quot;sell_amount&quot;: &quot;20000000000000000000000000&quot;,
+          &quot;buy&quot;: &quot;usdc&quot;,
+          &quot;buy_amount&quot;: &quot;59831967&quot;,
+          &quot;concession_bps&quot;: 30,
+          &quot;reserved_value&quot;: &quot;60000000000000&quot;,
+          &quot;deadline_ns&quot;: &quot;1793745501000000000&quot;,
+          &quot;reference&quot;: {
+            &quot;usdc&quot;: {
+              &quot;price_id&quot;: &quot;eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a&quot;,
+              &quot;price&quot;: &quot;99980000&quot;,
+              &quot;conf&quot;: &quot;20000&quot;,
+              &quot;expo&quot;: -8,
+              &quot;publish_time_sec&quot;: &quot;1793745441&quot;
+            },
+            &quot;wnear&quot;: {
+              &quot;price_id&quot;: &quot;c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750&quot;,
+              &quot;price&quot;: &quot;300000000&quot;,
+              &quot;conf&quot;: &quot;450000&quot;,
+              &quot;expo&quot;: -8,
+              &quot;publish_time_sec&quot;: &quot;1793745441&quot;
+            },
+            &quot;observed_at_ns&quot;: &quot;1793745442483870000&quot;
+          },
+          &quot;payload&quot;: {
+            &quot;message&quot;: &quot;{\&quot;signer_id\&quot;:\&quot;mandate.sandbox\&quot;,\&quot;deadline\&quot;:\&quot;2026-11-03T22:38:21Z\&quot;,\&quot;intents\&quot;:[{\&quot;intent\&quot;:\&quot;token_diff\&quot;,\&quot;diff\&quot;:{\&quot;nep141:usdc.sandbox\&quot;:\&quot;59831967\&quot;,\&quot;nep141:wnear.sandbox\&quot;:\&quot;-20000000000000000000000000\&quot;}}]}&quot;,
+            &quot;nonce&quot;: &quot;Vij2xgAa5ZEJAGKPjAeq5BgMu/qB8WJIdEMk+1dSlYE=&quot;,
+            &quot;recipient&quot;: &quot;intents.sandbox&quot;
+          },
+          &quot;payload_hash&quot;: &quot;a05dcdbcd18d90a882600d504ce087e84b281069aa183138891b6dab36c92d2d&quot;,
+          &quot;signature&quot;: null,
+          &quot;state&quot;: {
+            &quot;state&quot;: &quot;signing&quot;
+          },
+          &quot;created_at_ns&quot;: &quot;1793745442246148000&quot;,
+          &quot;sign_requested_at_ns&quot;: &quot;1793745442483870000&quot;,
+          &quot;signed_at_ns&quot;: null
+        }
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_signed&quot;,
+      &quot;data&quot;: {
+        &quot;order_id&quot;: &quot;1&quot;,
+        &quot;epoch&quot;: 1,
+        &quot;signature&quot;: &quot;ed25519:4A6veHQrhP829vgpVmNFkzAiCJq2FAsbyckPXNrbPX5GpY4f4qrpoRbRHcQGXXwfPxrWNsejWajx7smpiA5VtDV&quot;,
+        &quot;multi_payload&quot;: &quot;{\&quot;standard\&quot;:\&quot;nep413\&quot;,\&quot;payload\&quot;:{\&quot;message\&quot;:\&quot;{\\\&quot;signer_id\\\&quot;:\\\&quot;mandate.sandbox\\\&quot;,\\\&quot;deadline\\\&quot;:\\\&quot;2026-11-03T22:38:21Z\\\&quot;,\\\&quot;intents\\\&quot;:[{\\\&quot;intent\\\&quot;:\\\&quot;token_diff\\\&quot;,\\\&quot;diff\\\&quot;:{\\\&quot;nep141:usdc.sandbox\\\&quot;:\\\&quot;59831967\\\&quot;,\\\&quot;nep141:wnear.sandbox\\\&quot;:\\\&quot;-20000000000000000000000000\\\&quot;}}]}\&quot;,\&quot;nonce\&quot;:\&quot;Vij2xgAa5ZEJAGKPjAeq5BgMu/qB8WJIdEMk+1dSlYE=\&quot;,\&quot;recipient\&quot;:\&quot;intents.sandbox\&quot;},\&quot;public_key\&quot;:\&quot;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK\&quot;,\&quot;signature\&quot;:\&quot;ed25519:4A6veHQrhP829vgpVmNFkzAiCJq2FAsbyckPXNrbPX5GpY4f4qrpoRbRHcQGXXwfPxrWNsejWajx7smpiA5VtDV\&quot;}&quot;
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;7RMrEiBAqTG7WEpjdRtqaXgYRrJABJgvM2u8piy1uFwx&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;4mueUUKbQV4RQkWTkHwT7ZNJqgiteygVZYWsqiaUsFft&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;E7w1ndR6dUw9JoKAiPNXQgNuPKcJqiQ3bpVkpu4eUcZx&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;Eg4dX7RDEpcEYH6eSsQYHDJeNyLAWEdnfTPMAUig58QL&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;G81iX3UZKjUi19HQWUrQvLMcchKFxbD1GhsNF6faH3FW&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;4agsVcyUk8X4Xxj2Rf3ye8Zp26YAhjzDfFRju5GFFESf&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;CSQPLWi5QiTRJ7ar2yaS7gm2rMTohYdzWfkYpnQpSwvy&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ArytnY9niBXwTjhLK7vXW4oomuCQ36qAk4CWRDs51DvT&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;28zjWAqNKFTtxPbnLbVQdEjEcdNh5t8UYtni3TDjAcLY&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;7WKUnz39VxN67R2c5v9TF9zXAt6QP5aZY2KrQTXZMAZa&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;5nNYdZQhf74zeknDNS9UQsDKwzYMNehjnwp3pVwVivac&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;3d7ijFG2ewp588acrKWHgHTJuxGAdr4Axmy9j8sbGRzZ&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;77SQAGCYBV7WDnhcXe4WJf8xNHhjxnnmBXEArc1iCEvf&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;DRSSW7nLYk66duwc4tLmjAXQJBJVmfr133DgNHzdb5Hp&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;24Mbi6aA5BF9jDCSe69uXuk2FfrnGGrys7jgfUMHa4T2&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;BYACBJUxMwjL6MD5NxdukFGMPPDtedBLTDaBnfoGLes1&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;C5f9k6WpGBbqigH7ahQPkuFnK51w3tftDFB7NevPgXor&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;DWR9YAS9mMWse4dmhm6D1wVEXSBcNsFKQLQ9HTALbnxa&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;suc
+... (truncated)</pre></details></li>
+<li class="success" style="--i:5"><div class="step-head"><strong>owner revoke</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx CKahcucVnA4dT8wZCvpmbg6wkF9N6YSFndH24GEmUCvL · block 189</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;owner.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;revoke&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;revocation_requested&quot;,
+      &quot;data&quot;: {
+        &quot;epoch&quot;: 1
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;key_removal_requested&quot;,
+      &quot;data&quot;: {
+        &quot;epoch&quot;: 1,
+        &quot;attempt&quot;: 1
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;public_key_removed&quot;,
+      &quot;data&quot;: {
+        &quot;account_id&quot;: &quot;mandate.sandbox&quot;,
+        &quot;public_key&quot;: &quot;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK&quot;
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;order_released&quot;,
+      &quot;data&quot;: {
+        &quot;order_id&quot;: &quot;1&quot;,
+        &quot;epoch&quot;: 1,
+        &quot;reason&quot;: &quot;key_removed&quot;,
+        &quot;reserved_value&quot;: &quot;60000000000000&quot;
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;grant_revoked&quot;,
+      &quot;data&quot;: {
+        &quot;epoch&quot;: 1,
+        &quot;key_removed&quot;: true,
+        &quot;released_orders&quot;: [
+          1
+        ]
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;CKahcucVnA4dT8wZCvpmbg6wkF9N6YSFndH24GEmUCvL&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;8s6VfMxSwLaYq5qAAQCa5PZjw6RFW7bMBGcX2XtBNSp5&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;2ehxBXwMCQWNcWvWpSiTokKuTXRDw3r3aRopkz3DYiYU&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;E93nNL2pF74TjBq8rjpsL1JQtqCfXVGmEmP2NcBBPmwB&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;CP8bZ3szSdWK9bSBJ5jQz9oxzLfHTV7nyQKa6QWwG7y7&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;FXQwC1ucUQt5bLYsRtpsxWcmM7Mng5DRBWHZKxuVb4Ki&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ]
+}</pre></details></li>
+<li class="failure" style="--i:6"><div class="step-head"><strong>relayer execute_intents (withheld order after revocation)</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status failure">failure</span></div>
+<p class="step-meta">tx F7pwk6GgphbRvf4eKtVEkA3zuGPM6tUdsJR8Hmfy1nYL · block 194</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;relayer.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;intents.sandbox&quot;,
+  &quot;method&quot;: &quot;execute_intents&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: true,
+  &quot;error&quot;: &quot;{\&quot;ActionError\&quot;:{\&quot;index\&quot;:0,\&quot;kind\&quot;:{\&quot;FunctionCallError\&quot;:{\&quot;ExecutionError\&quot;:\&quot;Smart contract panicked: public key &#39;ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK&#39; doesn&#39;t exist for account &#39;mandate.sandbox&#39;\&quot;}}}}&quot;,
+  &quot;events&quot;: [],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;F7pwk6GgphbRvf4eKtVEkA3zuGPM6tUdsJR8Hmfy1nYL&quot;,
+      &quot;executor_id&quot;: &quot;relayer.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;2QrP39WZge2nCP3CqM4ByuBCVxi7EkRvZmT1rPJsb4Uz&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: false
+    }
+  ]
+}</pre></details></li>
+<li class="success" style="--i:7"><div class="step-head"><strong>oracle set_fail(true)</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx 4YSF357jeiUmXwbpdHZruwEAgBdMkGuBaB6rgxAnMWqR · block 197</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;operator.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;oracle.sandbox&quot;,
+  &quot;method&quot;: &quot;set_fail&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;4YSF357jeiUmXwbpdHZruwEAgBdMkGuBaB6rgxAnMWqR&quot;,
+      &quot;executor_id&quot;: &quot;operator.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;JABUBqcogQ3xQByFKNxLhkmN5hKfQFrpTJ2AHMbTwHgw&quot;,
+      &quot;executor_id&quot;: &quot;oracle.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ]
+}</pre></details></li>
+<li class="success" style="--i:8"><div class="step-head"><strong>mpc set_mode(hold)</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx BCHC5PuQZpov9Da8YWHPFBLhSJmXCUeG4J6kJFpbZWFQ · block 200</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;operator.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mpc.sandbox&quot;,
+  &quot;method&quot;: &quot;set_mode&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;BCHC5PuQZpov9Da8YWHPFBLhSJmXCUeG4J6kJFpbZWFQ&quot;,
+      &quot;executor_id&quot;: &quot;operator.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;AqGv6dY5oGwuJhKMhbYHjeh32SoeFtKGbeTCbPnKWETv&quot;,
+      &quot;executor_id&quot;: &quot;mpc.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ]
+}</pre></details></li>
+<li class="failure" style="--i:9"><div class="step-head"><strong>agent propose_order after revocation</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status failure">failure</span></div>
+<p class="step-meta">tx gkvs4ien7TtSEQjQmdRLf9ZNqthGQgeWW62F3umqEhu · block 203</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;agent.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;propose_order&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: true,
+  &quot;error&quot;: &quot;{\&quot;ActionError\&quot;:{\&quot;index\&quot;:0,\&quot;kind\&quot;:{\&quot;FunctionCallError\&quot;:{\&quot;ExecutionError\&quot;:\&quot;Smart contract panicked: grant is not active\&quot;}}}}&quot;,
+  &quot;events&quot;: [],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;gkvs4ien7TtSEQjQmdRLf9ZNqthGQgeWW62F3umqEhu&quot;,
+      &quot;executor_id&quot;: &quot;agent.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;6AyrUVVvhrpcb6FQ53Hiv98uJpDnrwm3sCmmxBWrxeTc&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: false
+    }
+  ]
+}</pre></details></li>
+<li class="success" style="--i:10"><div class="step-head"><strong>owner recover usdc</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx EKhDw8CAm1GNVJJ3sXETVb51VQVQp8SjSMzqJGpGE66E · block 206</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;owner.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;recover&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;recovery_requested&quot;,
+      &quot;data&quot;: {
+        &quot;asset&quot;: &quot;usdc&quot;,
+        &quot;attempt&quot;: 1
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;mt_transfer&quot;,
+      &quot;data&quot;: [
+        {
+          &quot;old_owner_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;new_owner_id&quot;: &quot;owner.sandbox&quot;,
+          &quot;token_ids&quot;: [
+            &quot;nep141:usdc.sandbox&quot;
+          ],
+          &quot;amounts&quot;: [
+            &quot;950100000&quot;
+          ],
+          &quot;memo&quot;: &quot;bounded-mandate recovery&quot;
+        }
+      ]
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;recovery_transferred&quot;,
+      &quot;data&quot;: {
+        &quot;asset&quot;: &quot;usdc&quot;,
+        &quot;attempt&quot;: 1,
+        &quot;amount&quot;: &quot;950100000&quot;
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;EKhDw8CAm1GNVJJ3sXETVb51VQVQp8SjSMzqJGpGE66E&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;7vyYCY55XLJgv9tbeLxxqQ3obCQnzX776EkfJj7Znsg2&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;HogYDCYmWCfAadQvVrWj3s4Kz5ynG1SjC2tV2g9Ax6dP&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;9pY2ySaYf1RyXQmEhAE8ZWESd1rhpxknqY7euM3akGDQ&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;3YS2kyBkEKutXULx1X3NzMPpeVZcujoxTYE7Hfubrvuo&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;HjoL8R1RTNwCBjdp6Fm4b5goRgnvp3yHjoZ23wLCmSL5&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;EtaEB7yMkgsZ5LSKdT2YZtBX4PewnQWJuHDtTocCuMLM&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;HA2y9kdQsAtfjqvNtZjGNnSyj4ycZvHJmt5vhfjPWfLj&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;2fnHi66vJuGFXwKbEaV9uxKKZnnpXbT4bZRVPBdNX4TJ&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;7Q4c7mRDhiUYTgKphAkpNxuNRu4DFSMqRGsfWBPTquK4&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ]
+}</pre></details></li>
+<li class="success" style="--i:11"><div class="step-head"><strong>owner recover wnear</strong><span class="mode sandbox" title="execution mode">sandbox</span><span class="status success">success</span></div>
+<p class="step-meta">tx MTGB7pMLjdbM9eaqQZYXAqvjhEc7AwvKDzNQsFY1XjJ · block 213</p>
+<details><summary>Recorded detail</summary><pre>{
+  &quot;signer_id&quot;: &quot;owner.sandbox&quot;,
+  &quot;receiver_id&quot;: &quot;mandate.sandbox&quot;,
+  &quot;method&quot;: &quot;recover&quot;,
+  &quot;submitted&quot;: true,
+  &quot;any_receipt_failed&quot;: false,
+  &quot;events&quot;: [
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;recovery_requested&quot;,
+      &quot;data&quot;: {
+        &quot;asset&quot;: &quot;wnear&quot;,
+        &quot;attempt&quot;: 1
+      }
+    },
+    {
+      &quot;emitter&quot;: &quot;intents.sandbox&quot;,
+      &quot;event&quot;: &quot;mt_transfer&quot;,
+      &quot;data&quot;: [
+        {
+          &quot;old_owner_id&quot;: &quot;mandate.sandbox&quot;,
+          &quot;new_owner_id&quot;: &quot;owner.sandbox&quot;,
+          &quot;token_ids&quot;: [
+            &quot;nep141:wnear.sandbox&quot;
+          ],
+          &quot;amounts&quot;: [
+            &quot;316546856633333333333333334&quot;
+          ],
+          &quot;memo&quot;: &quot;bounded-mandate recovery&quot;
+        }
+      ]
+    },
+    {
+      &quot;emitter&quot;: &quot;mandate.sandbox&quot;,
+      &quot;event&quot;: &quot;recovery_transferred&quot;,
+      &quot;data&quot;: {
+        &quot;asset&quot;: &quot;wnear&quot;,
+        &quot;attempt&quot;: 1,
+        &quot;amount&quot;: &quot;316546856633333333333333334&quot;
+      }
+    }
+  ],
+  &quot;receipts&quot;: [
+    {
+      &quot;id&quot;: &quot;MTGB7pMLjdbM9eaqQZYXAqvjhEc7AwvKDzNQsFY1XjJ&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;5LkVDjPCdFrnZrP5CmVPkh8ha3p3JsvrbPPrE8e88n3C&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;E6fcQWhAcqmvRfeUAfFeFZfypwh77yKNZ3NtMbkFhHJE&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;2XYe9Rfm9jRC4bAASTczPSSLri9v9vzpGMMDwxTCX699&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;6PM6Z1dKCHugtUzDDjLSXPVWnajXCQ5cm9K9CBpGmZuE&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;EEs3Ndq9YoonMcp384VRn98zhgJBmiefjjvHKqbafJHn&quot;,
+      &quot;executor_id&quot;: &quot;intents.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;BHhGwhXpPJFCNSxWhsg9KCPuu2vyoT8Xuj12Rh82QEkA&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;8939p6fv6SDqkpqo3Uumb4QMm4S7fvfbabf3jLCyfiQh&quot;,
+      &quot;executor_id&quot;: &quot;mandate.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;8CAGoYeb5SvUZQ4M7xyLqtFW5RHyVhKnWyo9AmM5R4Zj&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;6qKFri8yxkytGf2YRX14UR2gPAL5eoDq2xVZPrYvJBSr&quot;,
+      &quot;executor_id&quot;: &quot;owner.sandbox&quot;,
+      &quot;success&quot;: true
+    }
+  ]
+}</pre></details></li></ol></div></section>
+<section class="folio" id="gates" aria-labelledby="gates-h"><div class="num" aria-hidden="true">§4<small>gates</small></div><div class="body"><h2 id="gates-h">Acceptance gates</h2><p class="source">Source: out/evidence/tests/*.json and evidence.assertions. A report from another revision than <code>426914d534ea</code> is shown as stale and never counts as a pass.</p>
+<div class="scroll"><table><caption>T1–T5, BOUNDARY and MODEL</caption><thead><tr><th scope="col">Gate</th><th scope="col">Result</th><th scope="col">Evidence</th></tr></thead><tbody><tr><th scope="row"><code>T1</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/T1.failed-removal-retry.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>out/evidence/tests/T1.pending-sign.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>out/evidence/tests/T1.revoke-during-activation.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>out/evidence/tests/T1.withheld-regrant.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion grant-active</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion withheld-executable</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion revoked</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion withheld-released</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion withheld-rejected</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>T2</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/T2.sandbox-interleavings.json</code> <span class="status passed">pass</span> <span class="mode other" title="execution mode">sandbox (real verifier; stub MPC/oracle/tokens)</span></div><div><code>out/evidence/tests/T2.unit-interleavings.json</code> <span class="status passed">pass</span> <span class="mode other" title="execution mode">unit VM (near-sdk unit-testing) driving real contract code; verifier/MPC/oracle are an independent model</span></div><div><code>evidence assertion nep413-cross-check</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion settled-release</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>T2b</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/T2b.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>T3</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/T3.breaker.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>out/evidence/tests/T3.concession.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>out/evidence/tests/T3.feeds-timing.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion grant-initial-value</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion trade-executed</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>T4</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/T4.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>out/evidence/tests/T4.record-bound.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion agent-stopped</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion recovered</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion final-balances</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>T5</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/T5.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>BOUNDARY</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>out/evidence/tests/BOUNDARY.json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion mandate-no-keys</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion agent-one-restricted-key</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-recipient</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-payload</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-path</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-public-key</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-token-id</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-forbidden-asset</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-negative</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-concession-u16</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-withdraw</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-adapter-not-json</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-recipient</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-payload</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-public-key</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-token-id</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-forbidden-asset</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-negative</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-u128-overflow</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-u128-max</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-zero</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-over-cap</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-concession</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-direct-deposit</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-revoke</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-grant</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-recover</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-callback</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-settle</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-mt-transfer</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-add-public-key</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-transfer</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-agent-add-key</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-propose</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-revoke</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-grant</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-recover</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-callback-signed</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-callback-key-removed</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-attacker-callback-recovery</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion attack-forged-mandate-transfer</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div><div><code>evidence assertion injection-recording</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>MODEL</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>evidence assertion model-proposal-on-chain</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr><tr><th scope="row"><code>DEMO</code></th><td><span class="status passed">✓ passed</span></td><td><div><code>evidence assertion story-under-a-minute</code> <span class="status passed">pass</span> <span class="mode sandbox" title="execution mode">sandbox</span></div></td></tr></tbody></table></div></div></section>
+<section class="folio" id="baseline" aria-labelledby="baseline-h"><div class="num" aria-hidden="true">§5<small>baseline</small></div><div class="body"><h2 id="baseline-h">Matched baseline comparison</h2><div class="verdict"><span class="status demonstrated">increment demonstrated</span><p>At least one attack executed successfully against the baseline while the matching mandate gate passed in this revision. T5 gate: <span class="status passed">✓ passed</span></p></div>
+<p class="source">Source: out/evidence/tests/T5*.json (baseline outcomes classified from executed sandbox state) joined with §4 gate results. The mandate column is the matching gate's result unless a per-case assertion id is recorded.</p>
+<div class="scroll"><table><caption>Same threat model, same trading authority</caption><thead><tr><th scope="col">Threat case</th><th scope="col">Baseline (executed)</th><th scope="col">Mandate</th><th scope="col">Increment</th></tr></thead><tbody><tr><td><strong>Permitted order signed by the guard and relayed</strong><br><span class="muted">Harness control: a permitted USDC-&gt;wNEAR order executes on the pinned verifier.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;execute_intents_succeeded&quot;: true,
+  &quot;nonce_used_after&quot;: true,
+  &quot;owner_usdc_delta&quot;: &quot;-100000000&quot;,
+  &quot;owner_wnear_delta&quot;: &quot;33333333000000000000000000&quot;,
+  &quot;error&quot;: null
+}</pre></details></td>
+<td><span class="status executed">executed</span></td><td><span class="status passed">✓ passed</span> <code>T3</code></td><td><span class="status not-comparable">not comparable</span></td></tr><tr><td><strong>Over-cap order (per-order notional cap + 1 unit)</strong><br><span class="muted">The guard evaluates the per-order cap before requesting a signature.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;decision&quot;: {
+    &quot;allowed&quot;: false,
+    &quot;receipt_id&quot;: &quot;2&quot;,
+    &quot;rule_code&quot;: &quot;ORDER_ABOVE_CAP&quot;
+  },
+  &quot;receipt_status&quot;: &quot;Blocked&quot;,
+  &quot;rule_code&quot;: &quot;ORDER_ABOVE_CAP&quot;
+}</pre></details></td>
+<td><span class="status blocked">blocked</span></td><td><span class="status passed">✓ passed</span> <code>BOUNDARY</code></td><td><span class="status parity">parity</span></td></tr><tr><td><strong>Compromised agent key: withdrawal/transfer request, direct verifier and MPC calls</strong><br><span class="muted">Function-call key restricted to propose_order; the guard only builds token_diff payloads.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;attempts&quot;: {
+    &quot;propose_withdrawal_shape&quot;: {
+      &quot;rejected_at&quot;: &quot;execution&quot;,
+      &quot;error&quot;: &quot;Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\&quot;Smart contract panicked: Failed to deserialize input from JSON. Error: `missing field `sell` at line 1 column 113`\&quot;)) }) } }&quot;
+    },
+    &quot;verifier_mt_transfer&quot;: {
+      &quot;rejected_at&quot;: &quot;transaction validation&quot;,
+      &quot;reason&quot;: &quot;DepositWithFunctionCall&quot;,
+      &quot;error&quot;: &quot;Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }&quot;
+    },
+    &quot;verifier_execute_intents_no_deposit&quot;: {
+      &quot;rejected_at&quot;: &quot;transaction validation&quot;,
+      &quot;reason&quot;: &quot;ReceiverMismatch&quot;,
+      &quot;error&quot;: &quot;Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\&quot;intents.test.near\&quot;), ak_receiver: \&quot;claw-guard.test.near\&quot; }) })) } }&quot;
+    },
+    &quot;verifier_add_public_key&quot;: {
+      &quot;rejected_at&quot;: &quot;transaction validation&quot;,
+      &quot;reason&quot;: &quot;DepositWithFunctionCall&quot;,
+      &quot;error&quot;: &quot;Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }&quot;
+    },
+    &quot;mpc_sign_direct&quot;: {
+      &quot;rejected_at&quot;: &quot;transaction validation&quot;,
+      &quot;reason&quot;: &quot;DepositWithFunctionCall&quot;,
+      &quot;error&quot;: &quot;Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }&quot;
+    }
+  },
+  &quot;owner_keys_and_balances_unchanged&quot;: true
+}</pre></details></td>
+<td><span class="status blocked">blocked</span></td><td><span class="status passed">✓ passed</span> <code>BOUNDARY</code></td><td><span class="status parity">parity</span></td></tr><tr><td><strong>Published signature with a failed signer callback, relayed independently</strong><br><span class="muted">Claw Guard releases a reservation when on_signed sees a failure; a signature disclosed by the signer still executes, so executed notional is no longer counted.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;relay_of_disclosed_order&quot;: {
+    &quot;execute_intents_succeeded&quot;: true,
+    &quot;nonce_used_after&quot;: true,
+    &quot;owner_usdc_delta&quot;: &quot;-400000000&quot;,
+    &quot;owner_wnear_delta&quot;: &quot;133333333000000000000000000&quot;,
+    &quot;error&quot;: null
+  },
+  &quot;guard_receipt_status_after_timeout&quot;: &quot;SignFailed&quot;,
+  &quot;spent_today_before_usdc_units&quot;: &quot;100000000&quot;,
+  &quot;spent_today_while_pending&quot;: &quot;500000000&quot;,
+  &quot;spent_today_after_failed_callback&quot;: &quot;100000000&quot;,
+  &quot;daily_cap_usdc_units&quot;: &quot;2000000000&quot;,
+  &quot;executed_notional_since_disclosure&quot;: &quot;2000000000&quot;,
+  &quot;executed_today_including_control&quot;: &quot;2100000000&quot;,
+  &quot;follow_on_orders&quot;: [
+    {
+      &quot;receipt_id&quot;: 4,
+      &quot;executed&quot;: true
+    },
+    {
+      &quot;receipt_id&quot;: 5,
+      &quot;executed&quot;: true
+    },
+    {
+      &quot;receipt_id&quot;: 6,
+      &quot;executed&quot;: true
+    },
+    {
+      &quot;receipt_id&quot;: 7,
+      &quot;executed&quot;: true
+    },
+    {
+      &quot;blocked&quot;: {
+        &quot;allowed&quot;: false,
+        &quot;receipt_id&quot;: &quot;8&quot;,
+        &quot;rule_code&quot;: &quot;DAILY_CAP&quot;
+      }
+    }
+  ],
+  &quot;rules_day&quot;: 20760
+}</pre></details></td>
+<td><span class="status attack_succeeded">attack succeeded</span></td><td><span class="status passed">✓ passed</span> <code>T2b</code></td><td><span class="status demonstrated">demonstrated</span></td></tr><tr><td><strong>Withheld signed order relayed after the guard&#39;s revocation (pause + remove_agent)</strong><br><span class="muted">Claw Guard Q-45: pause and remove_agent stop later proposals only; issued signatures stay valid.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;receipt_id&quot;: 9,
+  &quot;relay&quot;: {
+    &quot;execute_intents_succeeded&quot;: true,
+    &quot;nonce_used_after&quot;: true,
+    &quot;owner_usdc_delta&quot;: &quot;-100000000&quot;,
+    &quot;owner_wnear_delta&quot;: &quot;33333333000000000000000000&quot;,
+    &quot;error&quot;: null
+  }
+}</pre></details></td>
+<td><span class="status attack_succeeded">attack succeeded</span></td><td><span class="status passed">✓ passed</span> <code>T1</code></td><td><span class="status demonstrated">demonstrated</span></td></tr><tr><td><strong>Withheld signed order relayed after the owner removes the derived key from the Intents account</strong><br><span class="muted">Venue-side removal (Claw Guard&#39;s documented Q-45 mitigation on Hyperliquid) makes the withheld order fail.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;receipt_id&quot;: 10,
+  &quot;relay&quot;: {
+    &quot;execute_intents_succeeded&quot;: false,
+    &quot;nonce_used_after&quot;: false,
+    &quot;owner_usdc_delta&quot;: &quot;0&quot;,
+    &quot;owner_wnear_delta&quot;: &quot;0&quot;,
+    &quot;error&quot;: &quot;Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\&quot;Smart contract panicked: public key &#39;ed25519:AyKcV4q2cN9nsv7dxtHdicuFNZfXsXHAL4j15AuznyWB&#39; doesn&#39;t exist for account &#39;owner.test.near&#39;\&quot;)) }) } }&quot;
+  }
+}</pre></details></td>
+<td><span class="status blocked">blocked</span></td><td><span class="status passed">✓ passed</span> <code>T1</code></td><td><span class="status parity">parity</span></td></tr><tr><td><strong>The same withheld order relayed after regrant</strong><br><span class="muted">Fixed derivation path: regrant restores the identical key, so withheld pre-revocation orders become executable again while unexpired.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;receipt_id&quot;: 10,
+  &quot;same_key_after_regrant&quot;: true,
+  &quot;order_deadline&quot;: &quot;2026-11-03T22:37:55Z&quot;,
+  &quot;deadline_not_passed_at_relay&quot;: true,
+  &quot;relay&quot;: {
+    &quot;execute_intents_succeeded&quot;: true,
+    &quot;nonce_used_after&quot;: true,
+    &quot;owner_usdc_delta&quot;: &quot;-100000000&quot;,
+    &quot;owner_wnear_delta&quot;: &quot;33333333000000000000000000&quot;,
+    &quot;error&quot;: null
+  }
+}</pre></details></td>
+<td><span class="status attack_succeeded">attack succeeded</span></td><td><span class="status passed">✓ passed</span> <code>T1</code></td><td><span class="status demonstrated">demonstrated</span></td></tr><tr><td><strong>Revocation during a pending key-registration callback</strong><br><span class="muted">The guard has no key lifecycle: the owner registers and removes the derived key directly on the verifier, outside the guard. Not executed.</span>
+<details><summary>Observed (baseline)</summary><pre>null</pre></details></td>
+<td><span class="status unsupported_by_design">unsupported by design</span></td><td><span class="status passed">✓ passed</span> <code>T1</code></td><td><span class="status not-comparable">not comparable</span></td></tr><tr><td><strong>Failed key removal and retry</strong><br><span class="muted">The guard has no key lifecycle: the owner registers and removes the derived key directly on the verifier, outside the guard. Not executed.</span>
+<details><summary>Observed (baseline)</summary><pre>null</pre></details></td>
+<td><span class="status unsupported_by_design">unsupported by design</span></td><td><span class="status passed">✓ passed</span> <code>T1</code></td><td><span class="status not-comparable">not comparable</span></td></tr><tr><td><strong>Aggregate outstanding exposure of signed-but-unsettled orders</strong><br><span class="muted">The guard counts signed notional per UTC day only; it has no outstanding-exposure accounting or settlement-based release. Not executed.</span>
+<details><summary>Observed (baseline)</summary><pre>null</pre></details></td>
+<td><span class="status unsupported_by_design">unsupported by design</span></td><td><span class="status passed">✓ passed</span> <code>T2</code></td><td><span class="status not-comparable">not comparable</span></td></tr><tr><td><strong>Strand owner assets by disabling the agent and the signer</strong><br><span class="muted">Assets stay in the owner&#39;s own Intents account; the owner&#39;s predecessor-authorized mt_transfer needs no agent, signer or oracle.</span>
+<details><summary>Observed (baseline)</summary><pre>{
+  &quot;transfers&quot;: {
+    &quot;nep141:usdc.test.near&quot;: {
+      &quot;amount&quot;: &quot;2700000000&quot;,
+      &quot;succeeded&quot;: true
+    },
+    &quot;nep141:wnear.test.near&quot;: {
+      &quot;amount&quot;: &quot;766666664000000000000000000&quot;,
+      &quot;succeeded&quot;: true
+    }
+  },
+  &quot;owner_cold_received&quot;: [
+    &quot;2700000000&quot;,
+    &quot;766666664000000000000000000&quot;
+  ],
+  &quot;owner_left&quot;: [
+    &quot;0&quot;,
+    &quot;0&quot;
+  ]
+}</pre></details></td>
+<td><span class="status blocked">blocked</span></td><td><span class="status passed">✓ passed</span> <code>T4</code></td><td><span class="status parity">parity</span></td></tr></tbody></table></div>
+<dl class="kv"><dt>Baseline</dt><dd>Claw Guard, adapted to NEAR Intents token_diff</dd><dt>Repository</dt><dd>https://github.com/metafrogmeme-droid/claw-guard-near</dd><dt>Commit</dt><dd>225d37d3c1b04959947fa7c18544fa50e273dcd8</dd><dt>License</dt><dd>MIT, Copyright (c) 2026 Patrick Baur (RUNECLAW)</dd><dt>Command</dt><dd>cargo test -p claw-guard-adapted --test t5_baseline</dd></dl>
+<h3>Disclosed adaptations</h3><ul><li>Venue: the owner&#39;s own Intents account holds the assets; the owner registers the guard&#39;s derived Ed25519 key there with add_public_key (Claw Guard: owner approves the derived address as a Hyperliquid API wallet). Unlike an API wallet, an Intents key is not trade-only; only the guard&#39;s payload construction restricts it.</li><li>Payload: NEP-413 token_diff over exactly USDC and wNEAR, signer = owner, built by the guard; Ed25519 domain 1 instead of secp256k1 domain 0.</li><li>Deadline: finite order TTL of 60 s, the mandate&#39;s value (Claw Guard&#39;s Hyperliquid orders carry no expiry).</li><li>Nonce: 32-byte legacy (non-versioned) nonce derived from the receipt id, accepted by verifier v0.4.5.</li><li>Caps in USDC units: per-order token and notional caps, daily notional cap, daily order count, permission expiry; notional of a wNEAR sell is the agent&#39;s minimum USDC (Claw Guard Q-42 analog).</li><li>Omitted as irrelevant to these cases: guardian role, set_rules loosening delay, receipt ring buffer, storage reserve rule, mainnet refusal, Hyperliquid/EVM encoders.</li></ul></div></section>
+<section class="folio" id="policy" aria-labelledby="policy-h"><div class="num" aria-hidden="true">§6<small>policy</small></div><div class="body"><h2 id="policy-h">Policy parameters</h2><p class="source">Source: grant policy supplied with the evidence (immutable per grant).</p>
+<div class="scroll"><table><caption>Immutable grant parameters</caption><thead><tr><th scope="col">Parameter</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Per-order cap</th><td>20.00% of initial reference value</td></tr><tr><th scope="row">Aggregate outstanding cap</th><td>20.00% of initial reference value</td></tr><tr><th scope="row">Max execution-price concession</th><td>0.50%</td></tr><tr><th scope="row">Cumulative turnover cap</th><td>100.00% of initial reference value</td></tr><tr><th scope="row">Loss breaker</th><td>2.00% drawdown from initial value (stops new authorizations only)</td></tr><tr><th scope="row">Oracle maximum age</th><td>60 s</td></tr><tr><th scope="row">Max confidence / price</th><td>0.50%</td></tr><tr><th scope="row">Order deadline</th><td>60 s after authorization; refuse below 15 s remaining</td></tr><tr><th scope="row">Max pricing delay</th><td>30 s</td></tr></tbody></table></div></div></section>
+<section class="folio" id="sources" aria-labelledby="sources-h"><div class="num" aria-hidden="true">§7<small>sources</small></div><div class="body"><h2 id="sources-h">Source, hashes and environment</h2><h3>Source</h3><dl class="kv"><dt>Product commit</dt><dd>426914d534eaaec3a7167c9c23d2a898adcd7f42</dd><dt>Working tree</dt><dd>clean</dd><dt>Spec sha256</dt><dd>404640515bd5595b60ce516aaa0e8a9cfd24964db93cb6c0a9534afb775b48ef</dd><dt>Spec meta commit</dt><dd>5dd735e3167c0a2a3e5be0cfac43255eb763d341</dd><dt>Contract WASM sha256</dt><dd>61182f8b7c0db3b0913b7309e0c95a5c293feeab1c29cbd240a24954f6299138</dd><dt>Generated at</dt><dd>2026-11-03T22:37:34.104Z</dd><dt>Command</dt><dd>make demo</dd></dl>
+<h3>Fixtures</h3><dl class="kv"><dt>model/injection.json</dt><dd>4695a317476d74b6bef1ea04f67b7cc411a51b18b0261c427a9290d487561b4c</dd><dt>model/normal.json</dt><dd>8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094</dd><dt>vectors/nep413.json</dt><dd>9608d19d0f6544d7c8ed7ab6f084161dc65faa538ab3beed8fb42dca89ed1e70</dd><dt>vectors/oracle.json</dt><dd>245c251319d2861eb70bd32bda466d941e87cf19dc425bacdf1a890b53f14218</dd><dt>verifier/defuse-0.4.5.wasm</dt><dd>a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547</dd></dl>
+<h3>Identifiers</h3><dl class="kv"><dt>mandate</dt><dd>mandate.sandbox</dd><dt>verifier</dt><dd>intents.sandbox</dd><dt>owner</dt><dd>owner.sandbox</dd><dt>agent</dt><dd>agent.sandbox</dd><dt>filler</dt><dd>filler.sandbox</dd><dt>relayer</dt><dd>relayer.sandbox</dd><dt>usdc_token</dt><dd>usdc.sandbox</dd><dt>wnear_token</dt><dd>wnear.sandbox</dd><dt>oracle_test_double</dt><dd>oracle.sandbox</dd><dt>mpc_test_double</dt><dd>mpc.sandbox</dd><dt>grant_public_key</dt><dd>ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK</dd><dt>grant_path</dt><dd>mandate/v1/1</dd></dl>
+<h3>Environment</h3><dl class="kv"><dt>node</dt><dd>v24.22.1</dd><dt>platform</dt><dd>darwin-arm64</dd><dt>near-api-js</dt><dd>7.3.1</dd><dt>near-sandbox (npm)</dt><dd>0.3.4</dd><dt>sandbox_neard</dt><dd>2.13.4</dd><dt>verifier_wasm_sha256</dt><dd>a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547</dd><dt>model_mode</dt><dd>recorded-model</dd><dt>setup_ms</dt><dd>15207</dd><dt>story_ms</dt><dd>16493</dd><dt>steps</dt><dd>[{&quot;step&quot;:&quot;Roles and limits&quot;,&quot;started_ms&quot;:0},{&quot;step&quot;:&quot;Genuine model proposal (recorded) -&gt; propose_order&quot;,&quot;started_ms&quot;:1605},{&quot;step&quot;:&quot;Filler fills order 1 (actual trade on the pinned verifier)&quot;,&quot;started_ms&quot;:2698},{&quot;step&quot;:&quot;Second signed order withheld&quot;,&quot;started_ms&quot;:3676},{&quot;step&quot;:&quot;Malicious requests&quot;,&quot;started_ms&quot;:5535},{&quot;step&quot;:&quot;Owner revokes; removal confirmed&quot;,&quot;started_ms&quot;:12626},{&quot;step&quot;:&quot;Withheld order relayed from another account&quot;,&quot;started_ms&quot;:13266},{&quot;step&quot;:&quot;Agent, oracle and MPC disabled&quot;,&quot;started_ms&quot;:13644},{&quot;step&quot;:&quot;Recovery to the owner&quot;,&quot;started_ms&quot;:14748},{&quot;step&quot;:&quot;Final balances&quot;,&quot;started_ms&quot;:16491}]</dd></dl></div></section>
+<section class="folio" id="unknowns" aria-labelledby="unknowns-h"><div class="num" aria-hidden="true">§8<small>unknowns</small></div><div class="body"><h2 id="unknowns-h">Unknowns and open risks</h2><p class="source">Source: evidence.unknowns plus gaps derived from this page's gate table.</p><ul class="unknowns"><li>Sandbox execution only: MPC signer, oracle and tokens are labelled test doubles; the verifier is the pinned mainnet WASM.</li><li>No mainnet execution in this run; network latency on mainnet is not represented by sandbox timing.</li><li>The model step replays a recorded interaction; the claude-cli harness may add context that the recording cannot show.</li><li>Concession bounds, randomized interleavings and breaker behaviour are covered by the Rust gate tests, not by this story.</li><li>No mainnet receipts: encoding, key registration, the real MPC signer, settlement and recovery on mainnet are not evidenced here.</li></ul></div></section>
+<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no scripts, fonts or network requests. Evidence schema version 1.</footer>
+</main>
+</body>
+</html>

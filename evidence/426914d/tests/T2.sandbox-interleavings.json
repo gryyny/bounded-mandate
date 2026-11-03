@@ -1,0 +1,238 @@
+{
+  "gate": "T2",
+  "part": "sandbox-interleavings",
+  "passed": true,
+  "mode": "sandbox (real verifier; stub MPC/oracle/tokens)",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t2_sandbox-0fc0a7b41cfae7e1",
+  "generated_at_unix": 1793745137,
+  "data": {
+    "seeds": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "actions_per_seed": 14,
+    "total_fills": 6,
+    "runs": [
+      {
+        "seed": 11,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (immediate)",
+          "time + expire",
+          "grant ok=false",
+          "propose (hold)",
+          "settle 0 ok=true",
+          "settle 0 ok=true",
+          "propose (immediate)",
+          "propose (immediate_error)",
+          "time + expire",
+          "mpc respond 1 disclose_only",
+          "relay 0 executed=true",
+          "propose (immediate)",
+          "propose (disclose_only)",
+          "grant ok=false"
+        ],
+        "signatures_known": 5,
+        "fills": 1
+      },
+      {
+        "seed": 12,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (immediate)",
+          "time + expire",
+          "time + expire",
+          "propose (disclose_only)",
+          "mpc respond 7 valid",
+          "propose (immediate_error)",
+          "mpc respond 7 error",
+          "mpc respond 7 valid",
+          "propose (hold)",
+          "settle 6 ok=true",
+          "mpc respond 7 disclose_only",
+          "relay 6 executed=true"
+        ],
+        "signatures_known": 3,
+        "fills": 1
+      },
+      {
+        "seed": 13,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (immediate)",
+          "settle 10 ok=true",
+          "propose (hold)",
+          "relay 10 executed=true",
+          "time + expire",
+          "mpc respond 11 valid",
+          "propose (hold)",
+          "propose (immediate)",
+          "propose (immediate)",
+          "propose (disclose_only)",
+          "revoke ok=true",
+          "propose (immediate)",
+          "propose (immediate_error)",
+          "propose (immediate_error)"
+        ],
+        "signatures_known": 5,
+        "fills": 1
+      },
+      {
+        "seed": 14,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "time + expire",
+          "propose (immediate)",
+          "relay 16 executed=true",
+          "propose (immediate_error)",
+          "propose (immediate_error)",
+          "propose (hold)",
+          "mpc respond 19 error",
+          "propose (hold)",
+          "settle 16 ok=true",
+          "grant ok=false",
+          "propose (immediate)",
+          "propose (disclose_only)",
+          "propose (hold)"
+        ],
+        "signatures_known": 3,
+        "fills": 1
+      },
+      {
+        "seed": 15,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (immediate)",
+          "relay 22 executed=false",
+          "propose (immediate_error)",
+          "revoke ok=true",
+          "propose (immediate)",
+          "settle 24 ok=false",
+          "time + expire",
+          "time + expire",
+          "relay 24 executed=false",
+          "relay 24 executed=false",
+          "propose (disclose_only)",
+          "relay 24 executed=false"
+        ],
+        "signatures_known": 2,
+        "fills": 0
+      },
+      {
+        "seed": 16,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "revoke ok=true",
+          "propose (hold)",
+          "propose (hold)",
+          "propose (immediate)",
+          "time + expire",
+          "revoke ok=false",
+          "propose (immediate)",
+          "propose (immediate)"
+        ],
+        "signatures_known": 0,
+        "fills": 0
+      },
+      {
+        "seed": 17,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (disclose_only)",
+          "mpc respond 26 disclose_only",
+          "settle 26 ok=true",
+          "settle 26 ok=true",
+          "mpc respond 26 valid",
+          "settle 26 ok=true",
+          "settle 26 ok=true",
+          "propose (immediate)",
+          "relay 26 executed=true",
+          "mpc respond 26 invalid_signature",
+          "mpc respond 26 invalid_signature",
+          "propose (immediate)"
+        ],
+        "signatures_known": 3,
+        "fills": 1
+      },
+      {
+        "seed": 18,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (immediate)",
+          "propose (disclose_only)",
+          "relay 30 executed=true",
+          "propose (immediate)",
+          "grant ok=false",
+          "propose (disclose_only)",
+          "propose (disclose_only)",
+          "time + expire",
+          "mpc respond 32 valid",
+          "propose (immediate_error)",
+          "grant ok=false",
+          "time + expire",
+          "propose (disclose_only)",
+          "time + expire"
+        ],
+        "signatures_known": 6,
+        "fills": 1
+      },
+      {
+        "seed": 19,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "propose (hold)",
+          "revoke ok=true",
+          "propose (disclose_only)",
+          "time + expire",
+          "propose (hold)",
+          "time + expire",
+          "mpc respond 36 valid",
+          "mpc respond 36 disclose_only",
+          "propose (immediate)",
+          "time + expire"
+        ],
+        "signatures_known": 0,
+        "fills": 0
+      },
+      {
+        "seed": 20,
+        "passed": true,
+        "violations": [],
+        "actions": [
+          "revoke ok=true",
+          "time + expire",
+          "propose (hold)",
+          "propose (immediate_error)",
+          "time + expire",
+          "propose (immediate)",
+          "revoke ok=false",
+          "revoke ok=false",
+          "propose (immediate)",
+          "time + expire",
+          "time + expire"
+        ],
+        "signatures_known": 0,
+        "fills": 0
+      }
+    ]
+  }
+}

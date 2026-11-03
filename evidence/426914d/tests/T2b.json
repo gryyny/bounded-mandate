@@ -1,0 +1,83 @@
+{
+  "gate": "T2b",
+  "part": null,
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t2b_disclosed-4532d83bd237f92c",
+  "generated_at_unix": 1793745162,
+  "data": {
+    "steps": [
+      {
+        "order": 0,
+        "phase": "disclosed, callback pending",
+        "accounted": true,
+        "snapshot": {
+          "state": "signing",
+          "reserved": "45000000000000",
+          "outstanding": "45000000000000"
+        }
+      },
+      {
+        "order": 0,
+        "phase": "independent relay",
+        "executed": true,
+        "error": null
+      },
+      {
+        "order": 0,
+        "phase": "after relay, before settle",
+        "accounted": true,
+        "snapshot": {
+          "state": "signing",
+          "reserved": "45000000000000",
+          "outstanding": "45000000000000"
+        }
+      },
+      {
+        "phase": "callback failure injected",
+        "propose1_tx_ok": true,
+        "receipt_failures": [],
+        "events": [
+          "order_proposed",
+          "order_sign_requested"
+        ]
+      },
+      {
+        "order": 1,
+        "phase": "callback failed after disclosure",
+        "state": "sign_unknown",
+        "accounted": true,
+        "snapshot": {
+          "state": "sign_unknown",
+          "reserved": "300000000000000",
+          "outstanding": "300000000000000"
+        },
+        "past_deadline": false
+      },
+      {
+        "order": 1,
+        "phase": "independent relay after callback failure",
+        "executed": true,
+        "error": null
+      },
+      {
+        "order": 2,
+        "phase": "disclosed via respond(disclose_only)",
+        "accounted": true,
+        "snapshot": {
+          "state": "signing",
+          "reserved": "15000000000000",
+          "outstanding": "15000000000000"
+        }
+      },
+      {
+        "order": 2,
+        "phase": "relay after confirmed removal",
+        "executed": false,
+        "state": "released:key_removed"
+      }
+    ]
+  }
+}

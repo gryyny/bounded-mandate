@@ -1,0 +1,30 @@
+{
+  "gate": "T1",
+  "part": "pending-sign",
+  "passed": true,
+  "mode": "sandbox",
+  "source_revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+  "dirty": false,
+  "test_binary": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/t1_revocation-47286f49319fd2b2",
+  "generated_at_unix": 1793744635,
+  "data": {
+    "relays": [
+      {
+        "label": "signature-delivered-after-revoke",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "signature-delivered-after-regrant",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      }
+    ],
+    "executions_after_confirmed_removal": 0,
+    "notes": []
+  }
+}
