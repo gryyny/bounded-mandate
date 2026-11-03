@@ -1,0 +1,21 @@
+# Build outputs and dependencies
+/target/
+node_modules/
+/tools/dist/
+
+# Generated runs, reports and pages (curated evidence lives in /evidence/)
+/out/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.local.json
+/credentials/
+.near-credentials/
+
+# Local agent state
+/.claude/
+/.codex/
+/.pi/
+.DS_Store

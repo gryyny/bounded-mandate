@@ -1,0 +1,32 @@
+{
+  "name": "@bounded-mandate/tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent adapter, filler, replay, evidence and static page for the bounded trading mandate",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.5",
+    "eslint": "10.13.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.136.0",
+    "near-api-js": "7.3.1",
+    "near-sandbox": "0.3.4",
+    "zod": "4.6.7"
+  }
+}

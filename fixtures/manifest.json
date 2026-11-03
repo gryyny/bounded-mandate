@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "files": {
+    "verifier/defuse-0.4.5.wasm": {
+      "sha256": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547",
+      "kind": "external-binary",
+      "source": "NEAR mainnet account intents.near, RPC view_code (final) at block 222913804; on-chain code_hash BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk equals base58(sha256) of this file",
+      "declared_source": "contract_source_metadata: version 0.4.5, https://github.com/near/intents/tree/16d04f6ec4401263f8914638710260da50bb46b0, build sourcescan/cargo-near:0.22.0-rust-1.97.1, contract_path contracts/defuse",
+      "reproduced_from_source": false,
+      "license": "MIT, Copyright (c) 2025 NEAR Foundation (near/intents)",
+      "retrieved_at": "2026-11-03"
+    }
+  }
+}

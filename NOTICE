@@ -1,0 +1,14 @@
+Bounded mandate
+Copyright (c) 2026 Andrii Hrynchuk. Licensed under the MIT License (see LICENSE).
+
+Third-party components included in this repository:
+
+fixtures/verifier/defuse-0.4.5.wasm
+  NEAR Intents verifier contract (defuse) v0.4.5, as deployed on NEAR mainnet at
+  intents.near. Declared source: https://github.com/near/intents at commit
+  16d04f6ec4401263f8914638710260da50bb46b0. Retrieved read-only via RPC view_code;
+  provenance and hash in fixtures/manifest.json.
+  MIT License, Copyright (c) 2025 NEAR Foundation.
+
+Third-party dependencies resolved by Cargo.lock and tools/package-lock.json are
+distributed under their own licenses.
