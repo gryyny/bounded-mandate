@@ -1,0 +1,48 @@
+{
+  "description": "NEAR mainnet view responses of aggregate-oracle.near get_price_no_older_than for the pinned USDC and wNEAR feeds, queried at one final block via https://rpc.mainnet.near.org. queried_at_unix is that block's timestamp.",
+  "contract": "aggregate-oracle.near",
+  "contract_version": "0.4.1 (contract_source_metadata: rhea-finance/agg-oracle@ba866eb500af7c4c5c7599a83c503a479432ca50; repository not publicly reachable on 2026-11-03)",
+  "code_hash": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+  "interface": "embedded ABI (__contract_abi): get_price_no_older_than(price_id: string, age: u64) -> PythCompatPrice {price: string, conf: string, expo: i32, publish_time: i64} | null",
+  "retrieved_at": "2026-11-03",
+  "responses": [
+    {
+      "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "decimals": 6,
+      "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "args": {
+        "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+        "age": 60
+      },
+      "result": {
+        "price": "99976901",
+        "conf": "96432",
+        "expo": -8,
+        "publish_time": 1793735829
+      },
+      "block_height": 222916824,
+      "block_hash": "2HRkv19AkVzkn3B9uQVNvarmE3aM48Xh916bbVbysxMz",
+      "block_timestamp_ns": "1793735845272814859",
+      "queried_at_unix": 1793735845
+    },
+    {
+      "token": "wrap.near",
+      "decimals": 24,
+      "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+      "args": {
+        "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+        "age": 60
+      },
+      "result": {
+        "price": "381130822",
+        "conf": "444178",
+        "expo": -8,
+        "publish_time": 1793735829
+      },
+      "block_height": 222916824,
+      "block_hash": "2HRkv19AkVzkn3B9uQVNvarmE3aM48Xh916bbVbysxMz",
+      "block_timestamp_ns": "1793735845272814859",
+      "queried_at_unix": 1793735845
+    }
+  ]
+}

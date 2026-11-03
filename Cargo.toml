@@ -1,5 +1,5 @@
 [workspace]
-members = ["contract"]
+members = ["contract", "stubs/mock-mpc", "stubs/mock-oracle", "stubs/mock-ft"]
 resolver = "3"
 
 [workspace.package]

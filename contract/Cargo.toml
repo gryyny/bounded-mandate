@@ -26,6 +26,8 @@ rand.workspace = true
 rand_chacha.workspace = true
 ed25519-dalek = { workspace = true, features = ["std"] }
 sha2.workspace = true
+# Independent cross-check of our NEP-413 encoding with the pinned verifier's own crate (tests only).
+defuse-core = { git = "https://github.com/near/intents", rev = "16d04f6ec4401263f8914638710260da50bb46b0" }
 
 [lints]
 workspace = true

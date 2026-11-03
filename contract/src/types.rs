@@ -237,3 +237,14 @@ pub struct OrderView {
     pub sign_requested_at_ns: Option<U64>,
     pub signed_at_ns: Option<U64>,
 }
+
+/// Per-asset recovery progress. Recovery always pays the owner's Intents account.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AssetRecoveryView {
+    pub asset: Asset,
+    pub in_flight: bool,
+    pub attempts: u32,
+    /// Total units confirmed transferred to the owner.
+    pub recovered: U128,
+}

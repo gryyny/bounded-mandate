@@ -1,0 +1,114 @@
+{
+  "description": "NEP-413 token_diff vectors from bounded_mandate::protocol::nep413, each cross-checked against defuse-core/defuse-nep413 at near/intents@16d04f6ec4401263f8914638710260da50bb46b0. Keys are TEST ONLY.",
+  "nep413_tag": 2147484061,
+  "test_keys": {
+    "mandate": {
+      "seed_derivation": "sha256(\"bounded-mandate/test-key/mandate\")",
+      "seed_hex": "609122ae213cdf21b93bd67fa95b13ab3a4b773590ef9a0ecf0e0cce183ce0bc",
+      "public_key": "ed25519:CeqhJBqBLRU9a3RkayuWoGpPh9QXe7hrWXt86QsS6QfV"
+    },
+    "filler": {
+      "seed_derivation": "sha256(\"bounded-mandate/test-key/filler\")",
+      "seed_hex": "3fe394ed8a54604c2b48f725067a59e617be8a6759d173152f8d6968616baacc",
+      "public_key": "ed25519:6ddwzZVJhxtjomGa1YLMbAijMrejeocEz53MxAT4GUXm"
+    }
+  },
+  "vectors": [
+    {
+      "inputs": {
+        "signer_id": "mandate.near",
+        "verifying_contract": "intents.near",
+        "deadline_ns": "1793735388000000000",
+        "salt_hex": "0a1b2c3d",
+        "random_hex": "111111111111111111111111111111",
+        "sell_token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "sell_amount": "25000000",
+        "buy_token": "wrap.near",
+        "buy_amount": "6550000000000000000000000"
+      },
+      "nonce_hex": "5628f6c6000a1b2c3d0098c9eed4a0e418111111111111111111111111111111",
+      "nonce_base64": "Vij2xgAKGyw9AJjJ7tSg5BgRERERERERERERERERERE=",
+      "message": "{\"signer_id\":\"mandate.near\",\"deadline\":\"2026-11-03T19:49:48Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"-25000000\",\"nep141:wrap.near\":\"6550000000000000000000000\"}}]}",
+      "nep413_borsh_hex": "9d010080f00000007b227369676e65725f6964223a226d616e646174652e6e656172222c22646561646c696e65223a22323032362d31312d30335431393a34393a34385a222c22696e74656e7473223a5b7b22696e74656e74223a22746f6b656e5f64696666222c2264696666223a7b226e65703134313a31373230383632386638346635643661643333663064613362626265623237666663623339386561633530316133316264366164323031316533363133336131223a222d3235303030303030222c226e65703134313a777261702e6e656172223a2236353530303030303030303030303030303030303030303030227d7d5d7d5628f6c6000a1b2c3d0098c9eed4a0e4181111111111111111111111111111110c000000696e74656e74732e6e65617200",
+      "prehash_hex": "70f057066f95c53f4bceda71bb1fd4c6980cb31e71075263e1a8050588fb964e",
+      "public_key": "ed25519:CeqhJBqBLRU9a3RkayuWoGpPh9QXe7hrWXt86QsS6QfV",
+      "signature_hex": "835106cd66323ae0fd83c60e49856ebfef2d87afcb1b322523115dbcae216be7799421501b63a02767728cebbfb9977af5b15f5d4a7e04c2c81533bbc16ddc01",
+      "multi_payload": {
+        "standard": "nep413",
+        "payload": {
+          "message": "{\"signer_id\":\"mandate.near\",\"deadline\":\"2026-11-03T19:49:48Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"-25000000\",\"nep141:wrap.near\":\"6550000000000000000000000\"}}]}",
+          "nonce": "Vij2xgAKGyw9AJjJ7tSg5BgRERERERERERERERERERE=",
+          "recipient": "intents.near"
+        },
+        "public_key": "ed25519:CeqhJBqBLRU9a3RkayuWoGpPh9QXe7hrWXt86QsS6QfV",
+        "signature": "ed25519:3dGyPWzmYJqUCHWvZbXBpKTCJkUkAPvuVbMMAj8yhEqo8Qp31y2SiAncwRZwwNTa1Uuxzoif4t6aAgipEd49JRK6"
+      },
+      "name": "mandate_sells_usdc",
+      "signer_key": "mandate"
+    },
+    {
+      "inputs": {
+        "signer_id": "filler.near",
+        "verifying_contract": "intents.near",
+        "deadline_ns": "1793735388123456789",
+        "salt_hex": "0a1b2c3d",
+        "random_hex": "222222222222222222222222222222",
+        "sell_token": "wrap.near",
+        "sell_amount": "6550006550006550007000000",
+        "buy_token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "buy_amount": "24999975"
+      },
+      "nonce_hex": "5628f6c6000a1b2c3d156525f6d4a0e418222222222222222222222222222222",
+      "nonce_base64": "Vij2xgAKGyw9FWUl9tSg5BgiIiIiIiIiIiIiIiIiIiI=",
+      "message": "{\"signer_id\":\"filler.near\",\"deadline\":\"2026-11-03T19:49:48.123456789Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"24999975\",\"nep141:wrap.near\":\"-6550006550006550007000000\"}}]}",
+      "nep413_borsh_hex": "9d010080f90000007b227369676e65725f6964223a2266696c6c65722e6e656172222c22646561646c696e65223a22323032362d31312d30335431393a34393a34382e3132333435363738395a222c22696e74656e7473223a5b7b22696e74656e74223a22746f6b656e5f64696666222c2264696666223a7b226e65703134313a31373230383632386638346635643661643333663064613362626265623237666663623339386561633530316133316264366164323031316533363133336131223a223234393939393735222c226e65703134313a777261702e6e656172223a222d36353530303036353530303036353530303037303030303030227d7d5d7d5628f6c6000a1b2c3d156525f6d4a0e4182222222222222222222222222222220c000000696e74656e74732e6e65617200",
+      "prehash_hex": "170cb231ac270e393f2b0c8d8e56518aed6a5458376ef5b50f91529b8b3ff000",
+      "public_key": "ed25519:6ddwzZVJhxtjomGa1YLMbAijMrejeocEz53MxAT4GUXm",
+      "signature_hex": "021f466cbd4e742ae4343ae25b9446edc495e359c4654fdd08a84dd7bd875d981db3ede8dfd8ced2275ce0637a05dc24fccbe44af94d6b912da218cdb921fb06",
+      "multi_payload": {
+        "standard": "nep413",
+        "payload": {
+          "message": "{\"signer_id\":\"filler.near\",\"deadline\":\"2026-11-03T19:49:48.123456789Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"24999975\",\"nep141:wrap.near\":\"-6550006550006550007000000\"}}]}",
+          "nonce": "Vij2xgAKGyw9FWUl9tSg5BgiIiIiIiIiIiIiIiIiIiI=",
+          "recipient": "intents.near"
+        },
+        "public_key": "ed25519:6ddwzZVJhxtjomGa1YLMbAijMrejeocEz53MxAT4GUXm",
+        "signature": "ed25519:3TjPxYc7ExeYRmXTHNWc1e5zJN5ocEQ14udxanDfafQ4gfCAkbqdmAnJrxy3BMqEVc2BPfPwzyhUzJxRMUmPKBj"
+      },
+      "name": "filler_counter_side",
+      "signer_key": "filler"
+    },
+    {
+      "inputs": {
+        "signer_id": "mandate.near",
+        "verifying_contract": "intents.near",
+        "deadline_ns": "9223372036854775807",
+        "salt_hex": "ffffffff",
+        "random_hex": "000000000000000000000000000000",
+        "sell_token": "wrap.near",
+        "sell_amount": "170141183460469231731687303715884105727",
+        "buy_token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "buy_amount": "1"
+      },
+      "nonce_hex": "5628f6c600ffffffffffffffffffffff7f000000000000000000000000000000",
+      "nonce_base64": "Vij2xgD//////////////38AAAAAAAAAAAAAAAAAAAA=",
+      "message": "{\"signer_id\":\"mandate.near\",\"deadline\":\"2262-04-11T23:47:16.854775807Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"1\",\"nep141:wrap.near\":\"-170141183460469231731687303715884105727\"}}]}",
+      "nep413_borsh_hex": "9d010080010100007b227369676e65725f6964223a226d616e646174652e6e656172222c22646561646c696e65223a22323236322d30342d31315432333a34373a31362e3835343737353830375a222c22696e74656e7473223a5b7b22696e74656e74223a22746f6b656e5f64696666222c2264696666223a7b226e65703134313a31373230383632386638346635643661643333663064613362626265623237666663623339386561633530316133316264366164323031316533363133336131223a2231222c226e65703134313a777261702e6e656172223a222d313730313431313833343630343639323331373331363837333033373135383834313035373237227d7d5d7d5628f6c600ffffffffffffffffffffff7f0000000000000000000000000000000c000000696e74656e74732e6e65617200",
+      "prehash_hex": "a74e88a2c0e3fa5c92523313ece679ce952a79a89a0f6d34eea03253b300a7ee",
+      "public_key": "ed25519:CeqhJBqBLRU9a3RkayuWoGpPh9QXe7hrWXt86QsS6QfV",
+      "signature_hex": "542da752bbef3c16a9a99c34b518585f1f8acedb4ae18a8fc4db82277d1479ebc50c5519946f35ced15b8253103f7240012aa329b1bc83178893430d156ad602",
+      "multi_payload": {
+        "standard": "nep413",
+        "payload": {
+          "message": "{\"signer_id\":\"mandate.near\",\"deadline\":\"2262-04-11T23:47:16.854775807Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"1\",\"nep141:wrap.near\":\"-170141183460469231731687303715884105727\"}}]}",
+          "nonce": "Vij2xgD//////////////38AAAAAAAAAAAAAAAAAAAA=",
+          "recipient": "intents.near"
+        },
+        "public_key": "ed25519:CeqhJBqBLRU9a3RkayuWoGpPh9QXe7hrWXt86QsS6QfV",
+        "signature": "ed25519:2gcbRoVrzqZh2gbwfpWVUhHQstMfUNDzKExX3QXHCWYTofCoFn6JBwSVGvtx3FMGqYat5ZMXgASP1PYW1DAv2qd3"
+      },
+      "name": "extreme_amounts",
+      "signer_key": "mandate"
+    }
+  ]
+}
