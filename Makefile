@@ -4,7 +4,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := test
 .PHONY: test demo live
 
-CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml))
+CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
 TSX := cd tools && npx --no-install tsx
 

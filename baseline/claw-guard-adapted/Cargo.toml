@@ -1,0 +1,29 @@
+[package]
+name = "claw-guard-adapted"
+description = "T5 baseline: the Claw Guard pattern adapted to USDC/wNEAR token_diff trading on NEAR Intents"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
+near-workspaces.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+ed25519-dalek = { workspace = true, features = ["std"] }
+sha2.workspace = true
+
+[lints]
+workspace = true

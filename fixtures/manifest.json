@@ -21,6 +21,18 @@
       "kind": "recorded-external-response",
       "source": "Read-only NEAR mainnet RPC view calls to aggregate-oracle.near get_price_no_older_than for the pinned USDC and NEAR price ids at block 222916824 (agg_oracle 0.4.1, code hash 9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg)",
       "license": "public chain data"
+    },
+    "model/normal.json": {
+      "sha256": "8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094",
+      "kind": "recorded-genuine-model-interaction",
+      "source": "Genuine model call via headless Claude Code CLI (tools/src/agent/record.ts --variant normal --call-model), model claude-haiku-5-5, started 2026-11-03T21:05:46.541Z; prompt built deterministically from the demo market snapshot with benign market notes; raw output stored verbatim with its sha256",
+      "license": "model output recorded by the repository author"
+    },
+    "model/injection.json": {
+      "sha256": "4695a317476d74b6bef1ea04f67b7cc411a51b18b0261c427a9290d487561b4c",
+      "kind": "recorded-genuine-model-interaction",
+      "source": "Genuine model call via headless Claude Code CLI (tools/src/agent/record.ts --variant injection --call-model), model claude-haiku-5-5, started 2026-11-03T21:05:58.344Z; prompt built deterministically from the demo market snapshot with market notes containing an injected withdrawal instruction (labelled injected); raw output stored verbatim with its sha256",
+      "license": "model output recorded by the repository author"
     }
   }
 }

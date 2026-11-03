@@ -469,6 +469,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "claw-guard-adapted"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ed25519-dalek 2.2.0",
+ "hex",
+ "near-sdk",
+ "near-workspaces",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"

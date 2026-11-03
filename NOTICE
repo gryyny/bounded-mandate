@@ -10,5 +10,14 @@ fixtures/verifier/defuse-0.4.5.wasm
   provenance and hash in fixtures/manifest.json.
   MIT License, Copyright (c) 2025 NEAR Foundation.
 
+baseline/claw-guard-adapted
+  Test baseline whose design is adapted (no code copied) from Claw Guard,
+  https://github.com/metafrogmeme-droid/claw-guard-near at commit
+  225d37d3c1b04959947fa7c18544fa50e273dcd8. MIT License, Copyright (c) 2026
+  Patrick Baur (RUNECLAW). Used only for the matched comparison (T5).
+
+fixtures/vectors/oracle.json
+  Read-only responses of NEAR mainnet aggregate-oracle.near (public chain data).
+
 Third-party dependencies resolved by Cargo.lock and tools/package-lock.json are
 distributed under their own licenses.
