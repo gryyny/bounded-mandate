@@ -23,19 +23,27 @@
 //! duplicate callbacks are no-ops.
 //!
 //! **Orders.** `propose_order` validates the proposal, reserves the order's value at the grant's
-//! initial reference and charges the same amount to turnover before any external call; then it
+//! initial reference and charges `max(that value, proposal floor)` to turnover before any
+//! external call, where the floor is `ceil(initial_value * proposal_charge_bps / 10000)`; then it
 //! reads both prices, the verifier salt and both balances. `on_order_priced` re-checks the grant,
 //! breaker, pricing delay, caps and balance, raises the reservation to
-//! `max(initial-reference value, current value)` (the increase is also charged to turnover),
-//! builds the order and requests the MPC signature (`Signing`). `on_signed` records a valid
+//! `max(initial-reference value, current value)` (turnover is charged only for the part above
+//! the order's existing charge), builds the order and requests the MPC signature (`Signing`). `on_signed` records a valid
 //! signature (`Signed`) or marks `SignUnknown`; neither releases anything.
 //!
 //! **Release rules.** A reservation is released exactly once, only when: the verifier reports the
 //! order's exact nonce used (`settled`); block time is strictly greater than the signed deadline
 //! (`expired`; the verifier accepts a nonce at its deadline); removal of the covering key is
 //! confirmed (`key_removed`); or a `Pricing` order is older than `max_pricing_delay_sec` and can
-//! no longer be signed (`unsigned`). Release never refunds turnover. Turnover is refunded only
-//! when `on_order_priced` rejects the order before any signature request (`Rejected`).
+//! no longer be signed (`unsigned`). Release never refunds turnover. Only when `on_order_priced`
+//! rejects the order before any signature request (`Rejected`) is its charge refunded, and then
+//! only the part above the proposal floor.
+//!
+//! **Record bound.** Every proposal leaves an order record paid from the mandate's storage
+//! balance. Because the floor is never refunded and `proposal_charge_bps <= turnover_cap_bps`,
+//! one grant accepts at most `turnover_cap_bps / proposal_charge_bps` proposals (200 with the
+//! demo policy), whether they are tiny, rejected or executed. The owner funds storage for that
+//! many records plus the grant; further records need a new grant, which only the owner can make.
 //!
 //! **Valuation and rounding.** Values are USD * 10^12 at the oracle mid price; confidence is
 //! bounded by policy rather than folded in. Reservations round up; holdings (initial value and
@@ -60,8 +68,9 @@
 //! removal callback is recoverable by calling `revoke` again; a lost `on_key_added` leaves the
 //! registration unresolved and blocks removal (registration could still be pending, so it is
 //! never presumed). Callback gas is fixed and open orders are capped at [`MAX_OPEN_ORDERS`] to
-//! bound the work in revocation. Order records are stored at the contract's expense; the agent's
-//! finite gas allowance bounds how many it can create.
+//! bound the work in revocation. Order records are never deleted: storage grows by at most the
+//! record bound per grant, and an underfunded mandate stops accepting proposals (owner actions
+//! that write little state, such as `revoke`, keep working) until the owner adds NEAR.
 
 pub mod events;
 mod ext;
@@ -386,7 +395,9 @@ impl Mandate {
             .unwrap_or_else(|| env::panic_str("order value overflow"));
         let caps =
             Caps::new(&g.policy, initial_value).unwrap_or_else(|| env::panic_str("cap overflow"));
-        if let Err(e) = reserve(g, &caps, reserved, reserved, None) {
+        // Tiny orders stay allowed but always cost at least the never-refunded floor.
+        let charged = reserved.max(caps.proposal_floor);
+        if let Err(e) = reserve(g, &caps, reserved, charged, Some(reserved)) {
             env::panic_str(e);
         }
         g.open_orders.push(id);
@@ -401,7 +412,7 @@ impl Mandate {
             buy_amount: None,
             concession_bps: proposal.max_concession_bps,
             reserved_value: reserved,
-            turnover_charged: reserved,
+            turnover_charged: charged,
             deadline_ns: None,
             reference: None,
             payload: None,
@@ -940,7 +951,7 @@ impl Mandate {
     }
 
     /// Rejects a `Pricing` order before any sign request: frees its reservation and refunds its
-    /// turnover charge.
+    /// turnover charge above the per-proposal floor.
     fn reject(&mut self, mut order: Order, reason: String) {
         require!(
             order.state == OrderState::Pricing,
@@ -951,13 +962,19 @@ impl Mandate {
             .as_mut()
             .expect("open orders belong to the current grant");
         require!(g.epoch == order.epoch, "open order outside current epoch");
+        let floor = g
+            .initial_value
+            .and_then(|v| Caps::new(&g.policy, v))
+            .expect("active grant has caps")
+            .proposal_floor;
+        let refund = order.turnover_charged.saturating_sub(floor);
         g.outstanding = g
             .outstanding
             .checked_sub(order.reserved_value)
             .expect("outstanding underflow");
         g.turnover_used = g
             .turnover_used
-            .checked_sub(order.turnover_charged)
+            .checked_sub(refund)
             .expect("turnover underflow");
         g.open_orders.retain(|id| *id != order.id);
         emit(
@@ -1103,13 +1120,12 @@ impl Mandate {
             salt,
             random,
         )?;
-        let turnover_charged = order
-            .turnover_charged
-            .checked_add(delta)
-            .ok_or("overflow")?;
+        // Turnover pays only for the increase above what this order was already charged.
+        let turnover_delta = reserved.saturating_sub(order.turnover_charged);
+        let turnover_charged = order.turnover_charged.max(reserved);
 
         let g = self.grant.as_mut().ok_or("no grant")?;
-        reserve(g, &caps, delta, delta, Some(reserved)).map_err(String::from)?;
+        reserve(g, &caps, delta, turnover_delta, Some(reserved)).map_err(String::from)?;
 
         order.reserved_value = reserved;
         order.turnover_charged = turnover_charged;

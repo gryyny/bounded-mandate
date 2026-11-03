@@ -86,6 +86,10 @@ pub struct Policy {
     pub min_remaining_sec: u32,
     /// A proposal not priced within this delay can never be signed and may be released.
     pub max_pricing_delay_sec: u32,
+    /// Minimum turnover charged per proposal, as a share of the initial reference value. Never
+    /// refunded, so `turnover_cap_bps / proposal_charge_bps` bounds proposals (and order records)
+    /// per grant.
+    pub proposal_charge_bps: u16,
 }
 
 impl Policy {
@@ -101,6 +105,7 @@ impl Policy {
         order_ttl_sec: 60,
         min_remaining_sec: 15,
         max_pricing_delay_sec: 30,
+        proposal_charge_bps: 50,
     };
 }
 

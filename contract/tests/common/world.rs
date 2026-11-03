@@ -40,6 +40,8 @@ pub struct WorldOpts {
     pub near_price: i64,
     /// NEAR balance of the mandate account (pays its own storage).
     pub mandate_near: u128,
+    /// Exact initial balance of the mandate account in yocto; overrides `mandate_near`.
+    pub mandate_yocto: Option<u128>,
 }
 
 impl Default for WorldOpts {
@@ -51,6 +53,7 @@ impl Default for WorldOpts {
             usdc_price: 100_000_000,
             near_price: 300_000_000,
             mandate_near: 50,
+            mandate_yocto: None,
         }
     }
 }
@@ -72,7 +75,7 @@ pub fn demo_policy() -> Value {
         "per_order_cap_bps": 2000, "outstanding_cap_bps": 2000, "max_concession_bps": 50,
         "oracle_max_age_sec": 60, "max_confidence_bps": 50, "breaker_drawdown_bps": 200,
         "turnover_cap_bps": 10000, "order_ttl_sec": 60, "min_remaining_sec": 15,
-        "max_pricing_delay_sec": 30,
+        "max_pricing_delay_sec": 30, "proposal_charge_bps": 50,
     })
 }
 
@@ -102,8 +105,17 @@ impl World {
             .transact()
             .await?
             .into_result()?;
-        let mandate = subaccount(&b.root, "mandate", o.mandate_near)
-            .await?
+        let mandate_acct = match o.mandate_yocto {
+            Some(y) => b
+                .root
+                .create_subaccount("mandate")
+                .initial_balance(NearToken::from_yoctonear(y))
+                .transact()
+                .await?
+                .into_result()?,
+            None => subaccount(&b.root, "mandate", o.mandate_near).await?,
+        };
+        let mandate = mandate_acct
             .deploy(&built_wasm("bounded_mandate")?)
             .await?
             .into_result()?;

@@ -6,6 +6,7 @@ import { judge } from "../agent/adapter.js";
 import { MAX_GAS, ONE_YOCTO, type Outcome } from "../near/client.js";
 import { sandboxKey } from "../near/keys.js";
 import { rfc3339FromNs, signNep413, versionedNonce } from "../filler/nep413.js";
+import { DEMO_POLICY } from "../demo/market.js";
 import type { World } from "../demo/world.js";
 
 export type Boundary = "adapter-schema" | "near-access-key" | "contract-role" | "contract-schema" | "contract-policy" | "verifier";
@@ -179,7 +180,8 @@ export function chainAttacks(): ChainAttack[] {
     attackerCall("attacker-propose", "another account calls propose_order", "propose_order", { proposal: ok }),
     attackerCall("attacker-revoke", "another account calls revoke", "revoke", {}),
     attackerCall("attacker-grant", "another account calls grant", "grant", {
-      policy: { per_order_cap_bps: 10_000, outstanding_cap_bps: 10_000, max_concession_bps: 10_000, oracle_max_age_sec: 60, max_confidence_bps: 50, breaker_drawdown_bps: 200, turnover_cap_bps: 10_000, order_ttl_sec: 60, min_remaining_sec: 15, max_pricing_delay_sec: 30 },
+      // A well-formed, policy-valid but loose grant, so only the owner role check can stop it.
+      policy: { ...DEMO_POLICY, per_order_cap_bps: 10_000, outstanding_cap_bps: 10_000, turnover_cap_bps: 10_000 },
     }),
     attackerCall("attacker-recover", "another account calls recover", "recover", { asset: "usdc" }),
     attackerCall("attacker-callback-signed", "another account calls callback on_signed", "on_signed", { order_id: "0", epoch: 1 }),

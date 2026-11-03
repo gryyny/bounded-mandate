@@ -29,6 +29,7 @@ export const Policy = z.object({
   order_ttl_sec: z.number().int(),
   min_remaining_sec: z.number().int(),
   max_pricing_delay_sec: z.number().int(),
+  proposal_charge_bps: z.number().int(),
 });
 export type Policy = z.infer<typeof Policy>;
 

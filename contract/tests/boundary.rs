@@ -11,7 +11,7 @@ mod common;
 
 use common::evidence;
 use common::sandbox::{MAX_GAS, ONE_YOCTO, TxOutcome, call, subaccount};
-use common::world::{NEAR, Side, USDC, World, WorldOpts, demo_policy};
+use common::world::{NEAR, Side, USDC, World, WorldOpts, demo_policy, order_state};
 use near_workspaces::Account;
 use near_workspaces::types::{Gas, NearToken};
 use serde_json::{Value, json};
@@ -341,30 +341,64 @@ async fn boundary_rejections_at_the_right_layer() -> anyhow::Result<()> {
         }
     }
 
-    // --- Permissionless calls cannot release without trusted evidence.
-    let orders = w.orders().await?;
-    let signed = orders
-        .iter()
-        .find(|o| o["state"]["state"] == "signed")
-        .cloned();
+    // --- Permissionless calls cannot release without trusted evidence. Use the newest signed
+    // order (least likely to be past its deadline) and judge expiry against block time.
+    // Free capacity held by orders already past their deadline, then sign a fresh order so the
+    // refusal path is exercised.
+    let now = w.b.now_ns().await?;
+    for o in w.orders().await? {
+        let dl: u64 = o["deadline_ns"].as_str().unwrap_or("0").parse()?;
+        if o["state"]["state"] == "signed" && dl < now {
+            let id: u64 = o["id"].as_str().unwrap_or("0").parse()?;
+            let _ = w.expire(&w.b.relayer, id).await;
+        }
+    }
+    w.set_prices_now(100_000_000, 300_000_000).await?;
+    let fresh = w.propose_id(Side::Usdc, 10 * USDC, 0).await;
+    let signed = match fresh {
+        Ok((id, _)) => Some(w.wait_order_leaves(id, "pricing", 50).await?),
+        Err(e) => {
+            cases.push(Case {
+                name: "fresh order for permissionless checks".into(),
+                boundary: "setup",
+                ok: false,
+                detail: format!("{e:#}").chars().take(300).collect(),
+            });
+            None
+        }
+    };
     if let Some(o) = signed {
         let id: u64 = o["id"].as_str().unwrap().parse()?;
+        let deadline: u64 = o["deadline_ns"].as_str().unwrap_or("0").parse()?;
         let s = w.settle(&w.b.relayer, id).await;
-        let still = w.order(id).await?["state"]["state"] == "signed";
+        let st = order_state(&w.order(id).await?);
         cases.push(Case {
             name: "settle unfilled order".into(),
             boundary: "verifier-evidence",
-            ok: s.is_success() && still,
-            detail: format!("state still signed: {still}"),
+            ok: s.is_success() && st != "released:settled",
+            detail: format!("state after settle: {st}"),
         });
+        let before = w.b.now_ns().await?;
         let e = w.expire(&w.b.relayer, id).await;
-        expect(
-            &mut cases,
-            "expire before deadline",
-            "contract-policy",
-            &e,
-            &["deadline not passed"],
-        );
+        let after = w.b.now_ns().await?;
+        let (ok, detail) = if e.is_success() {
+            // Allowed only once block time is beyond the deadline.
+            (
+                after > deadline,
+                format!("expired; deadline {deadline}, block time after {after}"),
+            )
+        } else {
+            (
+                before <= deadline && e.failure_text().contains("deadline not passed"),
+                e.failure_text().chars().take(200).collect(),
+            )
+        };
+        cases.push(Case {
+            name: format!("expire only after deadline (refused={})", !e.is_success()),
+            boundary: "contract-policy",
+            ok,
+            detail,
+        });
     }
 
     // --- Verifier authorization: a forged mandate intent signed by an agent-controlled key.

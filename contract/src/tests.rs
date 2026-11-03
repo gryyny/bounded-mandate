@@ -970,17 +970,124 @@ fn rejection_before_sign_request_refunds_turnover() {
             ],
         ),
     ];
-    for (name, results) in cases {
+    // Each rejection refunds the $30 charge except the $5 floor (0.5% of $1000).
+    for (i, (name, results)) in (0u128..).zip(cases) {
         let id = h.propose(Asset::Usdc, 30 * USDC, 0);
+        assert_eq!(h.grant_view().turnover_used, U128((5 * i + 30) * USD));
         h.priced_with(id, results);
         assert!(matches!(h.state(id), OrderState::Rejected { .. }), "{name}");
         assert!(calls().is_empty(), "{name}: no sign request");
         let g = h.grant_view();
         assert_eq!(
             (g.outstanding, g.turnover_used),
-            (U128(0), U128(0)),
+            (U128(0), U128(5 * (i + 1) * USD)),
             "{name}"
         );
+    }
+}
+
+#[test]
+fn tiny_proposal_pays_the_floor_but_reserves_its_value() {
+    // gate: T2
+    let mut h = H::new();
+    h.activate();
+    // One USDC unit is worth $0.000001 = 1_000_000 value units; the floor is $5.
+    let id = h.propose(Asset::Usdc, 1, 0);
+    let g = h.grant_view();
+    assert_eq!(g.outstanding, U128(1_000_000));
+    assert_eq!(g.turnover_used, U128(5 * USD));
+    assert_eq!(h.c.get_order(id).unwrap().reserved_value, U128(1_000_000));
+    // It still prices and signs normally; pricing at the same value charges nothing more.
+    h.priced(id);
+    assert_eq!(h.state(id), OrderState::Signing);
+    assert_eq!(h.grant_view().turnover_used, U128(5 * USD));
+    // A value increase above the existing charge is charged; below it is already covered.
+    let big = h.propose(Asset::Usdc, 10 * USDC, 0);
+    let t = NOW_SEC - 10;
+    let up = |m| {
+        vec![
+            px(m, t),
+            px(300_000_000, t),
+            ok(json!("0a0b0c0d")),
+            balances(1_000 * USDC, 0),
+        ]
+    };
+    h.priced_with(big, up(140_000_000));
+    // $10 at $1.40 = $14: reservation $14, charge max($10, $5) -> $14.
+    let g = h.grant_view();
+    assert_eq!(h.c.get_order(big).unwrap().reserved_value, U128(14 * USD));
+    assert_eq!(g.turnover_used, U128(19 * USD));
+    let small = h.propose(Asset::Usdc, 3 * USDC, 0);
+    h.priced_with(small, up(140_000_000));
+    // $3 at $1.40 = $4.20, still below the $5 already charged.
+    assert_eq!(
+        h.c.get_order(small).unwrap().reserved_value,
+        U128(4_200_000_000_000)
+    );
+    assert_eq!(h.grant_view().turnover_used, U128(24 * USD));
+}
+
+#[test]
+fn floor_is_kept_when_a_tiny_order_is_rejected() {
+    // gate: T2
+    let mut h = H::new();
+    h.activate();
+    let id = h.propose(Asset::Usdc, 1, 0);
+    let t = NOW_SEC - 10;
+    h.priced_with(
+        id,
+        vec![
+            ok(Value::Null),
+            px(300_000_000, t),
+            ok(json!("0a0b0c0d")),
+            balances(1_000 * USDC, 0),
+        ],
+    );
+    assert!(matches!(h.state(id), OrderState::Rejected { .. }));
+    let g = h.grant_view();
+    assert_eq!((g.outstanding, g.turnover_used), (U128(0), U128(5 * USD)));
+}
+
+#[test]
+fn proposal_count_per_grant_is_bounded_by_turnover_over_floor() {
+    // gate: T2
+    // turnover_cap / proposal_charge = 10000 / 50 = 200 proposals, tiny or rejected alike.
+    let bound = usize::try_from(
+        Policy::DEMO.turnover_cap_bps / u32::from(Policy::DEMO.proposal_charge_bps),
+    )
+    .unwrap();
+    for reject in [false, true] {
+        let mut h = H::new();
+        h.activate();
+        let t = NOW_SEC - 10;
+        let mut accepted = 0;
+        loop {
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                h.propose(Asset::Usdc, 1, 0)
+            }));
+            let Ok(id) = r else { break };
+            accepted += 1;
+            if reject {
+                // Missing price: rejected before any sign request.
+                h.priced_with(
+                    id,
+                    vec![
+                        ok(Value::Null),
+                        px(300_000_000, t),
+                        ok(json!("0a0b0c0d")),
+                        balances(1_000 * USDC, 0),
+                    ],
+                );
+                assert!(matches!(h.state(id), OrderState::Rejected { .. }));
+            } else {
+                // Keep open orders under MAX_OPEN_ORDERS by expiring unpriced proposals.
+                set("anyone.near", h.now + 31 * NS_PER_SEC, vec![]);
+                h.c.expire_order(id);
+            }
+            assert!(accepted <= bound, "more than {bound} proposals accepted");
+        }
+        assert_eq!(accepted, bound, "reject={reject}");
+        assert_eq!(h.grant_view().turnover_used, U128(1_000 * USD));
     }
 }
 

@@ -1038,6 +1038,15 @@ impl Sim {
             let per_cap = bps_floor(rec.my_initial, u128::from(pol.per_order_cap_bps));
             let out_cap = bps_floor(rec.my_initial, u128::from(pol.outstanding_cap_bps));
             let turn_cap = bps_floor(rec.my_initial, u128::from(pol.turnover_cap_bps));
+            // Documented charge rule: every proposal permanently charges
+            // max(reserved_value, ceil(initial_value * proposal_charge_bps / 10000)); a rejection
+            // refunds only the part above that floor; releases refund nothing.
+            let charge = u128::from(pol.proposal_charge_bps);
+            let floor_mine = (rec.my_initial * charge).div_ceil(10_000);
+            let floor_contract = g
+                .initial_value
+                .map_or(0, |iv| (iv.0 * charge).div_ceil(10_000));
+            let mut expected_turnover = 0u128;
             let mut sum_reserved = 0u128;
             let mut my_outstanding = 0u128;
             let mut my_turnover = 0u128;
@@ -1059,9 +1068,21 @@ impl Sim {
                     .copied()
                     .unwrap_or(v_init)
                     .max(v_init);
-                if self.sign_calls.contains_key(&o.id.0) {
-                    my_turnover += v;
-                }
+                let rejected = matches!(o.state, OrderState::Rejected { .. });
+                // Independent valuation: issued authority at its conservative value, every
+                // proposal at least the floor.
+                my_turnover += if rejected {
+                    floor_mine
+                } else if self.sign_calls.contains_key(&o.id.0) {
+                    v.max(floor_mine)
+                } else {
+                    v_init.max(floor_mine)
+                };
+                expected_turnover += if rejected {
+                    floor_contract
+                } else {
+                    o.reserved_value.0.max(floor_contract)
+                };
                 if is_open(&o.state) {
                     sum_reserved += o.reserved_value.0;
                     my_outstanding += v;
@@ -1098,6 +1119,12 @@ impl Sim {
             if my_turnover > g.turnover_used.0 {
                 msgs.push(format!(
                     "turnover_used {} below issued authority {my_turnover}",
+                    g.turnover_used.0
+                ));
+            }
+            if expected_turnover != g.turnover_used.0 {
+                msgs.push(format!(
+                    "turnover_used {} != documented charge rule {expected_turnover}",
                     g.turnover_used.0
                 ));
             }
@@ -1291,6 +1318,7 @@ impl Sim {
             p.outstanding_cap_bps = self.rng.random_range(p.per_order_cap_bps..=4_000);
             p.turnover_cap_bps = self.rng.random_range(1_000..=20_000);
             p.max_pricing_delay_sec = self.rng.random_range(5..=60);
+            p.proposal_charge_bps = self.rng.random_range(1..=p.per_order_cap_bps.min(400));
         }
         p
     }

@@ -23,7 +23,7 @@ export function findGates(root: string): { found: Map<string, string[]>; problem
   for (const file of TEST_ROOTS.flatMap((r) => walk(join(root, r)))) {
     if (!/\.(rs|ts)$/.test(file)) continue;
     const text = readFileSync(file, "utf8");
-    const tags = [...text.matchAll(/gate:\s*([A-Za-z0-9]+)/g)].map((m) => m[1]).filter((t) => t !== undefined);
+    const tags = [...text.matchAll(/gate:\s*(T2b|T[1-5]|BOUNDARY|MODEL)\b/g)].map((m) => m[1]).filter((t) => t !== undefined);
     if (tags.length === 0) continue;
     const rel = relative(root, file);
     if (SKIP_MARKERS.some((re) => re.test(text))) problems.push(`${rel}: gate-tagged file contains a skipped test`);

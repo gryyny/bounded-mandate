@@ -65,4 +65,5 @@ export const DEMO_POLICY: Policy = {
   order_ttl_sec: 60,
   min_remaining_sec: 15,
   max_pricing_delay_sec: 30,
+  proposal_charge_bps: 50,
 };
