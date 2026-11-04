@@ -1,7 +1,8 @@
 // Acceptance evaluation against SYNTHETIC gate reports in a throwaway git repository.
 // Every report here is written by the test; none is a recorded result.
 import { execFileSync } from "node:child_process";
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -245,6 +246,43 @@ describe("acceptance", () => {
   });
 
   it("the registry covers every required gate", () => {
-    expect(Object.keys(REQUIRED_CASES)).toEqual(["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL"]);
+    expect(Object.keys(REQUIRED_CASES)).toEqual(["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY"]);
+  });
+
+  describe("a deployment candidate bound by fixture hash", () => {
+    /** Adds a SYNTHETIC candidate binary as a listed fixture and commits it; returns its sha256. */
+    const addCandidate = (root: string): string => {
+      const bytes = "SYNTHETIC deployment candidate";
+      mkdirSync(join(root, "fixtures/deploy"), { recursive: true });
+      writeFileSync(join(root, "fixtures/deploy/synthetic-candidate.wasm"), bytes);
+      const manifestPath = join(root, "fixtures/manifest.json");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { files: Record<string, unknown> };
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      manifest.files["deploy/synthetic-candidate.wasm"] = { sha256: hash, kind: "deployment-candidate", source: "SYNTHETIC" };
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+      sh(root, ["add", "-A"]);
+      sh(root, ["-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-qm", "candidate"]);
+      return hash;
+    };
+
+    it("matches a report whose WASM stem names the listed candidate", () => {
+      const root = tempRepo();
+      const hash = addCandidate(root);
+      const { run, wasm } = fullRun(root);
+      put(root, "DEPLOY.candidate.json", report(run, wasm, "DEPLOY.candidate", { wasm_sha256: { "synthetic-candidate": hash, ...wasm } }));
+      const a = evaluate(root);
+      expect(status(a, "DEPLOY.candidate")).toBe("passed");
+      expect(a.certified).toBe(true);
+    });
+
+    it("rejects a tampered candidate hash", () => {
+      const root = tempRepo();
+      addCandidate(root);
+      const { run, wasm } = fullRun(root);
+      put(root, "DEPLOY.candidate.json", report(run, wasm, "DEPLOY.candidate", { wasm_sha256: { "synthetic-candidate": "5".repeat(64) } }));
+      const c = evaluate(root).cases.find((x) => x.id === "DEPLOY.candidate");
+      expect(c?.status).toBe("mismatched");
+      expect(c?.reason).toMatch(/wasm synthetic-candidate 5{64} != fixture/);
+    });
   });
 });

@@ -10,6 +10,8 @@ export const REQUIRED_CASES = {
   T5: ["baseline"],
   BOUNDARY: ["contract", "attacks"],
   MODEL: ["recorded-proposal"],
+  /** The proposed deployment binary (reproducible-build fixture) exercised in sandbox. */
+  DEPLOY: ["candidate"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */

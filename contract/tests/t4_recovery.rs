@@ -436,10 +436,11 @@ async fn t4_open_order_limit() -> anyhow::Result<()> {
     let w = World::new(WorldOpts::default()).await?;
     w.grant_ok(demo_policy()).await?;
     let mut withheld = None;
+    let mut held_states = Vec::new();
     for i in 0..MAX_OPEN {
-        if i % 6 == 0 {
-            w.set_prices_now(100_000_000, 300_000_000).await?;
-        }
+        // Fresh prices for every proposal: an aging feed would shorten the deadline window and
+        // reject a late proposal on a slow runner.
+        w.set_prices_now(100_000_000, 300_000_000).await?;
         let (side, amount) = if i % 2 == 0 {
             (Side::Usdc, 10 * USDC)
         } else {
@@ -454,8 +455,27 @@ async fn t4_open_order_limit() -> anyhow::Result<()> {
         } else {
             w.mpc_mode("hold").await?;
             let _ = w.propose_async(side, amount, 50).await?;
-            let _ = w.wait_pending_sign(100).await;
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // The MPC holds the request: the order is deterministically in Signing until we
+            // respond, so the open count does not depend on timing.
+            let mut o = Value::Null;
+            for _ in 0..200 {
+                o = w
+                    .mandate
+                    .view("get_order")
+                    .args_json(json!({"order_id": i.to_string()}))
+                    .await?
+                    .json()?;
+                if !o.is_null() && order_state(&o) != "pricing" {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            held_states.push(order_state(&o));
+            anyhow::ensure!(
+                order_state(&o) == "signing",
+                "held order {i} is {} not signing: {o}",
+                order_state(&o)
+            );
         }
     }
     let orders = w.orders().await?;
@@ -542,6 +562,7 @@ async fn t4_open_order_limit() -> anyhow::Result<()> {
     let data = json!({
         "open_orders": open,
         "states_before_revoke": by_state,
+        "held_orders_confirmed_signing": held_states.len(),
         "mpc_requests_pending_at_revoke": mpc_pending_at_revoke,
         "thirty_third_refused": limit_enforced,
         "failed_removal": {"grant_status": after_fail["status"], "callbacks": gas_rows(&failed_gas)},

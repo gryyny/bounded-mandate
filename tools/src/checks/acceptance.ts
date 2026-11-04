@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { arch, release, type } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { REPO_ROOT, reportsDir, treeState } from "../evidence/report.js";
 import { REQUIRED_CASES, SEPARATE_CASES, caseId } from "../evidence/required.js";
 import {
@@ -91,7 +91,19 @@ function currentWasm(root: string): Record<string, string> {
   return out;
 }
 
-function mismatches(found: Found, run: RunRecord, wasm: WasmRecord | null): string[] {
+/** sha256 of fixture files by file stem (e.g. the reproducible deployment candidate), from fixtures/manifest.json. */
+function fixtureStems(root: string): Record<string, string> {
+  const path = join(root, "fixtures/manifest.json");
+  if (!existsSync(path)) return {};
+  const manifest = JSON.parse(readFileSync(path, "utf8")) as { files?: Record<string, { sha256?: unknown }> };
+  return Object.fromEntries(
+    Object.entries(manifest.files ?? {})
+      .filter((e): e is [string, { sha256: string }] => typeof e[1].sha256 === "string")
+      .map(([file, entry]) => [basename(file).replace(/\.[^.]+$/, ""), entry.sha256]),
+  );
+}
+
+function mismatches(found: Found, run: RunRecord, wasm: WasmRecord | null, fixtures: Record<string, string>): string[] {
   const r = found.report;
   const out: string[] = [];
   const expectedName = `${r.gate}.${r.case}.json`;
@@ -104,10 +116,12 @@ function mismatches(found: Found, run: RunRecord, wasm: WasmRecord | null): stri
   }
   // Sandbox execution must be bound to the binaries it ran; only unit-VM reports run without WASM.
   if (r.mode !== "unit-vm" && Object.keys(r.wasm_sha256).length === 0) out.push("sandbox report binds no WASM hash");
+  // A stem outside the run's target/near record is checked against a fixture of that stem (covered by the manifest hash).
   for (const [stem, hash] of Object.entries(r.wasm_sha256)) {
-    const recorded = wasm?.wasm_sha256[stem];
+    const recorded = wasm?.wasm_sha256[stem] ?? fixtures[stem];
+    const source = wasm?.wasm_sha256[stem] !== undefined ? "recorded" : "fixture";
     if (recorded === undefined) out.push(`wasm ${stem} not recorded for this run`);
-    else if (recorded !== hash) out.push(`wasm ${stem} ${hash} != recorded ${recorded}`);
+    else if (recorded !== hash) out.push(`wasm ${stem} ${hash} != ${source} ${recorded}`);
   }
   return out;
 }
@@ -119,6 +133,7 @@ function evaluateCase(
   others: readonly Found[],
   run: RunRecord | null,
   wasm: WasmRecord | null,
+  fixtures: Record<string, string>,
 ): CaseResult {
   const id = caseId(gate, name);
   const base = { id, gate, case: name, files: current.map((f) => f.file), mode: current[0]?.report.mode ?? null };
@@ -131,7 +146,7 @@ function evaluateCase(
   if (current.length > 1) return { ...base, status: "duplicate", reason: `${String(current.length)} reports in this run` };
   const [only] = current;
   if (only === undefined) throw new Error("unreachable");
-  const bad = mismatches(only, run, wasm);
+  const bad = mismatches(only, run, wasm, fixtures);
   if (bad.length > 0) return { ...base, status: "mismatched", reason: bad.join("; ") };
   return only.report.passed
     ? { ...base, status: "passed", reason: "present once, passed, matches the run" }
@@ -216,9 +231,10 @@ export function evaluate(root: string, now = new Date()): Acceptance {
     into.set(id, [...(into.get(id) ?? []), { file, report }]);
   }
 
+  const stems = fixtureStems(root);
   const evalAll = (registry: Record<string, readonly string[]>): CaseResult[] =>
     Object.entries(registry).flatMap(([gate, names]) =>
-      names.map((name) => evaluateCase(gate, name, current.get(caseId(gate, name)) ?? [], others.get(caseId(gate, name)) ?? [], run, wasm)),
+      names.map((name) => evaluateCase(gate, name, current.get(caseId(gate, name)) ?? [], others.get(caseId(gate, name)) ?? [], run, wasm, stems)),
     );
   const cases = evalAll(REQUIRED_CASES);
   const separate = evalAll(SEPARATE_CASES);

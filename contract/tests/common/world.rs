@@ -42,6 +42,8 @@ pub struct WorldOpts {
     pub mandate_near: u128,
     /// Exact initial balance of the mandate account in yocto; overrides `mandate_near`.
     pub mandate_yocto: Option<u128>,
+    /// Deploy this exact file (under fixtures/) as the mandate instead of the local build.
+    pub mandate_wasm: Option<std::path::PathBuf>,
 }
 
 impl Default for WorldOpts {
@@ -54,6 +56,7 @@ impl Default for WorldOpts {
             near_price: 300_000_000,
             mandate_near: 50,
             mandate_yocto: None,
+            mandate_wasm: None,
         }
     }
 }
@@ -115,10 +118,23 @@ impl World {
                 .into_result()?,
             None => subaccount(&b.root, "mandate", o.mandate_near).await?,
         };
-        let mandate = mandate_acct
-            .deploy(&built_wasm("bounded_mandate")?)
-            .await?
-            .into_result()?;
+        let code = match &o.mandate_wasm {
+            Some(p) => {
+                let fixtures = super::evidence::repo_root()
+                    .join("fixtures")
+                    .canonicalize()?;
+                let p = p.canonicalize()?;
+                anyhow::ensure!(
+                    p.starts_with(&fixtures),
+                    "candidate must load from fixtures/: {}",
+                    p.display()
+                );
+                super::evidence::note_wasm(&p);
+                std::fs::read(&p)?
+            }
+            None => built_wasm("bounded_mandate")?,
+        };
+        let mandate = mandate_acct.deploy(&code).await?.into_result()?;
         let agent_id: AccountId = format!("agent.{}", b.root.id()).parse()?;
         mandate
             .call("new")

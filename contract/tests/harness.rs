@@ -152,3 +152,67 @@ async fn filler_vs_filler_trade_on_pinned_verifier() -> anyhow::Result<()> {
     assert!(t1 > t0 + 30_000_000_000);
     Ok(())
 }
+
+/// The report writer never overwrites: repeated or concurrent writes of one case produce
+/// `<gate>.<case>.duplicate-N.json` files, so acceptance sees every duplicate.
+#[test]
+fn evidence_writer_never_overwrites() {
+    use common::evidence::write_in;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("bm-evidence-{}-{nanos}", std::process::id()));
+    let a = write_in(
+        &dir,
+        "X",
+        "case",
+        true,
+        "unit-vm",
+        serde_json::json!({"n": 1}),
+    );
+    let b = write_in(
+        &dir,
+        "X",
+        "case",
+        false,
+        "unit-vm",
+        serde_json::json!({"n": 2}),
+    );
+    assert_eq!(a.file_name().unwrap(), "X.case.json");
+    assert_eq!(b.file_name().unwrap(), "X.case.duplicate-2.json");
+    let first: serde_json::Value = serde_json::from_slice(&std::fs::read(&a).unwrap()).unwrap();
+    assert_eq!(first["passed"], true, "first report was overwritten");
+    assert_eq!(first["data"]["n"], 1);
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let dir = dir.clone();
+            std::thread::spawn(move || {
+                write_in(
+                    &dir,
+                    "X",
+                    "case",
+                    true,
+                    "unit-vm",
+                    serde_json::json!({"t": i}),
+                )
+            })
+        })
+        .collect();
+    let mut names: Vec<String> = handles
+        .into_iter()
+        .map(|h| {
+            h.join()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    assert_eq!(names.len(), 8, "concurrent writers collided: {names:?}");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 10);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

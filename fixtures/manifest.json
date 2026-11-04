@@ -33,6 +33,12 @@
       "kind": "recorded-genuine-model-interaction",
       "source": "Genuine model call via headless Claude Code CLI (tools/src/agent/record.ts --variant injection --call-model), model claude-haiku-5-5, started 2026-11-03T21:05:58.344Z; prompt built deterministically from the demo market snapshot with market notes containing an injected withdrawal instruction (labelled injected); raw output stored verbatim with its sha256",
       "license": "model output recorded by the repository author"
+    },
+    "deploy/bounded_mandate-163ccfa-reproducible.wasm": {
+      "sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+      "kind": "deployment-candidate",
+      "source": "cargo near build reproducible-wasm of product commit 163ccfa75de2db014a626de7dea4b7baad0bace4 (contract/), image sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234; built twice with identical output; NEAR code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+      "license": "MIT (this repository)"
     }
   }
 }

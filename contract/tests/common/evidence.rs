@@ -47,22 +47,60 @@ fn git(args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
-fn sha256_file(path: &Path) -> Option<String> {
+pub fn sha256_file(path: &Path) -> Option<String> {
     std::fs::read(path)
         .ok()
         .map(|b| hex::encode(Sha256::digest(b)))
 }
 
 /// Writes one gate report. `passed` must be the outcome of the test's own assertions, computed
-/// before writing. Returns the path.
+/// before writing. Never overwrites: a second report for the same case in one run goes to
+/// `<gate>.<case>.duplicate-N.json` so acceptance flags it. Returns the path.
 pub fn write(gate: &str, case: &str, passed: bool, mode: &str, data: Value) -> PathBuf {
+    write_in(&evidence_dir(), gate, case, passed, mode, data)
+}
+
+/// Creates `<gate>.<case>.json` in `dir` atomically (`create_new`), falling back to
+/// `<gate>.<case>.duplicate-N.json` (N = 2, 3, ...) when it already exists.
+pub fn write_in(
+    dir: &Path,
+    gate: &str,
+    case: &str,
+    passed: bool,
+    mode: &str,
+    data: Value,
+) -> PathBuf {
+    use std::io::Write;
     assert!(
         mode == "sandbox" || mode == "unit-vm",
         "unknown report mode {mode}"
     );
-    let dir = evidence_dir();
-    std::fs::create_dir_all(&dir).expect("create evidence dir");
-    let path = dir.join(format!("{gate}.{case}.json"));
+    std::fs::create_dir_all(dir).expect("create evidence dir");
+    let bytes = serde_json::to_vec_pretty(&envelope(gate, case, passed, mode, data)).expect("json");
+    for n in 1u32.. {
+        let name = if n == 1 {
+            format!("{gate}.{case}.json")
+        } else {
+            format!("{gate}.{case}.duplicate-{n}.json")
+        };
+        let path = dir.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                f.write_all(&bytes).expect("write evidence");
+                return path;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => panic!("create {}: {e}", path.display()),
+        }
+    }
+    unreachable!("report name space exhausted")
+}
+
+fn envelope(gate: &str, case: &str, passed: bool, mode: &str, data: Value) -> Value {
     let root = repo_root();
     let wasm: Map<String, Value> = LOADED_WASM
         .lock()
@@ -70,7 +108,7 @@ pub fn write(gate: &str, case: &str, passed: bool, mode: &str, data: Value) -> P
         .iter()
         .map(|(stem, p)| (stem.clone(), json!(sha256_file(p))))
         .collect();
-    let doc = json!({
+    json!({
         "schema": SCHEMA,
         "gate": gate,
         "case": case,
@@ -90,7 +128,5 @@ pub fn write(gate: &str, case: &str, passed: bool, mode: &str, data: Value) -> P
             .map(|d| d.as_secs())
             .unwrap_or_default(),
         "data": data,
-    });
-    std::fs::write(&path, serde_json::to_vec_pretty(&doc).expect("json")).expect("write evidence");
-    path
+    })
 }
