@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkIntegrity, sha256File } from "../checks/integrity.js";
 import type { Evidence } from "../types.js";
+import { wasmHashes } from "./report.js";
 
 const git = (root: string, args: string[]): string | null => {
   try {
@@ -18,7 +19,8 @@ export interface SourceBinding {
   integrity_error: string | null;
 }
 
-export function sourceBinding(root: string, contractWasmSha256: string): SourceBinding {
+/** `loaded`: the WASMs the run deployed; their target/near hashes bind the evidence to an acceptance run. */
+export function sourceBinding(root: string, contractWasmSha256: string, loaded?: readonly { path: string; sha256: string }[]): SourceBinding {
   const commit = git(root, ["rev-parse", "HEAD"]) ?? "unknown";
   const status = git(root, ["status", "--porcelain"]);
   let integrityError: string | null = null;
@@ -41,6 +43,8 @@ export function sourceBinding(root: string, contractWasmSha256: string): SourceB
       spec_commit: specCommit,
       contract_wasm_sha256: contractWasmSha256,
       fixtures,
+      fixture_manifest_sha256: sha256File(join(root, "fixtures/manifest.json")),
+      ...(loaded === undefined ? {} : { wasm_sha256: wasmHashes(loaded) }),
     },
     integrity_error: integrityError,
   };

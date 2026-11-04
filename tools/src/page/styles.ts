@@ -102,6 +102,12 @@ code, .mono { font-family: var(--mono); font-size: .84em; word-break: break-all;
 .mode.other { color: var(--muted); border: 1px solid var(--rule-strong); white-space: normal; line-height: 1.4; }
 th[scope="row"], td code { white-space: nowrap; }
 td.reason { min-width: 16rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.2rem; }
+.mode.label { color: var(--m-sandbox); border: 1px solid currentColor; }
+.facts-line { font: .82rem/1.4 var(--mono); color: var(--muted); margin: 0; }
+ul.receipts, ul.checks { list-style: none; margin: .5rem 0 0; padding: 0; }
+ul.receipts > li, ul.checks > li { margin: .35rem 0; }
+.step-head { margin-bottom: .3rem; }
 ol.timeline { list-style: none; margin: 0; padding: 0; position: relative; counter-reset: step; }
 ol.timeline::before { content: ""; position: absolute; left: 1.05rem; top: .4rem; bottom: .4rem; width: 2px; background: var(--rule-strong); }
 ol.timeline > li {

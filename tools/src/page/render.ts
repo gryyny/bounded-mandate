@@ -1,13 +1,15 @@
-// Renders the static evidence page. Gate status comes only from out/evidence/acceptance.json
-// (src/checks/acceptance.ts): a gate shows "passed" only when every required case of a certified
-// run for this revision passed. Demo assertions are story checks and never mark a gate.
+// Renders the static evidence page. Order: one-sentence claim, the demonstration, acceptance gates per case,
+// the T5 baseline, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
+// certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
+// Demo assertions are story checks and never mark a gate.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
 import { REPO_ROOT } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
 import { Acceptance, type BaselineCase, type CaseResult } from "../evidence/schema.js";
-import { Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
+import { type Assertion, Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
 import { STYLES } from "./styles.js";
@@ -18,6 +20,8 @@ export interface RenderExtras {
    * `renderPage` loads out/evidence/acceptance.json when this is omitted.
    */
   acceptance?: unknown;
+  /** Run id of the latest `make test` (out/run/run.json); an acceptance verdict from another run never certifies. */
+  latestRunId?: string | null;
   /** The grant's immutable policy as read from the contract (`get_grant().policy`). */
   policy?: Policy;
   /** Historical envelope-v1 reports, shown as "legacy, uncertified by v2 rules"; never mark a gate. */
@@ -26,7 +30,7 @@ export interface RenderExtras {
   gateReports?: unknown;
 }
 
-export type GateStatus = "passed" | "uncertified" | "failed" | "incomplete" | "stale" | "not-run";
+export type GateStatus = "passed" | "uncertified" | "failed" | "incomplete" | "not-run";
 
 export interface GateView {
   gate: string;
@@ -36,6 +40,19 @@ export interface GateView {
 
 const MAX_DETAIL_CHARS = 6000;
 const GATES = Object.keys(REQUIRED_CASES);
+
+/** What each gate demonstrates, in one line. */
+export const GATE_LABEL: Record<string, string> = {
+  T1: "withheld signed orders fail after confirmed key removal",
+  T2: "caps and reservations under randomized interleavings",
+  T2b: "a published signature stays accounted",
+  T3: "execution concession, feeds and breaker",
+  T4: "ordinary recovery without agent, oracle or MPC",
+  T5: "matched baseline (our re-implementation)",
+  BOUNDARY: "forbidden requests fail at their boundary",
+  MODEL: "recorded genuine model proposal reaches the interface",
+  DEPLOY: "proposed deployment binary exercised in sandbox",
+};
 
 export const escapeHtml = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -52,6 +69,7 @@ const fail = (what: string, error: z.ZodError): never => {
 interface Inputs {
   ev: Evidence;
   acc: Acceptance | null;
+  binding: DemoBinding;
   policy: Policy | null;
   legacy: { label: string; reports: LegacyGateReport[] } | null;
 }
@@ -79,7 +97,7 @@ function parseInputs(evidence: unknown, extras: RenderExtras): Inputs {
             return parsed.success ? parsed.data : fail(`legacy report #${String(i)}`, parsed.error);
           }),
         };
-  return { ev: ev.data, acc, policy, legacy };
+  return { ev: ev.data, acc, binding: bindDemo(ev.data, acc, extras.latestRunId ?? null), policy, legacy };
 }
 
 /** Mode of one demo step: the run's mode unless the receipt declares a weaker, valid one. */
@@ -94,17 +112,16 @@ function stepMode(receipt: Receipt, ev: Evidence): EvidenceMode {
   return mode;
 }
 
-/** Gate status from acceptance only. An acceptance run for another revision never counts. */
-export function gateViews(ev: Evidence, acc: Acceptance | null): GateView[] {
+/** Gate status from acceptance only, and "passed" only when the acceptance run is bound to this demo. */
+export function gateViews(acc: Acceptance | null, binding: DemoBinding): GateView[] {
   return GATES.map((gate) => {
     if (acc === null) return { gate, status: "not-run" as const, cases: [] };
     const cases = acc.cases.filter((c) => c.gate === gate);
     const required: readonly string[] = REQUIRED_CASES[gate as keyof typeof REQUIRED_CASES];
     const covered = required.every((name) => cases.some((c) => c.case === name));
     let status: GateStatus;
-    if (acc.revision !== ev.source.product_commit) status = "stale";
-    else if (cases.some((c) => c.status === "failed" || c.status === "mismatched" || c.status === "duplicate")) status = "failed";
-    else if (covered && cases.every((c) => c.status === "passed")) status = acc.certified ? "passed" : "uncertified";
+    if (cases.some((c) => c.status === "failed" || c.status === "mismatched" || c.status === "duplicate")) status = "failed";
+    else if (covered && cases.every((c) => c.status === "passed")) status = binding.certified ? "passed" : "uncertified";
     else status = "incomplete";
     return { gate, status, cases };
   });
@@ -112,167 +129,158 @@ export function gateViews(ev: Evidence, acc: Acceptance | null): GateView[] {
 
 const STATUS_TEXT: Record<GateStatus, string> = {
   passed: "✓ passed",
-  uncertified: "! uncertified",
+  uncertified: "! not certified for this demo",
   failed: "✕ failed",
   incomplete: "– incomplete",
-  stale: "! stale",
   "not-run": "– not run",
 };
 
 const statusBadge = (status: GateStatus): string => `<span class="status ${status}">${STATUS_TEXT[status]}</span>`;
-
 const word = (cls: string, text: string): string => `<span class="status ${escapeHtml(cls)}">${escapeHtml(text)}</span>`;
-
 const caseBadge = (c: CaseResult, certified: boolean): string =>
-  c.status === "passed" && !certified ? word("uncertified", "passed (uncertified run)") : word(c.status, c.status);
+  c.status === "passed" && !certified ? word("uncertified", "passed, not certified for this demo") : word(c.status, c.status);
 
 const modeBadge = (mode: string): string => {
   const known = EvidenceMode.safeParse(mode);
   const cls = known.success ? known.data : "other";
   return `<span class="mode ${cls}" title="execution mode">${escapeHtml(mode)}</span>`;
 };
+const chip = (cls: string, text: string): string => `<span class="mode ${cls}">${escapeHtml(text)}</span>`;
 
 const section = (num: string, tag: string, id: string, title: string, body: string): string =>
   `<section class="folio" id="${id}" aria-labelledby="${id}-h"><div class="num" aria-hidden="true">${num}<small>${tag}</small></div><div class="body"><h2 id="${id}-h">${title}</h2>${body}</div></section>`;
 
-// Spec mapping (SPEC.md "Acceptance tests"): which gates block which part of the claim.
-const CLAIM_PARTS: readonly { text: string; gates: readonly string[] }[] = [
-  { text: "After confirmed key removal, withheld signed orders fail, including after regrant", gates: ["T1"] },
-  { text: "The owner recovers remaining assets without the agent, oracle or MPC", gates: ["T4"] },
-  { text: "Signing safety: caps, reservations and published-signature relay stay accounted", gates: ["T2", "T2b"] },
-  { text: "Stated policy: execution concession at most 0.5% against the declared reference", gates: ["T3"] },
-  { text: "The agent cannot authorize withdrawals, transfers, raw payloads, key or policy changes", gates: ["BOUNDARY"] },
-  { text: "A genuine recorded model proposal reaches the real application interface", gates: ["MODEL"] },
-  { text: "Differentiation against a comparable baseline", gates: ["T5"] },
-];
+const SCRIPTED_ATTACK = /\((injected-request|scripted-direct)\)/;
+const isModelOutput = (a: Assertion): boolean =>
+  typeof a.observed === "object" && a.observed !== null && "mode" in a.observed && a.observed.mode === "recorded-model";
 
-const NON_CLAIMS = [
-  "No guarantee of principal, profit or execution availability.",
-  "No maximum total loss: market moves, stale references, fees and orders still executable when the breaker trips can lose more than the stated concession.",
-  "The loss breaker stops new authorizations only; it is not a total-loss cap.",
-  "The owner stays trusted and keeps deployment/upgrade authority.",
-  "An adversarial agent can still make economically poor permitted trades.",
-  "NEAR, the Intents verifier and the token contracts must keep functioning; recovery also needs owner gas.",
-  "While revoking (before confirmed removal), already-signed orders may still execute.",
-];
+/** Execution labels that apply to the whole run, each derived from the evidence. */
+function runLabels(ev: Evidence): string[] {
+  const labels: string[] = [];
+  const verifier = ev.source.fixtures["verifier/defuse-0.4.5.wasm"];
+  if (verifier !== undefined && ev.environment.verifier_wasm_sha256 === verifier) labels.push("real Intents verifier WASM");
+  if (ev.identifiers.mpc_test_double !== undefined || ev.identifiers.oracle_test_double !== undefined) labels.push("test doubles: MPC, oracle, tokens");
+  if (ev.mode !== "mainnet") labels.push("no mainnet");
+  return labels;
+}
 
-const combine = (statuses: readonly GateStatus[]): GateStatus => {
-  for (const s of ["failed", "stale", "not-run", "incomplete", "uncertified"] as const) if (statuses.includes(s)) return s;
-  return "passed";
+function headerChips(ev: Evidence, binding: DemoBinding): string {
+  const extra = [
+    ...(ev.assertions.some(isModelOutput) ? ["recorded genuine model output"] : []),
+    ...(ev.assertions.some((a) => SCRIPTED_ATTACK.test(a.description)) ? ["scripted attacks"] : []),
+  ];
+  return [
+    `<span class="status ${binding.certified ? "passed" : "uncertified"}">${binding.certified ? "✓ certified for this demo" : "! not certified for this demo"}</span>`,
+    modeBadge(ev.mode),
+    ...[...runLabels(ev), ...extra].map((l) => chip("label", l)),
+  ].join(" ");
+}
+
+interface Step {
+  title: string;
+  receipts: Receipt[];
+  checks: Assertion[];
+}
+
+/** Story steps with their receipts and checks, from the offsets the demo recorded; null for older evidence. */
+function storySteps(ev: Evidence): Step[] | null {
+  const raw = ev.environment.steps;
+  if (raw === undefined) return null;
+  const parsed = z
+    .array(z.object({ step: z.string(), first_receipt: z.number().int().nonnegative(), first_assertion: z.number().int().nonnegative() }))
+    .safeParse(JSON.parse(raw));
+  if (!parsed.success || parsed.data.length === 0) return null;
+  const steps = parsed.data;
+  const first = steps[0];
+  const pre: Step = { title: "Setup", receipts: ev.receipts.slice(0, first?.first_receipt ?? 0), checks: ev.assertions.slice(0, first?.first_assertion ?? 0) };
+  const out = steps.map((s, i) => {
+    const next = steps[i + 1];
+    return { title: s.step, receipts: ev.receipts.slice(s.first_receipt, next?.first_receipt), checks: ev.assertions.slice(s.first_assertion, next?.first_assertion) };
+  });
+  return pre.receipts.length + pre.checks.length > 0 ? [pre, ...out] : out;
+}
+
+const receiptLine = (r: Receipt, ev: Evidence): string => {
+  const meta = [r.tx_hash !== undefined ? `tx ${r.tx_hash}` : null, r.receipt_id !== undefined ? `receipt ${r.receipt_id}` : null, r.block_height !== undefined ? `block ${String(r.block_height)}` : null].filter(
+    (m): m is string => m !== null,
+  );
+  return `<li><strong>${escapeHtml(r.label)}</strong> ${modeBadge(stepMode(r, ev))} ${word(r.outcome, r.outcome)}<p class="step-meta">${escapeHtml(meta.length > 0 ? meta.join(" · ") : "no transaction identifiers recorded")}</p>
+<details><summary>Recorded detail</summary><pre>${escapeHtml(json(r.detail))}</pre></details></li>`;
 };
 
-function claimSection(ev: Evidence, views: readonly GateView[]): string {
-  const byGate = new Map(views.map((v) => [v.gate, v.status]));
-  const items = CLAIM_PARTS.map((part) => {
-    const status = combine(part.gates.map((g) => byGate.get(g) ?? "not-run"));
-    return `<tr><td>${escapeHtml(part.text)}</td><td>${part.gates.map((g) => `<code>${escapeHtml(g)}</code>`).join(" ")}</td><td>${statusBadge(status)}</td></tr>`;
-  }).join("");
-  return section(
-    "§1",
-    "claim",
-    "claim",
-    "What is claimed, and what is not",
-    `<p class="source">Claim text: SPEC.md sha256 <code>${escapeHtml(ev.source.spec_sha256)}</code>. Status per part: acceptance results in §5.</p>
-<div class="claims">
-<div class="card"><h3>Claim under test</h3><p>One owner delegates a bounded USDC/wNEAR trading mandate inside NEAR Intents. The mandate contract owns its Intents account, builds every policy-approved trade itself and obtains its own derived MPC signatures. The differentiator is control over the lifetime of outstanding signed authority.</p></div>
-<div class="card not"><h3>Not guaranteed</h3><ul>${NON_CLAIMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>
-</div>
-<h3>Claim parts and blocking gates</h3>
-<div class="scroll"><table><caption>A part is supported only when every listed gate passed in a certified run of this revision</caption>
-<thead><tr><th scope="col">Part of the claim</th><th scope="col">Gates</th><th scope="col">Status</th></tr></thead><tbody>${items}</tbody></table></div>`,
-  );
+const checkLine = (a: Assertion): string =>
+  `<li>${word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold")} <code>${escapeHtml(a.gate)}</code> ${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(json(a.observed))}</pre></details></li>`;
+
+function stepBody(step: Step, ev: Evidence): string {
+  const attacks = step.checks.filter((a) => SCRIPTED_ATTACK.test(a.description));
+  const other = step.checks.filter((a) => !attacks.includes(a));
+  const byBoundary = new Map<string, { n: number; held: number }>();
+  for (const a of attacks) {
+    const b = /stopped by ([a-z-]+)/.exec(a.description)?.[1] ?? "unclassified";
+    const e = byBoundary.get(b) ?? { n: 0, held: 0 };
+    byBoundary.set(b, { n: e.n + 1, held: e.held + (a.passed ? 1 : 0) });
+  }
+  const attackBlock = attacks.length === 0
+    ? ""
+    : `<p><strong>${String(attacks.filter((a) => a.passed).length)} of ${String(attacks.length)} scripted attacks stopped</strong> at their expected boundary: ${[...byBoundary.entries()]
+        .map(([b, e]) => `${escapeHtml(b)} ${String(e.held)}/${String(e.n)}`)
+        .join(" · ")}</p><details><summary>Each scripted attack</summary><ul class="checks">${attacks.map(checkLine).join("")}</ul></details>`;
+  return `${step.receipts.length > 0 ? `<ul class="receipts">${step.receipts.map((r) => receiptLine(r, ev)).join("")}</ul>` : ""}${attackBlock}${other.length > 0 ? `<ul class="checks">${other.map(checkLine).join("")}</ul>` : ""}`;
 }
 
-function timelineSection(ev: Evidence): string {
-  const steps = ev.receipts
-    .map((r, i) => {
-      const mode = stepMode(r, ev);
-      const meta = [
-        r.tx_hash !== undefined ? `tx ${r.tx_hash}` : null,
-        r.receipt_id !== undefined ? `receipt ${r.receipt_id}` : null,
-        r.block_height !== undefined ? `block ${String(r.block_height)}` : null,
-      ].filter((m): m is string => m !== null);
-      return `<li class="${r.outcome}" style="--i:${String(i)}"><div class="step-head"><strong>${escapeHtml(r.label)}</strong>${modeBadge(mode)}${word(r.outcome, r.outcome)}</div>
-${meta.length > 0 ? `<p class="step-meta">${escapeHtml(meta.join(" · "))}</p>` : `<p class="step-meta">no transaction identifiers recorded</p>`}
-<details><summary>Recorded detail</summary><pre>${escapeHtml(json(r.detail))}</pre></details></li>`;
+function demonstrationSection(ev: Evidence): string {
+  const steps = storySteps(ev);
+  const base = runLabels(ev);
+  const intro = `<p class="source">Source: out/evidence/demo.json · ${escapeHtml(ev.command)} · ${String(ev.receipts.length)} transactions, ${String(ev.assertions.length)} story checks. Story checks never mark an acceptance gate.</p>
+<p>${ev.mode === "mainnet" ? "Steps labelled <em>mainnet</em> carry NEAR mainnet transaction hashes." : "<strong>No mainnet receipts in this evidence.</strong> Sandbox steps ran our contract and the pinned verifier WASM locally with labelled test doubles; the model step replays a recorded genuine model response."}</p>`;
+  if (steps === null) {
+    // Older evidence without step offsets: chronological transactions, then the story checks.
+    return section("§1", "demo", "demo", "The demonstration",
+      `${intro}<ol class="timeline">${ev.receipts.map((r, i) => `<li class="${r.outcome}" style="--i:${String(i)}"><div class="step-head">${base.map((l) => chip("label", l)).join("")}</div><ul class="receipts">${receiptLine(r, ev)}</ul></li>`).join("")}</ol>
+<h3>Story checks</h3><ul class="checks">${ev.assertions.map(checkLine).join("")}</ul>`);
+  }
+  const items = steps
+    .map((s, i) => {
+      const labels = [
+        ...(s.receipts.some((r) => stepMode(r, ev) === "recorded-model") || s.checks.some(isModelOutput) ? ["recorded genuine model output"] : []),
+        ...(s.checks.some((a) => SCRIPTED_ATTACK.test(a.description)) ? ["scripted attacks"] : []),
+        ...(s.receipts.some((r) => /scripted/.test(r.label)) ? ["scripted proposal"] : []),
+        ...(/recover/i.test(s.title) ? ["ordinary recovery (not the owner-key rescue)"] : []),
+      ];
+      const failed = s.receipts.some((r) => r.outcome === "failure" && !/after revocation/.test(r.label)) || s.checks.some((a) => !a.passed);
+      return `<li class="${failed ? "failure" : "success"}" style="--i:${String(i)}"><div class="step-head"><strong>${escapeHtml(s.title)}</strong>${modeBadge(ev.mode)}${[...labels, ...base].map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("")}</div>${stepBody(s, ev)}</li>`;
     })
     .join("\n");
-  const hasMainnet = ev.mode === "mainnet";
-  return section(
-    "§3",
-    "story",
-    "story",
-    "Demonstration, step by step",
-    `<p class="source">Source: evidence.receipts (${String(ev.receipts.length)}), run mode ${modeBadge(ev.mode)}, command <code>${escapeHtml(ev.command)}</code>${ev.seed !== undefined ? `, seed <code>${escapeHtml(ev.seed)}</code>` : ""}.</p>
-<p>${hasMainnet ? "Steps labelled <em>mainnet</em> carry NEAR mainnet transaction hashes." : "<strong>No mainnet receipts in this evidence.</strong> Sandbox steps executed the contract and the pinned verifier WASM locally with labelled test doubles; recorded-model steps replay a genuine model response captured earlier."}</p>
-${ev.receipts.length > 0 ? `<ol class="timeline">${steps}</ol>` : `<p class="muted">No steps recorded.</p>`}`,
-  );
+  return section("§1", "demo", "demo", "The demonstration", `${intro}<ol class="timeline">${items}</ol>`);
 }
 
-function demoChecksSection(ev: Evidence): string {
-  const rows = ev.assertions
-    .map(
-      (a) =>
-        `<tr><td><code>${escapeHtml(a.id)}</code></td><td>${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(json(a.observed))}</pre></details></td><td><code>${escapeHtml(a.gate)}</code></td><td>${word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold")}</td></tr>`,
-    )
-    .join("");
-  return section(
-    "§4",
-    "demo checks",
-    "demo-checks",
-    "Demo story checks",
-    `<p class="source">Source: evidence.assertions (${String(ev.assertions.length)}). These are checks on the demonstration story. They never mark an acceptance gate passed; gate results come only from the acceptance run in §5.</p>
-${rows.length > 0 ? `<div class="scroll"><table><caption>Story checks (not acceptance results)</caption><thead><tr><th scope="col">Check</th><th scope="col">What was checked</th><th scope="col">Relates to</th><th scope="col">Outcome</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="muted">No story checks recorded.</p>`}`,
-  );
-}
-
-function gatesSection(ev: Evidence, acc: Acceptance | null, views: readonly GateView[]): string {
+function gatesSection(acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[]): string {
+  const label = (g: string) => `<br><span class="muted">${escapeHtml(GATE_LABEL[g] ?? "")}</span>`;
   if (acc === null) {
-    const rows = views.map((v) => `<tr><th scope="row"><code>${escapeHtml(v.gate)}</code></th><td>${statusBadge(v.status)}</td><td class="muted">no acceptance run recorded (out/evidence/acceptance.json absent)</td></tr>`).join("");
-    return section("§5", "gates", "gates", "Acceptance gates",
-      `<p class="source">Source: none. Run <code>make test</code> to produce out/evidence/acceptance.json.</p><div class="scroll"><table><caption>T1–T5, BOUNDARY and MODEL</caption><thead><tr><th scope="col">Gate</th><th scope="col">Result</th><th scope="col">Cases</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+    const rows = views.map((v) => `<tr><th scope="row"><code>${escapeHtml(v.gate)}</code>${label(v.gate)}</th><td>${statusBadge(v.status)}</td><td class="muted">no acceptance run recorded</td></tr>`).join("");
+    return section("§2", "gates", "gates", "Acceptance gates",
+      `<p class="source">Source: none. <code>make test</code> writes out/evidence/acceptance.json.</p><div class="scroll"><table><caption>Required gates</caption><thead><tr><th scope="col">Gate</th><th scope="col">Result</th><th scope="col">Cases</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   const rows = views
     .map((v) => {
       const cases = v.cases.length === 0 ? [null] : v.cases;
       return cases
         .map((c, i) => {
-          const head = i === 0 ? `<th scope="row" rowspan="${String(cases.length)}"><code>${escapeHtml(v.gate)}</code><br>${statusBadge(v.status)}</th>` : "";
+          const head = i === 0 ? `<th scope="row" rowspan="${String(cases.length)}"><code>${escapeHtml(v.gate)}</code>${label(v.gate)}<br>${statusBadge(v.status)}</th>` : "";
           if (c === null) return `<tr>${head}<td colspan="3" class="muted">no cases recorded</td></tr>`;
-          return `<tr>${head}<td><code>${escapeHtml(c.case)}</code></td><td>${caseBadge(c, acc.certified)}${c.mode === null ? "" : ` ${modeBadge(c.mode)}`}</td><td class="reason">${escapeHtml(c.reason)}${c.files.length > 0 ? `<br><span class="muted mono">${escapeHtml(c.files.join(", "))}</span>` : ""}</td></tr>`;
+          return `<tr>${head}<td><code>${escapeHtml(c.case)}</code></td><td>${caseBadge(c, binding.certified)}${c.mode === null ? "" : ` ${modeBadge(c.mode)}`}</td><td class="reason">${escapeHtml(c.reason)}${c.files.length > 0 ? `<br><span class="muted mono">${escapeHtml(c.files.join(", "))}</span>` : ""}</td></tr>`;
         })
         .join("");
     })
     .join("");
-  const runState = acc.certified
-    ? "certified: clean tree, unchanged during the run, every required case present once, passed and matched"
-    : acc.complete
-      ? "uncertified: every required case passed, but the working tree was dirty"
-      : "uncertified: the run is incomplete or has failures";
-  const separate = acc.separate.length === 0
+  const rescue = acc.separate.length === 0
     ? ""
-    : `<h3>Reported separately (never counts toward T4 or any gate)</h3><div class="scroll"><table><caption>Emergency paths</caption><thead><tr><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${acc.separate
-        .map((c) => `<tr><th scope="row"><code>${escapeHtml(c.id)}</code></th><td>${caseBadge(c, acc.certified)}</td><td>${escapeHtml(c.reason)}</td></tr>`)
+    : `<h3>Emergency owner-key rescue, reported separately</h3><p>This is not ordinary recovery. It never counts toward T4 or any other gate.</p><div class="scroll"><table><caption>Emergency path</caption><thead><tr><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${acc.separate
+        .map((c) => `<tr><th scope="row"><code>${escapeHtml(c.id)}</code></th><td>${caseBadge(c, binding.certified)}</td><td>${escapeHtml(c.reason)}</td></tr>`)
         .join("")}</tbody></table></div>`;
-  const problems = acc.problems.length === 0 ? "" : `<h3>Run problems</h3><ul class="unknowns">${acc.problems.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`;
-  const ignored = acc.ignored.length === 0
-    ? ""
-    : `<h3>Files not counted</h3><div class="scroll"><table><caption>Other runs, legacy reports and unknown files</caption><thead><tr><th scope="col">File</th><th scope="col">Reason</th></tr></thead><tbody>${acc.ignored
-        .map((i) => `<tr><td><code>${escapeHtml(i.file)}</code></td><td>${escapeHtml(i.reason)}</td></tr>`)
-        .join("")}</tbody></table></div>`;
-  const staleNote = acc.revision !== ev.source.product_commit
-    ? `<p class="banner">This acceptance run is for revision <code>${escapeHtml(String(acc.revision))}</code>, not the demo's <code>${escapeHtml(ev.source.product_commit)}</code>; its results are shown as stale and do not count.</p>`
-    : "";
-  return section(
-    "§5",
-    "gates",
-    "gates",
-    "Acceptance gates",
-    `<p class="source">Source: out/evidence/acceptance.json, run <code>${escapeHtml(String(acc.run_id))}</code> at <code>${escapeHtml(String(acc.revision))}</code>, evaluated ${escapeHtml(acc.evaluated_at)}. Run state: ${escapeHtml(runState)}.</p>
-${staleNote}
-<div class="scroll"><table><caption>Every required case per gate</caption><thead><tr><th scope="col">Gate</th><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${rows}</tbody></table></div>
-${problems}${separate}${ignored}`,
-  );
+  return section("§2", "gates", "gates", "Acceptance gates",
+    `<p class="source">Source: out/evidence/acceptance.json. ${binding.certified ? "Certified for this demo." : `Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}.`} Details in §6.</p>
+<div class="scroll"><table><caption>Every required case per gate</caption><thead><tr><th scope="col">Gate</th><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${rows}</tbody></table></div>${rescue}`);
 }
 
 type Increment = "demonstrated" | "parity" | "unproven" | "not-comparable";
@@ -284,7 +292,7 @@ function comparisonSection(acc: Acceptance | null, views: readonly GateView[]): 
   const t5Status = byGate.get("T5") ?? "not-run";
   const data = acc?.baseline ?? null;
   if (data === null) {
-    return section("§6", "baseline", "baseline", title, `${framing}<div class="verdict">${word("unproven", "unproven")}<p>No T5 baseline report in this acceptance run, so differentiation is unproven.</p></div>`);
+    return section("§3", "baseline", "baseline", title, `${framing}<div class="verdict">${word("unproven", "unproven")}<p>No T5 baseline report in this acceptance run, so differentiation is unproven.</p></div>`);
   }
   const increment = (c: BaselineCase, mandate: GateStatus): Increment => {
     if (c.baseline_outcome !== "attack_succeeded" && c.baseline_outcome !== "blocked") return "not-comparable";
@@ -301,28 +309,70 @@ function comparisonSection(acc: Acceptance | null, views: readonly GateView[]): 
     })
     .join("");
   const demonstrated = t5Status === "passed" && data.cases.some((c) => increment(c, byGate.get(c.compare_gate) ?? "not-run") === "demonstrated");
-  return section(
-    "§6",
-    "baseline",
-    "baseline",
-    title,
+  return section("§3", "baseline", "baseline", title,
     `${framing}<div class="verdict">${word(demonstrated ? "demonstrated" : "unproven", demonstrated ? "increment demonstrated" : "differentiation unproven")}<p>${
       demonstrated
-        ? "At least one attack executed against the re-implemented baseline while the matching mandate gate passed in a certified run of this revision."
-        : "No case has both an executed attack on the re-implemented baseline and a passing mandate gate in a certified run of this revision; differentiation stays unproven."
+        ? "At least one attack executed against the re-implemented baseline while the matching mandate gate passed in an acceptance run certified for this demo."
+        : "No case has both an executed attack on the re-implemented baseline and a passing mandate gate certified for this demo; differentiation stays unproven."
     } T5 gate: ${statusBadge(t5Status)}</p></div>
-<p class="source">Source: acceptance.json baseline data (T5.baseline report of this run), joined with the §5 gate status of the matching gate.</p>
 <div class="scroll"><table><caption>Same threat model, same trading authority</caption><thead><tr><th scope="col">Threat case</th><th scope="col">Re-implemented baseline (sandbox)</th><th scope="col">Mandate gate</th><th scope="col">Increment</th></tr></thead><tbody>${rows}</tbody></table></div>
 <dl class="kv"><dt>Design source</dt><dd>${escapeHtml(data.baseline.repository)} @ ${escapeHtml(data.baseline.commit)}</dd><dt>License</dt><dd>${escapeHtml(data.baseline.license)}</dd><dt>Our implementation</dt><dd>${escapeHtml(data.baseline.name)}</dd><dt>Command</dt><dd>${escapeHtml(data.command)}</dd></dl>
-<h3>Disclosed adaptations</h3><ul>${data.baseline.adaptations.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`,
-  );
+<h3>Disclosed adaptations</h3><ul>${data.baseline.adaptations.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`);
+}
+
+// Spec mapping (SPEC.md "Acceptance tests"): which gates block which part of the claim.
+const CLAIM_PARTS: readonly { text: string; gates: readonly string[] }[] = [
+  { text: "After confirmed key removal, withheld signed orders fail, including after regrant", gates: ["T1"] },
+  { text: "The owner recovers remaining assets without the agent, oracle or MPC (ordinary recovery)", gates: ["T4"] },
+  { text: "Signing safety: caps, reservations and published-signature relay stay accounted", gates: ["T2", "T2b"] },
+  { text: "Stated policy: execution concession at most 0.5% against the declared reference", gates: ["T3"] },
+  { text: "The agent cannot authorize withdrawals, transfers, raw payloads, key or policy changes", gates: ["BOUNDARY"] },
+  { text: "A genuine recorded model proposal reaches the real application interface", gates: ["MODEL"] },
+  { text: "The proposed deployment binary is the one exercised in sandbox", gates: ["DEPLOY"] },
+  { text: "Differentiation against a comparable baseline", gates: ["T5"] },
+];
+
+const NON_CLAIMS = [
+  "No guarantee of principal, profit or execution availability.",
+  "No maximum total loss: market moves, stale references, fees and orders still executable when the breaker trips can lose more than the stated concession.",
+  "The loss breaker stops new authorizations only; it is not a total-loss cap.",
+  "The owner stays trusted and keeps deployment/upgrade authority.",
+  "An adversarial agent can still make economically poor permitted trades.",
+  "NEAR, the Intents verifier and the token contracts must keep functioning; recovery also needs owner gas.",
+  "While revoking (before confirmed removal), already-signed orders may still execute.",
+];
+
+const combine = (statuses: readonly GateStatus[]): GateStatus => {
+  for (const s of ["failed", "not-run", "incomplete", "uncertified"] as const) if (statuses.includes(s)) return s;
+  return "passed";
+};
+
+function limitsSection(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[]): string {
+  const byGate = new Map(views.map((v) => [v.gate, v.status]));
+  const parts = CLAIM_PARTS.map((part) => {
+    const status = combine(part.gates.map((g) => byGate.get(g) ?? "not-run"));
+    return `<tr><td>${escapeHtml(part.text)}</td><td>${part.gates.map((g) => `<code>${escapeHtml(g)}</code>`).join(" ")}</td><td>${statusBadge(status)}</td></tr>`;
+  }).join("");
+  const derived = [
+    ...(ev.mode !== "mainnet" ? ["No mainnet receipts: encoding, key registration, the real MPC signer, settlement and recovery on mainnet are not evidenced here."] : []),
+    ...(acc === null ? ["No acceptance run is attached: no gate is evidenced on this page."] : []),
+    ...(!binding.certified && acc !== null ? [`The acceptance run is not certified for this demo: ${binding.reasons.join("; ")}.`] : []),
+    ...views.filter((v) => v.status !== "passed").map((v) => `Gate ${v.gate} is ${STATUS_TEXT[v.status].replace(/^\S+ /, "")}: the claim parts it blocks are not supported.`),
+  ];
+  return section("§4", "limits", "limits", "Claim, non-claims and limits",
+    `<p class="source">Claim text: SPEC.md sha256 <code>${escapeHtml(ev.source.spec_sha256)}</code>.</p>
+<div class="scroll"><table><caption>A part is supported only when every listed gate passed and is certified for this demo</caption>
+<thead><tr><th scope="col">Part of the claim</th><th scope="col">Gates</th><th scope="col">Status</th></tr></thead><tbody>${parts}</tbody></table></div>
+<div class="claims"><div class="card not"><h3>Not guaranteed</h3><ul>${NON_CLAIMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>
+<div class="card"><h3>Unknowns and open risks</h3><ul class="unknowns">${[...ev.unknowns, ...derived].map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul></div></div>
+<h3>Specified authority lifecycle</h3><figure class="lifecycle">${LIFECYCLE_SVG}</figure>`);
 }
 
 const pct = (bps: number): string => `${(bps / 100).toFixed(2)}%`;
 
 function policySection(policy: Policy | null): string {
   if (policy === null) {
-    return section("§7", "policy", "policy", "Policy parameters", `<p class="muted">No grant policy was supplied with this evidence; parameters are not shown rather than assumed.</p>`);
+    return section("§5", "policy", "policy", "Policy parameters", `<p class="muted">No grant policy was supplied with this evidence; parameters are not shown rather than assumed.</p>`);
   }
   const rows: [string, string][] = [
     ["Per-order cap", `${pct(policy.per_order_cap_bps)} of initial reference value`],
@@ -335,7 +385,7 @@ function policySection(policy: Policy | null): string {
     ["Order deadline", `${String(policy.order_ttl_sec)} s after authorization; refuse below ${String(policy.min_remaining_sec)} s remaining`],
     ["Max pricing delay", `${String(policy.max_pricing_delay_sec)} s`],
   ];
-  return section("§7", "policy", "policy", "Policy parameters",
+  return section("§5", "policy", "policy", "Policy parameters",
     `<p class="source">Source: grant policy supplied with the evidence (immutable per grant).</p>
 <div class="scroll"><table><caption>Immutable grant parameters</caption><thead><tr><th scope="col">Parameter</th><th scope="col">Value</th></tr></thead><tbody>${rows
       .map(([k, v]) => `<tr><th scope="row">${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
@@ -352,82 +402,60 @@ export const wasmRole = (stem: string): string =>
         ? "labelled test double"
         : stem === "claw_guard_adapted"
           ? "T5 baseline re-implementation"
-          : "test build";
+          : stem.includes("reproducible")
+            ? "proposed deployment binary (fixture)"
+            : "test build";
 
 const kv = (entries: readonly [string, string][]): string =>
   entries.length === 0 ? `<p class="muted">none recorded</p>` : `<dl class="kv">${entries.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("")}</dl>`;
 
-function provenanceSection(ev: Evidence, acc: Acceptance | null): string {
-  const s = ev.source;
+function provenanceSection(ev: Evidence, acc: Acceptance | null, binding: DemoBinding): string {
+  const d = binding.inputs.demo;
+  const a = binding.inputs.acceptance;
+  const cmp = (name: string, demo: string | null, accepted: string | null | undefined): string =>
+    `<tr><th scope="row">${escapeHtml(name)}</th><td><code>${escapeHtml(demo ?? "not recorded")}</code></td><td><code>${escapeHtml(accepted ?? "not recorded")}</code></td><td>${
+      demo !== null && demo === accepted ? word("passed", "match") : word("failed", "differs")
+    }</td></tr>`;
+  const stems = [...new Set([...Object.keys(d.wasm_sha256 ?? {}), ...Object.keys(a?.wasm_sha256 ?? {})])].sort();
+  const table = `<div class="scroll"><table><caption>Demo evidence against the acceptance run</caption><thead><tr><th scope="col">Input</th><th scope="col">Demo (demo.json)</th><th scope="col">Acceptance (acceptance.json)</th><th scope="col"></th></tr></thead><tbody>
+${cmp("Revision", d.revision, a?.revision)}${cmp("Dirty tree", String(d.dirty), a === null ? null : String(a.dirty))}${cmp("SPEC.md sha256", d.spec_sha256, a?.spec_sha256)}${cmp("fixtures/manifest.json sha256", d.fixture_manifest_sha256, a?.fixture_manifest_sha256)}
+${stems.map((s) => cmp(`${s}.wasm (${wasmRole(s)})`, d.wasm_sha256?.[s] ?? null, a?.wasm_sha256[s])).join("")}</tbody></table></div>`;
   const run = acc === null
     ? `<p class="muted">no acceptance run</p>`
     : `${kv([
         ["Run id", String(acc.run_id)],
-        ["Revision", String(acc.revision)],
-        ["Dirty", String(acc.dirty)],
-        ["Certified", String(acc.certified)],
-        ["Spec sha256", String(acc.hashes.spec_sha256)],
-        ["Fixture manifest sha256", String(acc.hashes.fixture_manifest_sha256)],
-        ...Object.entries(acc.hashes.wasm).map(([k, v]): [string, string] => [`${k}.wasm (${wasmRole(k)})`, v]),
+        ["Latest run id", binding.inputs.latest_run_id ?? "unknown"],
+        ["Certified (acceptance)", String(acc.certified)],
+        ["Complete", String(acc.complete)],
         ...Object.entries(acc.environment),
-      ])}<h3>make test steps</h3><pre>${escapeHtml(acc.commands.join("\n"))}</pre>`;
-  return section("§8", "sources", "sources", "Source, hashes and environment",
-    `<h3>Demo run</h3>${kv([
-      ["Product commit", s.product_commit],
-      ["Working tree", s.dirty ? "dirty (uncommitted changes)" : "clean"],
-      ["Spec sha256", s.spec_sha256],
-      ["Spec meta commit", s.spec_commit],
-      ["Contract WASM sha256", s.contract_wasm_sha256],
-      ["Generated at", ev.generated_at],
-      ["Command", ev.command],
-    ])}
-<h3>Fixtures</h3>${kv(Object.entries(s.fixtures))}
-<h3>Identifiers</h3>${kv(Object.entries(ev.identifiers))}
-<h3>Environment</h3>${kv(Object.entries(ev.environment))}
+      ])}<h3>make test steps</h3><pre>${escapeHtml(acc.commands.join("\n"))}</pre>
+${acc.problems.length === 0 ? "" : `<h3>Run problems</h3><ul class="unknowns">${acc.problems.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`}
+${acc.ignored.length === 0 ? "" : `<h3>Files not counted</h3><div class="scroll"><table><caption>Other runs, legacy reports and unknown files</caption><thead><tr><th scope="col">File</th><th scope="col">Reason</th></tr></thead><tbody>${acc.ignored.map((i) => `<tr><td><code>${escapeHtml(i.file)}</code></td><td>${escapeHtml(i.reason)}</td></tr>`).join("")}</tbody></table></div>`}`;
+  return section("§6", "provenance", "provenance", "Provenance and certification",
+    `<div class="verdict">${binding.certified ? word("passed", "certified for this demo") : word("uncertified", "not certified for this demo")}<p>${
+      binding.certified ? "A certified acceptance run, the latest run, binds to this demo on revision, clean tree, spec, fixtures and every deployed WASM." : escapeHtml(binding.reasons.join("; "))
+    }</p></div>${table}
+<h3>Fixtures (demo)</h3>${kv(Object.entries(ev.source.fixtures))}
+<h3>Demo run</h3>${kv([["Spec meta commit", ev.source.spec_commit], ["Generated at", ev.generated_at], ["Command", ev.command], ...Object.entries(ev.identifiers), ...Object.entries(ev.environment).filter(([k]) => k !== "steps")])}
 <h3>Acceptance run</h3>${run}`);
 }
 
 function legacySection(legacy: Inputs["legacy"]): string {
   if (legacy === null) return "";
   const rows = legacy.reports
-    .map((r) => `<tr><td><code>${escapeHtml(r.gate)}${r.part ? `.${escapeHtml(r.part)}` : ""}</code></td><td>${word("stale", r.passed ? "legacy pass (uncertified)" : "legacy fail")}</td><td><code>${escapeHtml(r.source_revision ?? "unknown")}</code></td><td>${escapeHtml(r.mode)}</td></tr>`)
+    .map((r) => `<tr><td><code>${escapeHtml(r.gate)}${r.part ? `.${escapeHtml(r.part)}` : ""}</code></td><td>${word("uncertified", r.passed ? "legacy pass (uncertified)" : "legacy fail")}</td><td><code>${escapeHtml(r.source_revision ?? "unknown")}</code></td><td>${escapeHtml(r.mode)}</td></tr>`)
     .join("");
   return section("§L", "legacy", "legacy", "Legacy reports, uncertified by v2 rules",
     `<p class="source">Source: ${escapeHtml(legacy.label)}. These envelope-v1 reports predate run ids, per-case registration and hash binding. They are shown for the record and never mark a gate.</p>
 <div class="scroll"><table><caption>Historical v1 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">Recorded result</th><th scope="col">Revision</th><th scope="col">Mode</th></tr></thead><tbody>${rows}</tbody></table></div>`);
 }
 
-function unknownsSection(ev: Evidence, acc: Acceptance | null, views: readonly GateView[]): string {
-  const derived = [
-    ...(ev.mode !== "mainnet" ? ["No mainnet receipts: encoding, key registration, the real MPC signer, settlement and recovery on mainnet are not evidenced here."] : []),
-    ...(ev.source.dirty ? ["The demo ran from a dirty working tree: results may not match the recorded commit."] : []),
-    ...(acc === null ? ["No acceptance run is attached: no gate is evidenced on this page."] : []),
-    ...(acc !== null && !acc.certified ? ["The acceptance run is not certified: no gate counts as passed."] : []),
-    ...views.filter((v) => v.status !== "passed").map((v) => `Gate ${v.gate} is ${STATUS_TEXT[v.status].replace(/^\S+ /, "")}: the claim parts it blocks are not supported.`),
-  ];
-  const items = [...ev.unknowns, ...derived];
-  return section("§9", "unknowns", "unknowns", "Unknowns and open risks",
-    `<p class="source">Source: evidence.unknowns plus gaps derived from the acceptance run.</p>${items.length > 0 ? `<ul class="unknowns">${items.map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul>` : `<p class="muted">none recorded</p>`}`);
-}
-
 /** Pure renderer; throws when the evidence, acceptance, policy or legacy reports fail schema validation. */
 export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string {
-  const { ev, acc, policy, legacy } = parseInputs(evidence, extras);
-  const views = gateViews(ev, acc);
+  const { ev, acc, binding, policy, legacy } = parseInputs(evidence, extras);
+  const views = gateViews(acc, binding);
   const passedCount = views.filter((v) => v.status === "passed").length;
-  const allPassed = acc !== null && acc.certified && passedCount === views.length;
   const anyFailed = views.some((v) => v.status === "failed");
-  const stamp = allPassed
-    ? { cls: "ok", text: "All gates passed · certified run" }
-    : acc === null
-      ? { cls: "partial", text: "No acceptance run · gates not run" }
-      : anyFailed
-        ? { cls: "no", text: "Gate failures recorded · claim not supported" }
-        : views.some((v) => v.status === "stale")
-          ? { cls: "partial", text: "Acceptance run for another revision · not counted" }
-          : acc.complete
-            ? { cls: "partial", text: "Complete but uncertified run · dirty tree" }
-            : { cls: "partial", text: "Incomplete run · claim not yet supported" };
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -440,32 +468,23 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <style>${STYLES}</style>
 </head>
 <body>
-<a class="skip" href="#claim">Skip to the claim</a>
+<a class="skip" href="#demo">Skip to the demonstration</a>
 <main class="dossier">
 <header class="docket">
 <p class="kicker">Evidence dossier · NEAR Intents · USDC / wNEAR</p>
-<div class="stamp ${stamp.cls}" role="status">${escapeHtml(stamp.text)}</div>
+<p class="chips" role="status">${headerChips(ev, binding)}</p>
 <h1>A bounded trading mandate whose signed authority can be withdrawn</h1>
-<p class="lede">The agent can only propose. The contract prices, caps, builds and signs every order itself, and the owner can cut off outstanding signed orders and recover assets without the agent, oracle or signer. This page shows what was executed and what was not.</p>
-<dl class="facts">
-<div><dt>Mode</dt><dd>${modeBadge(ev.mode)}</dd></div>
-<div><dt>Commit</dt><dd>${escapeHtml(ev.source.product_commit.slice(0, 12))}${ev.source.dirty ? " (dirty)" : ""}</dd></div>
-<div><dt>Gates passed</dt><dd>${String(passedCount)} / ${String(views.length)}${acc !== null && !acc.certified ? " (uncertified run)" : ""}</dd></div>
-<div><dt>Generated</dt><dd>${escapeHtml(ev.generated_at)}</dd></div>
-</dl>
-${ev.source.dirty ? `<p class="banner">The demo was generated from a working tree with uncommitted changes.</p>` : ""}
-${acc !== null && !acc.certified ? `<p class="banner">The acceptance run is not certified${acc.dirty ? " (dirty working tree)" : ""}; no gate is shown as passed.</p>` : ""}
-${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §5.</p>` : ""}
+<p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
+<p class="facts-line">Gates passed and certified for this demo: ${String(passedCount)} / ${String(views.length)}</p>
+${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
+${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
 </header>
-${claimSection(ev, views)}
-${section("§2", "lifecycle", "lifecycle", "Authority lifecycle", `<p class="source">Specified behaviour (SPEC.md “Authority lifecycle”); executed results are in §3–§6.</p><figure class="lifecycle">${LIFECYCLE_SVG}</figure>`)}
-${timelineSection(ev)}
-${demoChecksSection(ev)}
-${gatesSection(ev, acc, views)}
+${demonstrationSection(ev)}
+${gatesSection(acc, binding, views)}
 ${comparisonSection(acc, views)}
+${limitsSection(ev, acc, binding, views)}
 ${policySection(policy)}
-${provenanceSection(ev, acc)}
-${unknownsSection(ev, acc, views)}
+${provenanceSection(ev, acc, binding)}
 ${legacySection(legacy)}
 <footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no scripts, fonts or network requests. Evidence schema version ${String(ev.schema_version)}.</footer>
 </main>
@@ -482,10 +501,11 @@ export function loadAcceptance(root: string): Acceptance | null {
   return parsed.success ? parsed.data : fail(path, parsed.error);
 }
 
-/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json unless given. */
+/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json and run id unless given. */
 export function renderPage(evidence: Evidence, outDir: string, extras: RenderExtras = {}): string {
   const acceptance = extras.acceptance === undefined ? loadAcceptance(REPO_ROOT) : extras.acceptance;
-  const html = renderHtml(evidence, { ...extras, acceptance });
+  const runId = extras.latestRunId === undefined ? latestRunId(REPO_ROOT) : extras.latestRunId;
+  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId });
   mkdirSync(outDir, { recursive: true });
   const path = join(outDir, "index.html");
   writeFileSync(path, html);
@@ -495,5 +515,5 @@ export function renderPage(evidence: Evidence, outDir: string, extras: RenderExt
 /** Renders a historical bundle (`<dir>/demo.json`, `<dir>/tests/*.json`) as legacy, uncertified by v2 rules. */
 export function renderLegacyBundle(dir: string, outDir: string): string {
   const evidence = JSON.parse(readFileSync(join(dir, "demo.json"), "utf8")) as Evidence;
-  return renderPage(evidence, outDir, { acceptance: null, legacy: { label: dir, reports: loadGateReports(join(dir, "tests")) } });
+  return renderPage(evidence, outDir, { acceptance: null, latestRunId: null, legacy: { label: dir, reports: loadGateReports(join(dir, "tests")) } });
 }

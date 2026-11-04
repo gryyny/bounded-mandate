@@ -48,7 +48,7 @@ export class Recorder {
   readonly receipts: Receipt[] = [];
   readonly assertions: Assertion[] = [];
   /** Step start offsets from the recorder's creation. */
-  readonly steps: { step: string; started_ms: number }[] = [];
+  readonly steps: { step: string; started_ms: number; first_receipt: number; first_assertion: number }[] = [];
   private readonly start = Date.now();
 
   receipt(outcome: Outcome, detail: Record<string, unknown> = {}): Outcome {
@@ -63,7 +63,7 @@ export class Recorder {
   }
 
   step(name: string): void {
-    this.steps.push({ step: name, started_ms: Date.now() - this.start });
+    this.steps.push({ step: name, started_ms: Date.now() - this.start, first_receipt: this.receipts.length, first_assertion: this.assertions.length });
     console.log(`\n== ${name}`);
   }
 }

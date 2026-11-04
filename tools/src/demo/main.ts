@@ -254,7 +254,7 @@ async function main(): Promise<number> {
     const storyMs = Date.now() - storyStart;
     rec.check("story-under-a-minute", "DEMO", "timed story (after setup) completed in under 60 s", storyMs < 60_000, { story_ms: storyMs, setup_ms: setupMs });
 
-    const binding = sourceBinding(REPO_ROOT, world.wasm.mandate.sha256);
+    const binding = sourceBinding(REPO_ROOT, world.wasm.mandate.sha256, Object.values(world.wasm));
     if (binding.integrity_error !== null) rec.check("integrity", "INTEGRITY", "spec and fixture hashes match fixtures/manifest.json", false, binding.integrity_error);
     const evidence = Evidence.parse({
       schema_version: 1,

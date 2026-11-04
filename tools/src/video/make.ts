@@ -23,8 +23,9 @@ import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { REPO_ROOT, treeState } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
+import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
 import type { Acceptance } from "../evidence/schema.js";
-import { escapeHtml as esc, loadAcceptance } from "../page/render.js";
+import { GATE_LABEL, escapeHtml as esc, loadAcceptance } from "../page/render.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
@@ -79,18 +80,19 @@ const short = (h: string): string => (h.length > 16 ? `${h.slice(0, 10)}…${h.s
 
 // ---- scenes --------------------------------------------------------------------------------------
 
-type Kind = "sandbox" | "model" | "page" | "spec" | "summary";
+type Kind = "demo" | "page" | "summary";
 
+const DEMO_LABELS = ["Local NEAR sandbox", "Real Intents verifier WASM", "Test doubles: MPC, oracle, tokens", "No mainnet"];
 const KIND_LABEL: Record<Kind, string[]> = {
-  sandbox: ["Local NEAR sandbox", "Real Intents verifier WASM", "Test doubles: MPC signer, oracle, tokens", "No mainnet"],
-  model: ["Local NEAR sandbox", "Recorded genuine model output", "Real Intents verifier WASM", "Test doubles: MPC, oracle, tokens", "No mainnet"],
+  demo: DEMO_LABELS,
   page: ["Evidence page rendered from run files", "Not an execution", "Sandbox results only", "No mainnet"],
-  spec: ["Claim text (SPEC.md)", "Not an execution", "No mainnet"],
   summary: ["Summary of run files", "Sandbox results only", "No mainnet"],
 };
 
 interface Scene {
   kind: Kind;
+  /** Extra execution labels for this scene, e.g. recorded genuine model output or scripted attacks. */
+  labels?: string[];
   title: string;
   body: string;
   captions: string[];
@@ -100,18 +102,14 @@ const list = (items: string[]): string => `<ul>${items.map((i) => `<li>${i}</li>
 const kv = (rows: [string, string][]): string => `<table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>`;
 const img = (png: Buffer): string => `<img class="shot" src="data:image/png;base64,${png.toString("base64")}" alt="">`;
 
-function acceptanceStatus(acc: Acceptance | null, ev: Evidence): { chip: string; sentence: string } {
-  if (acc === null) return { chip: "No acceptance run", sentence: "No acceptance.json: this video shows no gate result; every gate counts as not run." };
-  if (acc.revision !== ev.source.product_commit) return { chip: "Acceptance: other revision", sentence: "The acceptance run is for another revision, so its gate results do not count here." };
-  if (!acc.certified) {
-    const open = acc.cases.filter((c) => c.status !== "passed").length;
-    const why = [acc.dirty ? "dirty working tree" : "", open > 0 ? `${String(open)} required cases not passed` : "", acc.problems.length > 0 ? "run problems" : ""];
-    return { chip: "Acceptance: UNCERTIFIED", sentence: `The acceptance run is uncertified (${why.filter(Boolean).join(", ")}); no gate counts as passed.` };
-  }
-  return { chip: "Acceptance: certified", sentence: "The acceptance run is certified: clean tree, every required case present once, passed and hash-matched." };
+/** The only place the video may say "certified": a certified acceptance run bound to this demo. */
+function certification(binding: DemoBinding): { chip: string; sentence: string } {
+  return binding.certified
+    ? { chip: "Certified for this demo", sentence: "Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM." }
+    : { chip: "Not certified for this demo", sentence: `Not certified for this demo: ${binding.reasons.join("; ")}. No gate counts as passed.` };
 }
 
-function scenes(ev: Evidence, acc: Acceptance | null, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
+function scenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
   const A = new Map(ev.assertions.map((a) => [a.id, a]));
   const obs = (id: string): unknown => {
     const a = A.get(id);
@@ -134,8 +132,7 @@ function scenes(ev: Evidence, acc: Acceptance | null, steps: LogStep[], shots: R
     return s;
   };
   const checks = (s: LogStep): string => list(s.lines.map((l) => `<span class="${l.ok ? "ok" : "bad"}">${l.ok ? "ok" : "FAIL"}</span> <code>[${esc(l.gate)}]</code> ${esc(l.text)}`));
-  const status = acceptanceStatus(acc, ev);
-  const commit = `${ev.source.product_commit.slice(0, 10)}${ev.source.dirty ? " (dirty tree)" : ""}`;
+  const status = certification(binding);
 
   const roles = stepOf("Roles and limits");
   const initial = (obs("grant-initial-value") as { contract: string }).contract;
@@ -162,44 +159,38 @@ function scenes(ev: Evidence, acc: Acceptance | null, steps: LogStep[], shots: R
   const recovery = stepOf("Recovery to the owner");
   const rec = (obs("recovered") as { recovered: { usdc: string; wnear: string }; mandate_final: { usdc: string; wnear: string } });
 
-  const caseRows = acc === null
-    ? Object.entries(REQUIRED_CASES).map(([g, cs]) => `<tr><th>${esc(g)}</th><td>${cs.map((c) => `<span class="pill none">${esc(c)}: not run</span>`).join(" ")}</td></tr>`).join("")
-    : Object.keys(REQUIRED_CASES).map((g) => `<tr><th>${esc(g)}</th><td>${acc.cases.filter((c) => c.gate === g).map((c) => `<span class="pill ${c.status === "passed" && acc.certified ? "ok" : c.status === "passed" ? "warn" : "bad"}">${esc(c.case)}: ${esc(c.status === "passed" && !acc.certified ? "passed (uncertified)" : c.status)}</span>`).join(" ")}</td></tr>`).join("");
-  const counted = acc?.cases.filter((c) => c.status === "passed").length ?? 0;
+  // One pill per required case; a case the acceptance run did not evaluate (e.g. added later) is shown as such.
+  const pill = (g: string, name: string): string => {
+    const c = acc?.cases.find((x) => x.gate === g && x.case === name);
+    if (c === undefined) return `<span class="pill none">${esc(name)}: ${acc === null ? "not run" : "not in this acceptance run"}</span>`;
+    const cls = c.status === "passed" ? (binding.certified ? "ok" : "warn") : "bad";
+    return `<span class="pill ${cls}">${esc(name)}: ${esc(c.status)}</span>`;
+  };
+  const caseRows = Object.entries(REQUIRED_CASES)
+    .map(([g, names]) => `<tr><th>${esc(g)}<br><small>${esc(GATE_LABEL[g] ?? "")}</small></th><td>${names.map((n) => pill(g, n)).join(" ")}</td></tr>`)
+    .join("");
+  const counted = Object.entries(REQUIRED_CASES).flatMap(([g, names]) => names.filter((n) => acc?.cases.some((c) => c.gate === g && c.case === n && c.status === "passed"))).length;
   const totalCases = Object.values(REQUIRED_CASES).flat().length;
   const t5 = acc?.baseline ?? null;
 
+  const rescue = acc?.separate.find((c) => c.id === "RESCUE.owner-key");
   const out: Scene[] = [
     {
       kind: "summary",
+      labels: DEMO_LABELS,
       title: "A bounded trading mandate on NEAR Intents",
-      body: kv([
-        ["Revision", commit],
-        ["Demo run", ev.generated_at],
-        ["Demo checks", `${String(ev.assertions.filter((a) => a.passed).length)}/${String(ev.assertions.length)} held`],
-        ["Acceptance", status.chip],
-        ["Execution", "local sandbox; MPC, oracle and tokens are test doubles; real verifier WASM; no mainnet"],
-      ]),
-      captions: [`Everything in this video is read from the files of one demo run at revision ${commit}.`, status.sentence],
+      body: `<p class="claim">The mandate contract builds and signs every trade itself; the agent can only propose within immutable limits. After the owner's confirmed key removal, withheld signed orders fail, and the owner recovers assets without the agent, oracle or signer.</p>`,
+      captions: ["Claim: the contract builds and signs every trade; after confirmed key removal, withheld orders fail and the owner recovers without agent, oracle or signer.", status.sentence],
     },
     {
-      kind: "spec",
-      title: "Claim and non-claims",
-      body: img(shots.claim ?? Buffer.alloc(0)),
-      captions: [
-        "Claim: the mandate contract builds and signs every order itself; the agent can only propose within immutable limits.",
-        "After confirmed key removal, withheld signed orders fail, and the owner recovers assets without agent, oracle or MPC.",
-        "Not claimed: principal, profit, execution availability or a maximum total loss. The owner stays trusted.",
-      ],
-    },
-    {
-      kind: "sandbox",
+      kind: "demo",
       title: "1 · Grant and limits",
       body: txs(/grant/) + checks(roles),
-      captions: [`The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. Path ${ev.identifiers.grant_path ?? "?"}.`, "The agent's only key is a function-call key for propose_order; the mandate account has no key."],
+      captions: [`The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. The agent's only key can call propose_order.`],
     },
     {
-      kind: "model",
+      kind: "demo",
+      labels: ["Recorded genuine model output"],
       title: `2 · Recorded genuine model output, ${modelName}`,
       body: kv([
         ["Model", modelName],
@@ -207,95 +198,88 @@ function scenes(ev: Evidence, acc: Acceptance | null, steps: LogStep[], shots: R
         ["Prompt sha256", decision.prompt_sha256],
         ["Raw output sha256", decision.raw_output_sha256],
       ]) + txs(/propose_order \(order 1\)/) + checks(model),
-      captions: [`Recorded genuine model output, ${modelName}: sell ${usdc(proposal.sell_amount)} for wNEAR, at most ${String(proposal.max_concession_bps)} bps concession.`, "The replay is hash-bound to the chain state; the proposal reached propose_order and the contract signed it."],
+      captions: [`Recorded genuine model output, ${modelName}: sell ${usdc(proposal.sell_amount)} for wNEAR, at most ${String(proposal.max_concession_bps)} bps concession. The contract signs it.`],
     },
     {
-      kind: "sandbox",
-      title: "3 · Fill on the real verifier WASM",
+      kind: "demo",
+      title: "3 · Trade on the real verifier WASM",
       body: kv([
         ["Signed sell", usdc(trade.signed.sell_amount)],
         ["Signed buy", wnear(trade.signed.buy_amount)],
         ["Mandate USDC", `${usdc(trade.before.usdc ?? "0")} → ${usdc(trade.after.usdc ?? "0")}`],
         ["Mandate wNEAR", `${wnear(trade.before.wnear ?? "0")} → ${wnear(trade.after.wnear ?? "0")}`],
       ]) + txs(/execute_intents order|settle_order/) + checks(fill),
-      captions: [`Our filler fills the order on the pinned mainnet verifier WASM: the mandate pays ${usdc(trade.signed.sell_amount)} and receives ${wnear(trade.signed.buy_amount)}, exactly as signed.`],
+      captions: [`Our filler fills it on the pinned mainnet verifier WASM: the mandate pays ${usdc(trade.signed.sell_amount)} and receives ${wnear(trade.signed.buy_amount)}, exactly as signed.`],
     },
     {
-      kind: "sandbox",
+      kind: "demo",
+      labels: ["Scripted proposal"],
       title: "4 · A second signed order is withheld",
       body: txs(/scripted, withheld/) + checks(withheld),
       captions: ["A scripted second order is signed and withheld. Before revocation the verifier would still accept it."],
     },
     {
-      kind: "sandbox",
+      kind: "demo",
+      labels: ["Scripted attacks"],
       title: `5 · Scripted attacks: ${String(attacksStopped)} of ${String(attackRows.length)} stopped`,
       body: kv([...byBoundary.entries()].map(([b, n]): [string, string] => [b, `${String(n)} stopped`])) + list(attacks.lines.filter((l) => !l.text.includes("stopped by")).map((l) => esc(l.text))),
-      captions: [`Scripted attacks: ${String(attackRows.length)} injected or direct malicious requests; ${String(attacksStopped)} were stopped at their expected boundary with no state change.`, "These are scripted requests, labelled separately from the model's own output."],
+      captions: [`Scripted attacks: ${String(attacksStopped)} of ${String(attackRows.length)} injected or direct malicious requests stopped at their expected boundary, with no state change.`],
     },
     {
-      kind: "sandbox",
+      kind: "demo",
       title: "6 · Owner revokes; key removal confirmed",
       body: txs(/^owner revoke/) + checks(revoke),
-      captions: ["The owner revokes. The grant key is removed from the verifier, and only that confirmation releases the withheld order's reservation."],
+      captions: ["The owner revokes. The verifier confirms the grant key is removed; only then is the withheld order's reservation released."],
     },
     {
-      kind: "sandbox",
+      kind: "demo",
       title: "7 · The withheld order is relayed and rejected",
       body: kv([["Verifier error", reason], ["Time left before its deadline", `${String(secondsLeft)} s`], ["Nonce used", String(rejected.nonce_used)]]) + txs(/withheld order after revocation/) + checks(relay),
-      captions: [`Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the key no longer exists. No balance changed.`],
+      captions: [`Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the key no longer exists.`],
     },
     {
-      kind: "sandbox",
-      title: "8 · Recovery with agent, oracle and MPC unavailable",
+      kind: "demo",
+      labels: ["Ordinary recovery (not the owner-key rescue)"],
+      title: "8 · Ordinary recovery with agent, oracle and MPC unavailable",
       body: kv([["Recovered", `${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)}`], ["Destination", `${ev.identifiers.owner ?? "owner"} (owner's Intents account)`], ["Mandate left", `${usdc(rec.mandate_final.usdc)}, ${wnear(rec.mandate_final.wnear)}`]]) + txs(/set_fail|set_mode|after revocation/) + txs(/recover/) + checks(disabled) + checks(recovery),
-      captions: [`With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} to the owner's Intents account.`],
+      captions: [`With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} through ordinary recovery.`],
     },
     {
       kind: "summary",
       title: `Acceptance gates per case: ${String(counted)} of ${String(totalCases)} passed`,
-      body: `<p class="chip-line">${esc(status.chip)}${acc === null ? "" : ` · run ${esc(String(acc.run_id))}`}</p><table class="cases">${caseRows}</table>`,
-      captions: [acc === null ? status.sentence : `${String(counted)} of ${String(totalCases)} required cases passed in acceptance run ${String(acc.run_id)}. ${status.sentence}`],
+      body: `${binding.certified ? "" : `<p class="note">Amber: passed in the acceptance run, but not certified for this demo.</p>`}<table class="cases">${caseRows}</table><p class="note">Emergency owner-key rescue, reported separately and never counted toward T4: ${esc(rescue === undefined ? "not reported" : rescue.status)}.</p>`,
+      captions: [binding.certified ? `${String(counted)} of ${String(totalCases)} required cases passed, certified for this demo.` : `${String(counted)} of ${String(totalCases)} required cases passed, but this run is not certified for this demo.`, "The emergency owner-key rescue is reported separately; it never counts as ordinary recovery."],
     },
     {
       kind: "page",
-      title: "Evidence page · acceptance gates",
-      body: img(shots.gates ?? Buffer.alloc(0)),
-      captions: ["The generated evidence page shows each required case, and never marks a gate from demo checks."],
-    },
-    {
-      kind: "page",
-      title: "Evidence page · T5, our re-implementation of Claw Guard",
-      body: img(shots.baseline ?? Buffer.alloc(0)),
-      captions: ["T5 applies the same threats to our own re-implementation of the pinned Claw Guard design, not to the deployed product."],
-    },
-    {
-      kind: "page",
-      title: "Evidence page · T5 threat cases",
+      title: "T5 · our re-implementation of the Claw Guard design",
       body: img(shots.baselineTable ?? Buffer.alloc(0)),
       captions: [
         t5 === null
-          ? "This evidence has no T5 baseline report, so differentiation is unproven here."
-          : `In that re-implementation, ${String(t5.cases.filter((c) => c.baseline_outcome === "attack_succeeded").length)} of ${String(t5.cases.length)} threat cases were executed as successful attacks; an increment counts only with a passing mandate gate in a certified run.`,
+          ? "T5 compares against our own re-implementation of the pinned Claw Guard design; this evidence has no T5 report, so differentiation is unproven."
+          : `T5 runs the same threats against our own re-implementation of the pinned Claw Guard design, not the deployed product: ${String(t5.cases.filter((c) => c.baseline_outcome === "attack_succeeded").length)} of ${String(t5.cases.length)} cases executed as successful attacks.`,
       ],
-    },
-    {
-      kind: "summary",
-      title: "Hashes and revision",
-      body: kv([
-        ["Revision", `${ev.source.product_commit}${ev.source.dirty ? " (dirty)" : ""}`],
-        ["SPEC.md sha256", ev.source.spec_sha256],
-        ["Mandate WASM sha256", ev.source.contract_wasm_sha256],
-        ["Verifier WASM sha256", ev.source.fixtures["verifier/defuse-0.4.5.wasm"] ?? "unknown"],
-        ["Model recording sha256", ev.source.fixtures["model/normal.json"] ?? "unknown"],
-        ["Acceptance run", acc === null ? "none" : `${String(acc.run_id)} (certified: ${String(acc.certified)})`],
-      ]),
-      captions: ["Each result is bound to its source revision and to the spec, fixture and WASM hashes shown here."],
     },
     {
       kind: "summary",
       title: "Limits",
       body: list([...ev.unknowns, status.sentence].map(esc)),
-      captions: ["Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution in this run; the model step is a replay.", status.sentence],
+      captions: ["Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; the model step is a replay. No guarantee of profit or a maximum loss."],
+    },
+    {
+      kind: "summary",
+      title: "Provenance",
+      body: kv([
+        ["Demo revision", `${ev.source.product_commit}${ev.source.dirty ? " (dirty)" : ""}`],
+        ["Acceptance run", acc === null ? "none" : `${String(acc.run_id)} at ${String(acc.revision)}${acc.dirty ? " (dirty)" : ""}`],
+        ["Latest run", binding.inputs.latest_run_id ?? "unknown"],
+        ["SPEC.md sha256", ev.source.spec_sha256],
+        ["Fixture manifest sha256", ev.source.fixture_manifest_sha256 ?? "not recorded by the demo"],
+        ["Mandate WASM sha256", ev.source.contract_wasm_sha256],
+        ["Verifier WASM sha256", ev.source.fixtures["verifier/defuse-0.4.5.wasm"] ?? "unknown"],
+        ["Certification", binding.certified ? "certified for this demo" : `not certified for this demo: ${binding.reasons.join("; ")}`],
+      ]),
+      captions: [status.sentence],
     },
   ];
   const hidden = ev.receipts.filter((_, i) => !shown.has(i)).map((r) => r.label);
@@ -318,19 +302,25 @@ code { font: 22px "SF Mono", Menlo, monospace; color: #c9d6e3; }
 .ok { color: #6fcf9f; font-weight: 700; } .bad { color: #ff8a7a; font-weight: 700; }
 table.kv { border-collapse: collapse; margin-bottom: 14px; } table.kv th { text-align: left; color: #a39d8f; font-weight: 600; padding: 6px 28px 6px 0; vertical-align: top; white-space: nowrap; }
 table.kv td { font: 24px/1.4 "SF Mono", Menlo, monospace; word-break: break-all; padding: 6px 0; }
-table.cases th { text-align: left; padding: 8px 20px 8px 0; font: 700 24px "SF Mono", Menlo, monospace; vertical-align: top; }
-.pill { display: inline-block; font: 600 19px "SF Mono", Menlo, monospace; padding: 6px 10px; margin: 3px; border-radius: 4px; border: 2px solid; }
+table.cases th { text-align: left; padding: 3px 20px 3px 0; font: 700 22px "SF Mono", Menlo, monospace; vertical-align: top; white-space: nowrap; }
+.pill { display: inline-block; font: 600 17px "SF Mono", Menlo, monospace; padding: 4px 8px; margin: 2px; border-radius: 4px; border: 2px solid; }
 .pill.ok { color: #6fcf9f; } .pill.warn { color: #e6b450; } .pill.bad { color: #ff8a7a; } .pill.none { color: #9a958a; border-style: dashed; }
 .chip-line { font: 600 26px "SF Mono", Menlo, monospace; color: #e0866f; margin: 0 0 14px; }
+.reason { margin: 10px 48px 0; font: 600 20px/1.3 "SF Mono", Menlo, monospace; color: #e0866f; max-height: 54px; overflow: hidden; }
+.claim { font-size: 40px; line-height: 1.35; max-width: 1600px; }
+.note { font-size: 22px; color: #e6b450; margin: 4px 0 8px; } table.cases small { font: 500 15px -apple-system, sans-serif; color: #a39d8f; }
 img.shot { width: 100%; height: 690px; object-fit: contain; object-position: top center; border: 1px solid #2a3039; }
 .caption { position: absolute; left: 0; right: 0; bottom: 0; min-height: 150px; padding: 24px 80px; background: rgba(0,0,0,.82); color: #fff;
   font: 500 36px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; text-align: center; display: flex; align-items: center; justify-content: center; }
 `;
 
-function slideHtml(s: Scene, caption: string, accChip: string, certified: boolean): string {
-  const chips = KIND_LABEL[s.kind].map((l) => `<span class="chip${s.kind === "model" && l.startsWith("Recorded") ? " model" : ""}">${esc(l)}</span>`).join("");
+function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
+  const labels = [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])];
+  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary)/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
+  const status = certification(binding);
+  const reason = binding.certified ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
-<div class="top">${chips}<span class="chip acc${certified ? " ok" : ""}">${esc(accChip)}</span></div>
+<div class="top">${chips}<span class="chip acc${binding.certified ? " ok" : ""}">${esc(status.chip)}</span></div>${reason}
 <h1>${esc(s.title)}</h1><div class="body">${s.body}</div><div class="caption">${esc(caption)}</div></body></html>`;
 }
 
@@ -360,7 +350,7 @@ async function pageShots(browser: PwBrowser, pagePath: string): Promise<Record<s
   await page.goto(`file://${pagePath}`);
   const shots: Record<string, Buffer> = {};
   // Without a T5 report the baseline section has no table; its heading is shown instead.
-  for (const [name, selector] of Object.entries({ claim: "#claim", gates: "#gates", baseline: "#baseline", baselineTable: "#baseline table, #baseline" })) {
+  for (const [name, selector] of Object.entries({ baselineTable: "#baseline table, #baseline" })) {
     const top = Number(await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top + window.scrollY`));
     shots[name] = await page.screenshot({ fullPage: true, clip: { x: 0, y: Math.max(0, top - 16), width: 1240, height: 560 } });
   }
@@ -379,7 +369,7 @@ const chunks = (caption: string): string[] => {
   }
   return out;
 };
-const secondsFor = (text: string): number => Math.min(7, Math.max(4, text.split(" ").length / 3.2 + 1));
+const secondsFor = (text: string): number => Math.min(9, Math.max(6, text.split(" ").length / 2.6 + 1.5));
 
 const srtTime = (s: number): string => {
   const ms = Math.round(s * 1000);
@@ -400,6 +390,7 @@ async function main(): Promise<void> {
   for (const [name, path] of Object.entries(files)) if (name !== "acceptance" && !existsSync(path)) throw new Error(`missing ${rel(path)}`);
   const ev = Evidence.parse(JSON.parse(readFileSync(files.demo, "utf8")));
   const acc = loadAcceptance(REPO_ROOT);
+  const binding = bindDemo(ev, acc, latestRunId(REPO_ROOT));
   const { steps, setupMs, storyMs } = parseLog(readFileSync(files.log, "utf8"), ev);
   const modelFixture = readFileSync(files.model);
   if (sha256(modelFixture) !== ev.source.fixtures["model/normal.json"]) throw new Error("fixtures/model/normal.json differs from the hash recorded in demo.json");
@@ -411,13 +402,11 @@ async function main(): Promise<void> {
   const frames: { file: string; seconds: number; caption: string; title: string; kind: Kind }[] = [];
   try {
     const shots = await pageShots(browser, files.page);
-    const status = acceptanceStatus(acc, ev);
-    const certified = acc !== null && acc.certified && acc.revision === ev.source.product_commit;
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
-    for (const scene of scenes(ev, acc, steps, shots, modelName)) {
+    for (const scene of scenes(ev, acc, binding, steps, shots, modelName)) {
       for (const caption of scene.captions.flatMap(chunks)) {
         const file = join(OUT, "frames", `${String(frames.length + 1).padStart(3, "0")}.png`);
-        await slide.setContent(slideHtml(scene, caption, status.chip, certified));
+        await slide.setContent(slideHtml(scene, caption, binding));
         await slide.screenshot({ path: file });
         frames.push({ file, seconds: secondsFor(caption), caption, title: scene.title, kind: scene.kind });
       }
@@ -453,6 +442,7 @@ async function main(): Promise<void> {
     demo_revision: ev.source.product_commit,
     demo_dirty: ev.source.dirty,
     acceptance: acc === null ? null : { run_id: acc.run_id, revision: acc.revision, certified: acc.certified, complete: acc.complete },
+    certification: { certified_for_this_demo: binding.certified, reasons: binding.reasons, inputs: binding.inputs },
     sources: Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),
     demo_timing_ms: { setup: setupMs, story: storyMs },
     output: { mp4: { path: rel(mp4), sha256: hashOf(mp4), bytes: readFileSync(mp4).length, duration_s: duration }, srt: { path: "out/video/captions.srt", sha256: hashOf(join(OUT, "captions.srt")) } },
@@ -460,7 +450,7 @@ async function main(): Promise<void> {
     frames: frames.map((f) => ({ file: rel(f.file), seconds: f.seconds, kind: f.kind, title: f.title, caption: f.caption })),
   };
   writeFileSync(join(OUT, "video.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`${rel(mp4)}: ${duration.toFixed(1)} s, ${String(manifest.output.mp4.bytes)} bytes, ${String(frames.length)} frames; ${acceptanceStatus(acc, ev).chip}`);
+  console.log(`${rel(mp4)}: ${duration.toFixed(1)} s, ${String(manifest.output.mp4.bytes)} bytes, ${String(frames.length)} frames; ${certification(binding).chip}${binding.certified ? "" : `: ${binding.reasons.join("; ")}`}`);
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) await main();

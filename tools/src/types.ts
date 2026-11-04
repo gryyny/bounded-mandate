@@ -170,6 +170,9 @@ export const Evidence = z.object({
     spec_commit: z.string(),
     contract_wasm_sha256: z.string(),
     fixtures: z.record(z.string(), z.string()),
+    /** sha256 of fixtures/manifest.json and of every target/near WASM the run deployed (binds the demo to an acceptance run). */
+    fixture_manifest_sha256: z.string().optional(),
+    wasm_sha256: z.record(z.string(), z.string()).optional(),
   }),
   environment: z.record(z.string(), z.string()),
   command: z.string(),
