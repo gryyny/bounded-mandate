@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "bundles": [
+    {
+      "path": "evidence/163ccfa",
+      "revision": "163ccfa75de2db014a626de7dea4b7baad0bace4",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance (all required cases, one clean run, hash-bound)",
+      "run": "evidence/163ccfa/run.json"
+    },
+    {
+      "path": "evidence/426914d",
+      "revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
+      "status": "legacy",
+      "rules": "gate-report/1; not certified under current rules; kept unchanged",
+      "run": "evidence/426914d/run.json"
+    }
+  ]
+}

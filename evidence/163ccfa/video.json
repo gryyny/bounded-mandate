@@ -1,0 +1,225 @@
+{
+  "schema": "bounded-mandate/video/1",
+  "generated_at": "2026-11-04T00:38:14.069Z",
+  "revision": "163ccfa75de2db014a626de7dea4b7baad0bace4",
+  "dirty": false,
+  "demo_revision": "163ccfa75de2db014a626de7dea4b7baad0bace4",
+  "demo_dirty": false,
+  "acceptance": {
+    "run_id": "20261104T001916684Z-557b0973a695",
+    "revision": "163ccfa75de2db014a626de7dea4b7baad0bace4",
+    "certified": true,
+    "complete": true
+  },
+  "sources": {
+    "demo": {
+      "path": "out/evidence/demo.json",
+      "sha256": "cbd68210ab5a67040e6b04d6632f45efdc0362bfeb41330f0d6bee7aab070a7e"
+    },
+    "acceptance": {
+      "path": "out/evidence/acceptance.json",
+      "sha256": "9d7725094134af367e692cab2e7a29fbd9f21486fe66880250b8894d83bfd17e"
+    },
+    "page": {
+      "path": "out/page/index.html",
+      "sha256": "6d2ba1857064e4751f6c26e962a13e176cefb15ca5370806f37c93ff1ce799ad"
+    },
+    "log": {
+      "path": "out/video/demo.log",
+      "sha256": "02aad00e77b0816ec4897478dbdaa2d1142b604b28f83a87d99c506adf9690d3"
+    },
+    "model": {
+      "path": "fixtures/model/normal.json",
+      "sha256": "8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094"
+    }
+  },
+  "demo_timing_ms": {
+    "setup": 21679,
+    "story": 16636
+  },
+  "output": {
+    "mp4": {
+      "path": "out/video/bounded-mandate-demo.mp4",
+      "sha256": "f1a0fe1e2be8e7bff41e4ad3d3c9001b1ce8639c6430baf7fe23354df52a2a3f",
+      "bytes": 3439769,
+      "duration_s": 153.266667
+    },
+    "srt": {
+      "path": "out/video/captions.srt",
+      "sha256": "e01e1d5572010dc20e8d8b7e20aae34f2a0672dc80cfef65660709d8cb9a58db"
+    }
+  },
+  "tools": {
+    "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers"
+  },
+  "frames": [
+    {
+      "file": "out/video/frames/001.png",
+      "seconds": 6,
+      "kind": "summary",
+      "title": "A bounded trading mandate on NEAR Intents",
+      "caption": "Everything in this video is read from the files of one demo run at revision 163ccfa75d."
+    },
+    {
+      "file": "out/video/frames/002.png",
+      "seconds": 5.6875,
+      "kind": "summary",
+      "title": "A bounded trading mandate on NEAR Intents",
+      "caption": "The acceptance run is certified: clean tree, every required case present once, passed and hash-matched."
+    },
+    {
+      "file": "out/video/frames/003.png",
+      "seconds": 6.625,
+      "kind": "spec",
+      "title": "Claim and non-claims",
+      "caption": "Claim: the mandate contract builds and signs every order itself; the agent can only propose within immutable limits."
+    },
+    {
+      "file": "out/video/frames/004.png",
+      "seconds": 6.625,
+      "kind": "spec",
+      "title": "Claim and non-claims",
+      "caption": "After confirmed key removal, withheld signed orders fail, and the owner recovers assets without agent, oracle or MPC."
+    },
+    {
+      "file": "out/video/frames/005.png",
+      "seconds": 5.6875,
+      "kind": "spec",
+      "title": "Claim and non-claims",
+      "caption": "Not claimed: principal, profit, execution availability or a maximum total loss. The owner stays trusted."
+    },
+    {
+      "file": "out/video/frames/006.png",
+      "seconds": 4.4375,
+      "kind": "sandbox",
+      "title": "1 · Grant and limits",
+      "caption": "The owner grants the mandate. Initial reference value: $1,899.80. Path mandate/v1/1."
+    },
+    {
+      "file": "out/video/frames/007.png",
+      "seconds": 6,
+      "kind": "sandbox",
+      "title": "1 · Grant and limits",
+      "caption": "The agent's only key is a function-call key for propose_order; the mandate account has no key."
+    },
+    {
+      "file": "out/video/frames/008.png",
+      "seconds": 5.6875,
+      "kind": "model",
+      "title": "2 · Recorded genuine model output, claude-haiku-5-5",
+      "caption": "Recorded genuine model output, claude-haiku-5-5: sell 49.90 USDC for wNEAR, at most 50 bps concession."
+    },
+    {
+      "file": "out/video/frames/009.png",
+      "seconds": 6.3125,
+      "kind": "model",
+      "title": "2 · Recorded genuine model output, claude-haiku-5-5",
+      "caption": "The replay is hash-bound to the chain state; the proposal reached propose_order and the contract signed it."
+    },
+    {
+      "file": "out/video/frames/010.png",
+      "seconds": 7,
+      "kind": "sandbox",
+      "title": "3 · Fill on the real verifier WASM",
+      "caption": "Our filler fills the order on the pinned mainnet verifier WASM: the mandate pays 49.90 USDC and receives 16.5468 wNEAR, exactly as signed."
+    },
+    {
+      "file": "out/video/frames/011.png",
+      "seconds": 6,
+      "kind": "sandbox",
+      "title": "4 · A second signed order is withheld",
+      "caption": "A scripted second order is signed and withheld. Before revocation the verifier would still accept it."
+    },
+    {
+      "file": "out/video/frames/012.png",
+      "seconds": 6.9375,
+      "kind": "sandbox",
+      "title": "5 · Scripted attacks: 39 of 39 stopped",
+      "caption": "Scripted attacks: 39 injected or direct malicious requests; 39 were stopped at their expected boundary with no state change."
+    },
+    {
+      "file": "out/video/frames/013.png",
+      "seconds": 4.4375,
+      "kind": "sandbox",
+      "title": "5 · Scripted attacks: 39 of 39 stopped",
+      "caption": "These are scripted requests, labelled separately from the model's own output."
+    },
+    {
+      "file": "out/video/frames/014.png",
+      "seconds": 7,
+      "kind": "sandbox",
+      "title": "6 · Owner revokes; key removal confirmed",
+      "caption": "The owner revokes. The grant key is removed from the verifier, and only that confirmation releases the withheld order's reservation."
+    },
+    {
+      "file": "out/video/frames/015.png",
+      "seconds": 7,
+      "kind": "sandbox",
+      "title": "7 · The withheld order is relayed and rejected",
+      "caption": "Another account relays the withheld order 49 s before its deadline. The verifier rejects it: the key no longer exists. No balance changed."
+    },
+    {
+      "file": "out/video/frames/016.png",
+      "seconds": 7,
+      "kind": "sandbox",
+      "title": "8 · Recovery with agent, oracle and MPC unavailable",
+      "caption": "With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR to the owner's Intents account."
+    },
+    {
+      "file": "out/video/frames/017.png",
+      "seconds": 4.125,
+      "kind": "summary",
+      "title": "Acceptance gates per case: 19 of 19 passed",
+      "caption": "19 of 19 required cases passed in acceptance run 20261104T001916684Z-557b0973a695."
+    },
+    {
+      "file": "out/video/frames/018.png",
+      "seconds": 5.6875,
+      "kind": "summary",
+      "title": "Acceptance gates per case: 19 of 19 passed",
+      "caption": "The acceptance run is certified: clean tree, every required case present once, passed and hash-matched."
+    },
+    {
+      "file": "out/video/frames/019.png",
+      "seconds": 6,
+      "kind": "page",
+      "title": "Evidence page · acceptance gates",
+      "caption": "The generated evidence page shows each required case, and never marks a gate from demo checks."
+    },
+    {
+      "file": "out/video/frames/020.png",
+      "seconds": 7,
+      "kind": "page",
+      "title": "Evidence page · T5, our re-implementation of Claw Guard",
+      "caption": "T5 applies the same threats to our own re-implementation of the pinned Claw Guard design, not to the deployed product."
+    },
+    {
+      "file": "out/video/frames/021.png",
+      "seconds": 7,
+      "kind": "page",
+      "title": "Evidence page · T5 threat cases",
+      "caption": "In that re-implementation, 3 of 11 threat cases were executed as successful attacks; an increment counts only with a passing mandate gate in a certified run."
+    },
+    {
+      "file": "out/video/frames/022.png",
+      "seconds": 6.625,
+      "kind": "summary",
+      "title": "Hashes and revision",
+      "caption": "Each result is bound to its source revision and to the spec, fixture and WASM hashes shown here."
+    },
+    {
+      "file": "out/video/frames/023.png",
+      "seconds": 7,
+      "kind": "summary",
+      "title": "Limits",
+      "caption": "Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution in this run; the model step is a replay."
+    },
+    {
+      "file": "out/video/frames/024.png",
+      "seconds": 5.6875,
+      "kind": "summary",
+      "title": "Limits",
+      "caption": "The acceptance run is certified: clean tree, every required case present once, passed and hash-matched."
+    }
+  ]
+}
