@@ -185,7 +185,7 @@ async fn t3_concession_bound_on_every_fill() -> anyhow::Result<()> {
     let passed = violations.is_empty() && fills.len() >= 12;
     evidence::write(
         "T3",
-        Some("concession"),
+        "concession",
         passed,
         "sandbox",
         json!({
@@ -408,7 +408,7 @@ async fn t3_feed_and_timing_adversity() -> anyhow::Result<()> {
     let passed = failures.is_empty();
     evidence::write(
         "T3",
-        Some("feeds-timing"),
+        "feeds-timing",
         passed,
         "sandbox",
         json!({"cases": log, "failures": failures}),
@@ -519,7 +519,7 @@ async fn t3_breaker_trip_report() -> anyhow::Result<()> {
         && !after_trip.is_success();
     evidence::write(
         "T3",
-        Some("breaker"),
+        "breaker",
         passed,
         "sandbox",
         json!({

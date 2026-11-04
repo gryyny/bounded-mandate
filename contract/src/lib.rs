@@ -22,6 +22,25 @@
 //! (no key exists). Every continuation checks epoch, order id, state and deadline; stale or
 //! duplicate callbacks are no-ops.
 //!
+//! **Unresolved registration.** If `on_key_added` never completes, the key stays `Adding`:
+//! revocation cannot issue removal and recovery is refused. Revocation is never declared from a
+//! timeout or from one absent-key observation, because the add could still execute.
+//! - Ordinary, keyless: the owner calls `reconcile_registration`, which reads the verifier's
+//!   `has_public_key(self, key)`. Apart from the verifier's own admins (`force_add_public_keys`,
+//!   already trusted with this account), only this account can register keys for itself, and
+//!   this epoch's derived key is requested only by its own registration, so presence proves that
+//!   receipt executed; it continues exactly as a confirmed registration (`Active`, or removal when
+//!   `Revoking`). Absence or a failed read changes nothing (`registration_unresolved`).
+//! - Emergency, not keyless: if the add itself failed and its callback was also lost, the key is
+//!   absent and nothing in the contract can prove that no registration is pending. The trusted
+//!   owner, holding a full-access key on the mandate account (its upgrade authority), first
+//!   confirms over RPC that every receipt of the grant transaction is terminal (the add and its
+//!   callback failed), then calls the verifier's `add_public_key` as the mandate account, then
+//!   `reconcile_registration` and `revoke`. Re-adding before the original receipts are terminal
+//!   could let a pending add restore the key after removal. A deployment with no access key on
+//!   the mandate account cannot perform this rescue itself; it depends on the verifier's admins
+//!   (`force_add_public_keys` after the same terminal check) or stays stuck.
+//!
 //! **Orders.** `propose_order` validates the proposal, reserves the order's value at the grant's
 //! initial reference and charges `max(that value, proposal floor)` to turnover before any
 //! external call, where the floor is `ceil(initial_value * proposal_charge_bps / 10000)`; then it
@@ -65,15 +84,17 @@
 //!
 //! **Residual risks.** A callback that runs out of gas leaves its state unchanged: a lost
 //! `on_order_priced`/`on_signed` keeps the reservation until the pricing delay or deadline; a lost
-//! removal callback is recoverable by calling `revoke` again; a lost `on_key_added` leaves the
-//! registration unresolved and blocks removal (registration could still be pending, so it is
-//! never presumed). Callback gas is fixed and open orders are capped at [`MAX_OPEN_ORDERS`] to
+//! removal callback is recoverable by calling `revoke` again; a lost `on_key_added` is
+//! recoverable by `reconcile_registration` when the add executed, and otherwise only by the
+//! emergency owner-key procedure above. Callback gas is fixed and open orders are capped at [`MAX_OPEN_ORDERS`] to
 //! bound the work in revocation. Order records are never deleted: storage grows by at most the
 //! record bound per grant, and an underfunded mandate stops accepting proposals (owner actions
 //! that write little state, such as `revoke`, keep working) until the owner adds NEAR.
 
 pub mod events;
 mod ext;
+#[cfg(feature = "fault-injection")]
+mod fault;
 pub mod math;
 pub mod policy;
 pub mod protocol;
@@ -148,6 +169,22 @@ pub const GAS_RECOVER_REQUIRED: Gas = tgas(gas::RECOVER_SELF_TGAS)
     .saturating_add(ext::GAS_VIEW)
     .saturating_add(GAS_ON_RECOVERY_BALANCE)
     .saturating_add(ext::GAS_TRANSFER);
+/// Attached to `on_registration_checked`: its own work plus a removal chain when `Revoking`.
+pub const GAS_ON_REGISTRATION_CHECKED: Gas = tgas(15)
+    .saturating_add(ext::GAS_KEY_OP)
+    .saturating_add(GAS_ON_KEY_REMOVED);
+/// Prepaid gas `reconcile_registration` needs.
+pub const GAS_RECONCILE_REQUIRED: Gas = tgas(10)
+    .saturating_add(ext::GAS_VIEW)
+    .saturating_add(GAS_ON_REGISTRATION_CHECKED);
+const _: () = {
+    let max = Gas::from_tgas(gas::MAX_TX_TGAS).as_gas();
+    assert!(GAS_GRANT_REQUIRED.as_gas() <= max);
+    assert!(GAS_PROPOSE_REQUIRED.as_gas() <= max);
+    assert!(GAS_REVOKE_REQUIRED.as_gas() <= max);
+    assert!(GAS_RECOVER_REQUIRED.as_gas() <= max);
+    assert!(GAS_RECONCILE_REQUIRED.as_gas() <= max);
+};
 const GAS_ORACLE_X2: Gas = ext::GAS_ORACLE.saturating_add(ext::GAS_ORACLE);
 
 #[derive(BorshStorageKey)]
@@ -317,6 +354,30 @@ impl Mandate {
             }
             _ => env::panic_str("inconsistent grant state"),
         }
+    }
+
+    /// Resolves a registration whose `on_key_added` never completed by reading the verifier.
+    /// Presence proves the add executed and continues as a successful registration; absence
+    /// changes nothing, because the add could still be pending.
+    pub fn reconcile_registration(&mut self) -> Promise {
+        self.assert_owner();
+        require!(
+            env::prepaid_gas() >= GAS_RECONCILE_REQUIRED,
+            "insufficient gas attached"
+        );
+        let g = self
+            .grant
+            .as_ref()
+            .unwrap_or_else(|| env::panic_str("no grant"));
+        require!(g.key == KeyState::Adding, "no key registration in flight");
+        let epoch = g.epoch;
+        let pk = g.public_key.clone().expect("registering key is recorded");
+        emit("registration_check_requested", json!({ "epoch": epoch }));
+        ext::has_public_key(&self.config, pk).then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_ON_REGISTRATION_CHECKED)
+                .on_registration_checked(epoch),
+        )
     }
 
     /// Transfers the full verifier balance of `asset` to the owner's Intents account.
@@ -549,6 +610,8 @@ impl Mandate {
 
     #[private]
     pub fn on_key_added(&mut self, epoch: u64) {
+        #[cfg(feature = "fault-injection")]
+        fault::check_key_added(epoch);
         let Some(g) = self.grant.as_mut() else { return };
         if g.epoch != epoch || g.key != KeyState::Adding {
             emit(
@@ -567,17 +630,26 @@ impl Mandate {
             self.finalize_revocation(false);
             return;
         }
-        g.key = KeyState::Added;
-        match g.status {
-            GrantStatus::Activating => {
-                g.status = GrantStatus::Active;
-                emit(
-                    "grant_activated",
-                    json!({ "epoch": epoch, "public_key": g.public_key }),
-                );
-            }
-            GrantStatus::Revoking => self.issue_removal(ext::GAS_KEY_OP),
-            _ => env::panic_str("inconsistent grant state"),
+        self.registration_confirmed();
+    }
+
+    #[private]
+    pub fn on_registration_checked(&mut self, epoch: u64) {
+        let Some(g) = self.grant.as_ref() else { return };
+        if g.epoch != epoch || g.key != KeyState::Adding {
+            emit(
+                "stale_callback",
+                json!({ "callback": "on_registration_checked", "epoch": epoch }),
+            );
+            return;
+        }
+        // Only this account can register keys for itself, and this epoch's derived key was
+        // requested only by its own registration, so presence proves that receipt executed.
+        if result(0).and_then(|b| ext::parse_bool(&b)) == Some(true) {
+            emit("registration_reconciled", json!({ "epoch": epoch }));
+            self.registration_confirmed();
+        } else {
+            emit("registration_unresolved", json!({ "epoch": epoch }));
         }
     }
 
@@ -886,6 +958,24 @@ impl Mandate {
         order
             .created_at_ns
             .saturating_add(secs_to_ns(delay).unwrap_or(u64::MAX))
+    }
+
+    /// Registration of the current grant key is confirmed: activate, or remove it if revocation
+    /// was requested meanwhile.
+    fn registration_confirmed(&mut self) {
+        let g = self.grant.as_mut().expect("grant exists");
+        g.key = KeyState::Added;
+        match g.status {
+            GrantStatus::Activating => {
+                g.status = GrantStatus::Active;
+                emit(
+                    "grant_activated",
+                    json!({ "epoch": g.epoch, "public_key": g.public_key }),
+                );
+            }
+            GrantStatus::Revoking => self.issue_removal(ext::GAS_KEY_OP),
+            _ => env::panic_str("inconsistent grant state"),
+        }
     }
 
     fn issue_removal(&mut self, gas: Gas) {

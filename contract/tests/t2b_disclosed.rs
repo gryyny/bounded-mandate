@@ -11,6 +11,7 @@ mod common;
 use common::evidence;
 use common::intents::DecodedOrder;
 use common::world::{NEAR, Side, USDC, World, WorldOpts, demo_policy, order_state, u};
+use near_workspaces::types::NearToken;
 use serde_json::{Value, json};
 
 async fn accounted(w: &World, id: u64) -> anyhow::Result<(bool, Value)> {
@@ -183,7 +184,317 @@ async fn t2b_disclosed_signature_relayed_independently() -> anyhow::Result<()> {
     // Every disclosed signature corresponds to an order that was accounted until trusted
     // evidence released it.
     let passed = acc0 && acc0b && (acc1 || unusable) && acc2 && !out2.is_success();
-    evidence::write("T2b", None, passed, "sandbox", json!({"steps": steps}));
+    evidence::write(
+        "T2b",
+        "disclosed-relay",
+        passed,
+        "sandbox",
+        json!({"steps": steps}),
+    );
     assert!(passed);
     Ok(())
+}
+
+const BYTE_COST: i128 = 10_000_000_000_000_000_000;
+
+/// Polls a pending proposal transaction until its outcome shows a failed receipt on `mandate`
+/// whose error is `LackBalanceForState`; returns that failure's description.
+async fn wait_storage_failure(
+    status: &near_workspaces::operations::TransactionStatus,
+    mandate: &near_workspaces::AccountId,
+) -> anyhow::Result<Option<String>> {
+    for _ in 0..60 {
+        if let std::task::Poll::Ready(r) = status.status().await? {
+            let hit = r
+                .receipt_outcomes()
+                .iter()
+                .filter(|o| &o.executor_id == mandate && o.is_failure())
+                .map(|o| format!("{:?}", (*o).clone().into_result().err()))
+                .find(|e| e.contains("LackBalanceForState"));
+            if hit.is_some() {
+                return Ok(hit);
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+    Ok(None)
+}
+
+async fn new_pending(w: &World, seen: &[u64]) -> anyhow::Result<u64> {
+    for _ in 0..100 {
+        if let Some(id) = w
+            .mpc_pending()
+            .await?
+            .iter()
+            .filter_map(|p| p["request_id"].as_u64())
+            .find(|id| !seen.contains(id))
+        {
+            return Ok(id);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    anyhow::bail!("no new MPC request")
+}
+
+async fn order_on(m: &near_workspaces::Contract, id: u64) -> anyhow::Result<Value> {
+    Ok(m.view("get_order")
+        .args_json(json!({"order_id": id.to_string()}))
+        .await?
+        .json()?)
+}
+
+async fn wait_state(m: &near_workspaces::Contract, id: u64, want: &str) -> anyhow::Result<Value> {
+    for _ in 0..100 {
+        let o = order_on(m, id).await?;
+        if !o.is_null() && order_state(&o) == want {
+            return Ok(o);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    order_on(m, id).await
+}
+
+/// gate: T2b — the mandate's own `on_signed` receipt fails (LackBalanceForState: the account
+/// cannot pay for storing the signature) after the MPC disclosed a valid signature. The order
+/// must stay reserved, an independent relay must be consistent with accounting, and the order
+/// must fail after confirmed removal. Production WASM; the funding is calibrated in-test on an
+/// identically deployed mandate.
+#[tokio::test]
+async fn t2b_callback_failed_after_disclosure() -> anyhow::Result<()> {
+    let b_init: u128 = 20 * NEAR;
+    let w = World::new(WorldOpts {
+        mandate_yocto: Some(b_init),
+        ..WorldOpts::default()
+    })
+    .await?;
+    let proposals = [(Side::Wnear, 5 * NEAR), (Side::Usdc, 50 * USDC)];
+
+    // Calibration on the first mandate: free balance with both orders at Signing, and the
+    // storage growth of one successful on_signed.
+    w.grant_ok(demo_policy()).await?;
+    w.mpc_mode("hold").await?;
+    w.set_prices_now(100_000_000, 300_000_000).await?;
+    let mut seen = Vec::new();
+    for (i, (side, amount)) in proposals.iter().enumerate() {
+        let _ = w.propose_async(*side, *amount, 50).await?;
+        seen.push(new_pending(&w, &seen).await?);
+        wait_state(&w.mandate, i as u64, "signing").await?;
+    }
+    let (free_s, s_s) = w.free_balance(w.mandate.id()).await?;
+    let r = w.mpc_respond(seen[0], "valid").await?;
+    anyhow::ensure!(r.is_success(), "calibration respond: {}", r.failure_text());
+    let signed = wait_state(&w.mandate, 0, "signed").await?;
+    anyhow::ensure!(
+        order_state(&signed) == "signed",
+        "calibration on_signed did not record"
+    );
+    let (_, s_signed) = w.free_balance(w.mandate.id()).await?;
+    let sign_growth = i128::from(s_signed) - i128::from(s_s);
+    anyhow::ensure!(
+        sign_growth > 0,
+        "on_signed does not grow storage ({sign_growth} B)"
+    );
+
+    // Target mandate: same deployment, funded so that at Signing only half of on_signed's
+    // storage growth is covered.
+    let agent2 = common::sandbox::subaccount(&w.b.root, "agen2", 10).await?;
+    let b2 = i128::try_from(b_init)? - free_s + sign_growth * BYTE_COST / 2;
+    let m2 = w
+        .deploy_extra_mandate("mandat2", agent2.id(), u128::try_from(b2)?)
+        .await?;
+    w.b.fund_intents_for(&w.owner, m2.id(), 10_000 * USDC, 3_000 * NEAR)
+        .await?;
+    w.set_prices_now(100_000_000, 300_000_000).await?;
+    let g = common::sandbox::call(
+        &w.owner,
+        m2.id(),
+        "grant",
+        json!({"policy": demo_policy()}),
+        NearToken::from_yoctonear(0),
+        common::world::GRANT_GAS,
+    )
+    .await;
+    let mut gv = Value::Null;
+    for _ in 0..100 {
+        gv = m2.view("get_grant").await?.json()?;
+        if gv["status"] == "active" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    anyhow::ensure!(
+        gv["status"] == "active",
+        "target grant: {gv} {}",
+        g.failure_text()
+    );
+    w.set_prices_now(100_000_000, 300_000_000).await?;
+    let mut statuses = Vec::new();
+    let mut reqs = Vec::new();
+    for (i, (side, amount)) in proposals.iter().enumerate() {
+        let st = agent2
+            .call(m2.id(), "propose_order")
+            .args_json(json!({"proposal": {"sell": side.as_str(), "sell_amount": amount.to_string(), "max_concession_bps": 50}}))
+            .gas(common::world::PROPOSE_GAS)
+            .transact_async()
+            .await?;
+        statuses.push(st);
+        let mut all = seen.clone();
+        all.extend(&reqs);
+        reqs.push(new_pending(&w, &all).await?);
+        wait_state(&m2, i as u64, "signing").await?;
+    }
+    let (free2, _) = w.free_balance(m2.id()).await?;
+    let precondition = free2 >= 0 && free2 < sign_growth * BYTE_COST;
+    anyhow::ensure!(
+        precondition,
+        "target free balance {free2} not inside [0, {}) at Signing",
+        sign_growth * BYTE_COST
+    );
+    let pre_failure = wait_storage_failure_now(&statuses[0], m2.id()).await?;
+
+    // The MPC discloses valid signatures and resumes; our on_signed must fail.
+    let mut failures = Vec::new();
+    for (i, req) in reqs.iter().enumerate() {
+        let r = w.mpc_respond(*req, "valid").await?;
+        anyhow::ensure!(r.is_success(), "respond: {}", r.failure_text());
+        failures.push(wait_storage_failure(&statuses[i], m2.id()).await?);
+    }
+    let mut steps = Vec::new();
+    let mut ok = pre_failure.is_none() && failures.iter().all(Option::is_some);
+    let gv: Value = m2.view("get_grant").await?.json()?;
+    let mut orders = Vec::new();
+    for i in 0..2u64 {
+        let o = order_on(&m2, i).await?;
+        let accounted = order_state(&o) == "signing"
+            && o["signature"].is_null()
+            && u(&gv["outstanding"]) >= u(&o["reserved_value"])
+            && u(&o["reserved_value"]) > 0;
+        ok &= accounted;
+        steps.push(json!({"order": i, "phase": "after failed on_signed", "state": order_state(&o), "signature_recorded": !o["signature"].is_null(), "accounted": accounted}));
+        orders.push(o);
+    }
+    let outstanding_both =
+        u(&gv["outstanding"]) == u(&orders[0]["reserved_value"]) + u(&orders[1]["reserved_value"]);
+    ok &= outstanding_both;
+
+    // Independent relay of order 0 from the MPC's disclosure.
+    let sig0 = w.mpc_disclosed(reqs[0]).await?.expect("disclosed");
+    let g2pk = gv["public_key"].as_str().unwrap_or_default().to_owned();
+    let mp0 = rebuild(&orders[0], &g2pk, &sig0)?;
+    ok &= DecodedOrder::from_multipayload(&mp0).signature_valid();
+    let before = w.b.balances(m2.id()).await?;
+    let (out, dec) = w.relay(&mp0, 61).await?;
+    let after = w.b.balances(m2.id()).await?;
+    let executed = out.is_success();
+    let (usdc_t, wnear_t) = w.b.token_ids();
+    let deltas_match = !executed
+        || (after.0 as i128 - before.0 as i128 == dec.delta(&usdc_t)
+            && after.1 as i128 - before.1 as i128 == dec.delta(&wnear_t));
+    let o0 = order_on(&m2, 0).await?;
+    let still_reserved = order_state(&o0) == "signing";
+    ok &= executed && deltas_match && still_reserved;
+    steps.push(json!({"order": 0, "phase": "independent relay", "executed": executed, "deltas_match_signed_amounts": deltas_match, "still_reserved": still_reserved}));
+
+    // The experiment is done; fund storage so settlement and revocation can write state.
+    w.b.root
+        .transfer_near(m2.id(), NearToken::from_millinear(100))
+        .await?
+        .into_result()?;
+    let st = common::sandbox::call(
+        &w.b.relayer,
+        m2.id(),
+        "settle_order",
+        json!({"order_id": "0"}),
+        NearToken::from_yoctonear(0),
+        near_workspaces::types::Gas::from_tgas(100),
+    )
+    .await;
+    let settled = order_state(&order_on(&m2, 0).await?) == "released:settled";
+    ok &= st.is_success() && settled;
+    steps.push(
+        json!({"order": 0, "phase": "settle on verifier evidence", "released_settled": settled}),
+    );
+
+    // Order 1: confirmed removal, then the disclosed order fails.
+    let rv = common::sandbox::call(
+        &w.owner,
+        m2.id(),
+        "revoke",
+        json!({}),
+        NearToken::from_yoctonear(0),
+        common::sandbox::MAX_GAS,
+    )
+    .await;
+    let mut gstatus = Value::Null;
+    for _ in 0..100 {
+        gstatus = m2.view("get_grant").await?.json()?;
+        if gstatus["status"] == "revoked" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let sig1 = w.mpc_disclosed(reqs[1]).await?.expect("disclosed");
+    let o1 = order_on(&m2, 1).await?;
+    let mp1 = rebuild(&o1, &g2pk, &sig1)?;
+    let (out1, _) = w.relay(&mp1, 62).await?;
+    let removed_ok = rv.is_success()
+        && gstatus["status"] == "revoked"
+        && !out1.is_success()
+        && order_state(&o1) == "released:key_removed";
+    ok &= removed_ok;
+    steps.push(json!({"order": 1, "phase": "relay after confirmed removal", "executed": out1.is_success(), "state": order_state(&o1), "grant": gstatus["status"]}));
+
+    evidence::write(
+        "T2b",
+        "callback-failed-after-disclosure",
+        ok,
+        "sandbox",
+        json!({
+            "mechanism": "mandate funded (calibrated in-test) to cover storage up to Signing but not on_signed's growth; on_signed fails with LackBalanceForState after the MPC disclosed and resumed",
+            "calibration": {"free_at_signing_yocto": free_s.to_string(), "storage_at_signing": s_s, "on_signed_growth_bytes": sign_growth},
+            "target_free_at_signing_yocto": free2.to_string(),
+            "failure_absent_before_respond": pre_failure.is_none(),
+            "on_signed_failures": failures,
+            "outstanding_equals_both_reservations": outstanding_both,
+            "steps": steps,
+        }),
+    );
+    assert!(
+        ok,
+        "T2b callback-failed-after-disclosure failed: {steps:?} failures {failures:?}"
+    );
+    Ok(())
+}
+
+/// One status check without waiting (the failure must not exist before the MPC responds).
+async fn wait_storage_failure_now(
+    status: &near_workspaces::operations::TransactionStatus,
+    mandate: &near_workspaces::AccountId,
+) -> anyhow::Result<Option<String>> {
+    if let std::task::Poll::Ready(r) = status.status().await? {
+        return Ok(r
+            .receipt_outcomes()
+            .iter()
+            .filter(|o| &o.executor_id == mandate && o.is_failure())
+            .map(|o| format!("{:?}", (*o).clone().into_result().err()))
+            .next());
+    }
+    Ok(None)
+}
+
+fn rebuild(order: &Value, pk: &str, sig: &[u8]) -> anyhow::Result<Value> {
+    let p = &order["payload"];
+    let payload = common::intents::Nep413Payload {
+        message: p["message"].as_str().unwrap_or_default().to_owned(),
+        nonce: common::intents::unb64(p["nonce"].as_str().unwrap_or_default())
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("nonce"))?,
+        recipient: p["recipient"].as_str().unwrap_or_default().to_owned(),
+        callback_url: None,
+    };
+    let pk: [u8; 32] = common::intents::parse_ed25519_str(pk)
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("pk"))?;
+    let sig: [u8; 64] = sig.try_into().map_err(|_| anyhow::anyhow!("sig"))?;
+    Ok(common::intents::multipayload(&payload, &pk, &sig))
 }

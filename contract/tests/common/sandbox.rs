@@ -25,6 +25,7 @@ pub fn built_wasm(crate_underscored: &str) -> Result<Vec<u8>> {
     let p = repo_path(&format!(
         "target/near/{crate_underscored}/{crate_underscored}.wasm"
     ));
+    super::evidence::note_wasm(&p);
     std::fs::read(&p).with_context(|| {
         format!(
             "missing {} - build with `cargo near build non-reproducible-wasm --locked --manifest-path <crate>/Cargo.toml`",
@@ -491,4 +492,77 @@ pub async fn authority_live(verifier: &Verifier, payload: &Value) -> Result<(boo
             Ok((live, msg.chars().take(300).collect()))
         }
     }
+}
+
+/// For every receipt executed on `executor` in `outcome`: (method, attached gas, gas burnt,
+/// succeeded), read back from the chain's receipt records.
+pub async fn receipt_gas(
+    worker: &Worker<Sandbox>,
+    outcome: &ExecutionFinalResult,
+    executor: &AccountId,
+) -> Result<Vec<(String, u64, u64, bool)>> {
+    let mut out = Vec::new();
+    for o in outcome.receipt_outcomes() {
+        if &o.executor_id != executor {
+            continue;
+        }
+        let view = rpc(
+            worker,
+            "EXPERIMENTAL_receipt",
+            json!({"receipt_id": o.transaction_hash.to_string()}),
+        )
+        .await?;
+        let actions = view["receipt"]["Action"]["actions"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        for a in actions {
+            if let Some(fc) = a.get("FunctionCall") {
+                out.push((
+                    fc["method_name"].as_str().unwrap_or_default().to_owned(),
+                    fc["gas"].as_u64().unwrap_or_default(),
+                    o.gas_burnt.as_gas(),
+                    o.is_success(),
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Minimal JSON-RPC call to the local sandbox node (plain HTTP/1.0 over localhost, no chunking), for
+/// methods near-workspaces exposes only behind features this crate does not enable.
+pub async fn rpc(worker: &Worker<Sandbox>, method: &str, params: Value) -> Result<Value> {
+    use std::io::{Read, Write};
+    let addr = worker.rpc_addr();
+    let host = addr
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .to_owned();
+    let body =
+        json!({"jsonrpc": "2.0", "id": "w4", "method": method, "params": params}).to_string();
+    let resp = tokio::task::spawn_blocking(move || -> Result<String> {
+        let mut s = std::net::TcpStream::connect(&host)?;
+        write!(
+            s,
+            "POST / HTTP/1.0\r\nHost: {host}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )?;
+        let mut out = String::new();
+        s.read_to_string(&mut out)?;
+        Ok(out)
+    })
+    .await??;
+    let json_start = resp.find("\r\n\r\n").context("http response")? + 4;
+    let raw = &resp[json_start..];
+    // Tolerate chunked transfer encoding by taking the outermost JSON object.
+    let (a, b) = (
+        raw.find('{').context("json")?,
+        raw.rfind('}').context("json")?,
+    );
+    let v: Value = serde_json::from_str(&raw[a..=b])?;
+    if let Some(e) = v.get("error") {
+        bail!("rpc {method}: {e}");
+    }
+    Ok(v["result"].clone())
 }

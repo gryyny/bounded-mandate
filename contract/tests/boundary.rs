@@ -561,7 +561,7 @@ async fn boundary_rejections_at_the_right_layer() -> anyhow::Result<()> {
     let failed: Vec<&Case> = cases.iter().filter(|c| !c.ok).collect();
     evidence::write(
         "BOUNDARY",
-        None,
+        "contract",
         failed.is_empty(),
         "sandbox",
         json!({"cases": cases.iter().map(|c| json!({"case": c.name, "boundary": c.boundary, "rejected_at_boundary": c.ok, "detail": c.detail})).collect::<Vec<_>>()}),

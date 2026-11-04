@@ -1474,3 +1474,127 @@ fn every_event_uses_the_standard() {
         );
     }
 }
+
+// ------------------------------------------------------------------ registration reconcile
+
+impl H {
+    fn reconcile(&mut self) {
+        set("owner.near", self.now, vec![]);
+        let _ = self.c.reconcile_registration();
+    }
+
+    fn registration_checked(&mut self, result: PromiseResult) {
+        set("mandate.near", self.now, vec![result]);
+        self.c.on_registration_checked(self.epoch());
+    }
+}
+
+#[test]
+fn reconcile_presence_activates_a_lost_registration() {
+    // gate: T4
+    let mut h = H::new();
+    h.grant();
+    h.prepare();
+    // on_key_added never ran. The owner reads the verifier.
+    h.reconcile();
+    let check = calls()
+        .into_iter()
+        .find(|c| c.method == "has_public_key")
+        .unwrap();
+    assert_eq!(check.receiver, "intents.near");
+    assert_eq!(check.args["account_id"], "mandate.near");
+    assert_eq!(check.args["public_key"], json!(String::from(&h.pk())));
+    h.registration_checked(ok(json!(true)));
+    let g = h.grant_view();
+    assert_eq!(g.status, GrantStatus::Active);
+    assert!(!g.key_op_in_flight);
+    // The delayed original callback is now stale.
+    h.key_added(ok(Value::Null));
+    assert_eq!(h.grant_view(), g);
+    assert_eq!(events("stale_callback").len(), 1);
+}
+
+#[test]
+fn reconcile_presence_while_revoking_issues_removal() {
+    // gate: T4
+    let mut h = H::new();
+    h.grant();
+    h.prepare();
+    h.revoke();
+    assert_eq!(h.grant_view().status, GrantStatus::Revoking);
+    h.reconcile();
+    h.registration_checked(ok(json!(true)));
+    assert_eq!(
+        methods(),
+        [
+            "intents.near.remove_public_key",
+            "mandate.near.on_key_removed"
+        ]
+    );
+    assert!(events("grant_activated").is_empty());
+    h.removed(1, ok(Value::Null));
+    assert_eq!(h.grant_view().status, GrantStatus::Revoked);
+}
+
+#[test]
+fn reconcile_absence_or_failure_changes_nothing() {
+    // gate: T4
+    let mut h = H::new();
+    h.grant();
+    h.prepare();
+    h.revoke();
+    let before = h.grant_view();
+    for r in [ok(json!(false)), fail(), ok(json!("garbage"))] {
+        h.reconcile();
+        h.registration_checked(r);
+        assert_eq!(h.grant_view(), before, "absence is never proof");
+        assert!(calls().is_empty());
+        assert_eq!(events("registration_unresolved").len(), 1);
+    }
+    // Registration still resolves normally afterwards.
+    h.key_added(fail());
+    assert_eq!(h.grant_view().status, GrantStatus::Revoked);
+}
+
+#[test]
+fn reconcile_is_refused_outside_registration_and_for_non_owners() {
+    let mut h = H::new();
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.reconcile()));
+    assert!(r.is_err(), "no grant");
+    h.grant();
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.reconcile()));
+    assert!(r.is_err(), "deriving: no registration issued");
+    h.prepare();
+    set("agent.near", NOW, vec![]);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = h.c.reconcile_registration();
+    }));
+    assert!(r.is_err(), "agent");
+    h.key_added(ok(Value::Null));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.reconcile()));
+    assert!(r.is_err(), "already added");
+    // A presence result for an old epoch or a resolved registration is stale.
+    let g = h.grant_view();
+    h.registration_checked(ok(json!(true)));
+    set("mandate.near", NOW, vec![ok(json!(true))]);
+    h.c.on_registration_checked(7);
+    assert_eq!(h.grant_view(), g);
+}
+
+#[cfg(feature = "fault-injection")]
+#[test]
+fn fault_injection_fails_on_key_added_for_its_epoch_only() {
+    let mut h = H::new();
+    set("owner.near", NOW, vec![]);
+    h.c.fault_fail_key_added(Some(1));
+    h.grant();
+    h.prepare();
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        h.key_added(ok(Value::Null))
+    }));
+    assert!(r.is_err());
+    set("owner.near", NOW, vec![]);
+    h.c.fault_fail_key_added(None);
+    h.key_added(ok(Value::Null));
+    assert_eq!(h.grant_view().status, GrantStatus::Active);
+}

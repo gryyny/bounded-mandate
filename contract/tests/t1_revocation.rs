@@ -160,13 +160,7 @@ async fn t1_withheld_order_fails_after_removal_and_regrant() -> anyhow::Result<(
     assert_only_key(&w, g3["public_key"].as_str()).await?;
 
     let after = l.executions_after_removal();
-    evidence::write(
-        "T1",
-        Some("withheld-regrant"),
-        after == 0,
-        "sandbox",
-        l.json(),
-    );
+    evidence::write("T1", "withheld-regrant", after == 0, "sandbox", l.json());
     assert_eq!(
         after, 0,
         "executions after confirmed removal: {:?}",
@@ -224,7 +218,7 @@ async fn t1_revoke_while_signing_then_signature_delivered() -> anyhow::Result<()
     let ok = relay_and_measure(&w, &mp, 8).await?;
     l.record("signature-delivered-after-regrant", &o, true, ok);
     let after = l.executions_after_removal();
-    evidence::write("T1", Some("pending-sign"), after == 0, "sandbox", l.json());
+    evidence::write("T1", "pending-sign", after == 0, "sandbox", l.json());
     assert_eq!(after, 0);
     Ok(())
 }
@@ -321,7 +315,7 @@ async fn t1_revoke_during_activation() -> anyhow::Result<()> {
     let both = hit.contains("deriving") && hit.contains("registering");
     evidence::write(
         "T1",
-        Some("revoke-during-activation"),
+        "revoke-during-activation",
         both,
         "sandbox",
         json!({"cases": cases, "lifecycle_points_hit": hit}),
@@ -432,7 +426,7 @@ async fn t1_failed_removal_and_retry() -> anyhow::Result<()> {
     let after = l.executions_after_removal();
     evidence::write(
         "T1",
-        Some("failed-removal-retry"),
+        "failed-removal-retry",
         after == 0,
         "sandbox",
         l.json(),

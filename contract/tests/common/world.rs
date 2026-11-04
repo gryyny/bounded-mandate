@@ -610,3 +610,43 @@ impl World {
         ))
     }
 }
+
+impl World {
+    /// Deploys a second mandate exactly the way `World::new` deploys the first one (same calls,
+    /// same signer for `new`), with `agent_id` as its agent and an exact initial balance.
+    pub async fn deploy_extra_mandate(
+        &self,
+        name: &str,
+        agent_id: &AccountId,
+        balance_yocto: u128,
+    ) -> Result<Contract> {
+        let acct = self
+            .b
+            .root
+            .create_subaccount(name)
+            .initial_balance(NearToken::from_yoctonear(balance_yocto))
+            .transact()
+            .await?
+            .into_result()?;
+        let m = acct
+            .deploy(&built_wasm("bounded_mandate")?)
+            .await?
+            .into_result()?;
+        let mut cfg: Value = self.mandate.view("get_config").await?.json()?;
+        cfg["agent_id"] = json!(agent_id);
+        m.call("new")
+            .args_json(json!({"config": cfg}))
+            .transact()
+            .await?
+            .into_result()?;
+        Ok(m)
+    }
+
+    /// Free NEAR of an account above its storage stake (1e19 yocto per byte), in yocto.
+    pub async fn free_balance(&self, id: &AccountId) -> Result<(i128, u64)> {
+        let a = self.b.worker.view_account(id).await?;
+        let free = i128::try_from(a.balance.as_yoctonear())?
+            - i128::from(a.storage_usage) * 10_000_000_000_000_000_000;
+        Ok((free, a.storage_usage))
+    }
+}

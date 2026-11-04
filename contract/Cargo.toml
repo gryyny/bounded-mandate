@@ -17,6 +17,10 @@ serde_json.workspace = true
 borsh.workspace = true
 hex.workspace = true
 
+[features]
+# Test-only: lets the owner make `on_key_added` panic. Never part of the production WASM.
+fault-injection = []
+
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
 near-workspaces.workspace = true

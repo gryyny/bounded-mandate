@@ -146,7 +146,7 @@ async fn t4_recovery_without_agent_oracle_mpc() -> anyhow::Result<()> {
     let orders: Vec<String> = w.orders().await?.iter().map(order_state).collect();
     evidence::write(
         "T4",
-        None,
+        "dependency-failure",
         passed,
         "sandbox",
         json!({
@@ -390,7 +390,167 @@ async fn t4_proposal_record_bound_and_funding_rule() -> anyhow::Result<()> {
         "owner_recovery_ok": recovered,
         "demo_policy_minimum_funding": {"max_proposals": demo_max.to_string(), "bytes": demo_required_bytes.to_string(), "near": (demo_required_bytes as f64) * 1e-5},
     });
-    evidence::write("T4", Some("record-bound"), passed, "sandbox", data.clone());
+    evidence::write("T4", "record-bound", passed, "sandbox", data.clone());
     assert!(passed, "record bound / funding rule failed: {data}");
+    Ok(())
+}
+
+async fn revoke_traced(
+    w: &World,
+) -> anyhow::Result<(
+    near_workspaces::result::ExecutionFinalResult,
+    Vec<(String, u64, u64, bool)>,
+)> {
+    let st = w
+        .owner
+        .call(w.mandate.id(), "revoke")
+        .args_json(json!({}))
+        .gas(common::sandbox::MAX_GAS)
+        .transact_async()
+        .await?;
+    w.settle_key_ops().await?;
+    // Detached removal receipts land after the first outcome: poll until they are included.
+    let mut last = None;
+    for _ in 0..50 {
+        if let std::task::Poll::Ready(r) = st.status().await? {
+            let gas = common::sandbox::receipt_gas(&w.b.worker, &r, w.mandate.id()).await?;
+            let revoked = w.grant_view().await?["status"] == "revoked";
+            let done = gas.iter().any(|g| g.0 == "on_key_presence")
+                || (revoked && gas.iter().any(|g| g.0 == "on_key_removed"));
+            last = Some((r, gas));
+            if done {
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+    last.ok_or_else(|| anyhow::anyhow!("revoke outcome unavailable"))
+}
+
+/// gate: T4 — revocation and recovery at MAX_OPEN_ORDERS (32) open orders, signed and pending
+/// mixed, including a failed removal and retry; gas burnt by the removal callbacks is recorded
+/// against the static gas they were given.
+#[tokio::test]
+async fn t4_open_order_limit() -> anyhow::Result<()> {
+    const MAX_OPEN: usize = 32;
+    let w = World::new(WorldOpts::default()).await?;
+    w.grant_ok(demo_policy()).await?;
+    let mut withheld = None;
+    for i in 0..MAX_OPEN {
+        if i % 6 == 0 {
+            w.set_prices_now(100_000_000, 300_000_000).await?;
+        }
+        let (side, amount) = if i % 2 == 0 {
+            (Side::Usdc, 10 * USDC)
+        } else {
+            (Side::Wnear, 3 * NEAR)
+        };
+        if i < 20 {
+            w.mpc_mode("immediate").await?;
+            let (id, out) = w.propose_id(side, amount, 50).await?;
+            if withheld.is_none() {
+                withheld = w.signed_payload(&out, id).await?;
+            }
+        } else {
+            w.mpc_mode("hold").await?;
+            let _ = w.propose_async(side, amount, 50).await?;
+            let _ = w.wait_pending_sign(100).await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+    let orders = w.orders().await?;
+    let mut by_state = std::collections::BTreeMap::new();
+    for o in &orders {
+        *by_state.entry(order_state(o)).or_insert(0usize) += 1;
+    }
+    let mpc_pending_at_revoke = w.mpc_pending().await?.len();
+    let open = orders
+        .iter()
+        .filter(|o| {
+            matches!(
+                order_state(o).as_str(),
+                "pricing" | "signing" | "signed" | "sign_unknown"
+            )
+        })
+        .count();
+    w.set_prices_now(100_000_000, 300_000_000).await?;
+    let over = w.propose(Side::Usdc, USDC, 0).await;
+    let limit_enforced = !over.is_success() && over.failure_text().contains("too many open orders");
+
+    // Failed removal at 32 open orders (verifier DAO disables predecessor auth), then retry.
+    let d = w
+        .dao(
+            "force_disable_auth_by_predecessor_ids",
+            json!({"account_ids": [w.mandate.id()]}),
+        )
+        .await;
+    anyhow::ensure!(d.is_success(), "{}", d.failure_text());
+    let (_, failed_gas) = revoke_traced(&w).await?;
+    let after_fail = w.grant_view().await?;
+    let e = w
+        .dao(
+            "force_enable_auth_by_predecessor_ids",
+            json!({"account_ids": [w.mandate.id()]}),
+        )
+        .await;
+    anyhow::ensure!(e.is_success(), "{}", e.failure_text());
+    let (_, ok_gas) = revoke_traced(&w).await?;
+    let g = w.grant_view().await?;
+    let released: Vec<String> = w.orders().await?.iter().map(order_state).collect();
+    let all_released = released
+        .iter()
+        .filter(|s| *s == "released:key_removed")
+        .count()
+        == open;
+    let relay_after = match &withheld {
+        Some(mp) => Some(w.relay(mp, 33).await?.0.is_success()),
+        None => None,
+    };
+
+    // Recovery of all units.
+    let (mu, mw) = w.balances().await?;
+    let (ou0, ow0) = w.b.balances(w.owner.id()).await?;
+    let r1 = w.recover(Side::Usdc, None).await;
+    let r2 = w.recover(Side::Wnear, None).await;
+    let (ou1, ow1) = w.b.balances(w.owner.id()).await?;
+    let recovered = r1.is_success()
+        && r2.is_success()
+        && ou1 - ou0 == mu
+        && ow1 - ow0 == mw
+        && w.balances().await? == (0, 0);
+
+    let gas_rows = |v: &[(String, u64, u64, bool)]| {
+        v.iter()
+            .filter(|g| g.0.starts_with("on_key"))
+            .map(|g| json!({"method": g.0, "attached_gas": g.1, "gas_burnt": g.2, "attached_note": "prepaid gas of the receipt: static gas plus its share of unused gas", "burnt_share_of_attached": g.2 as f64 / g.1.max(1) as f64, "succeeded": g.3}))
+            .collect::<Vec<_>>()
+    };
+    let callbacks_ok = |v: &[(String, u64, u64, bool)]| {
+        let cb: Vec<_> = v.iter().filter(|g| g.0.starts_with("on_key")).collect();
+        !cb.is_empty() && cb.iter().all(|g| g.3 && g.2 < g.1)
+    };
+    let passed = open == MAX_OPEN
+        && limit_enforced
+        && after_fail["status"] == "revoking"
+        && callbacks_ok(&failed_gas)
+        && callbacks_ok(&ok_gas)
+        && ok_gas.iter().any(|g| g.0 == "on_key_removed")
+        && g["status"] == "revoked"
+        && all_released
+        && relay_after != Some(true)
+        && recovered;
+    let data = json!({
+        "open_orders": open,
+        "states_before_revoke": by_state,
+        "mpc_requests_pending_at_revoke": mpc_pending_at_revoke,
+        "thirty_third_refused": limit_enforced,
+        "failed_removal": {"grant_status": after_fail["status"], "callbacks": gas_rows(&failed_gas)},
+        "successful_removal": {"grant_status": g["status"], "callbacks": gas_rows(&ok_gas)},
+        "released_key_removed": released.iter().filter(|s| *s == "released:key_removed").count(),
+        "withheld_relay_after_removal_executed": relay_after,
+        "recovered_all_units": recovered,
+    });
+    evidence::write("T4", "open-order-limit", passed, "sandbox", data.clone());
+    assert!(passed, "open-order-limit failed: {data}");
     Ok(())
 }

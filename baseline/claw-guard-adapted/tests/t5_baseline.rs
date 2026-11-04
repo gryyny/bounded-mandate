@@ -1,7 +1,8 @@
 // gate: T5
-// Applies the mandate's threat model to the adapted Claw Guard baseline on the pinned Intents
-// verifier WASM in a local sandbox. Every outcome is classified from executed chain state (balances,
-// nonce use, receipts), never asserted in advance; results go to out/evidence/tests/T5.json.
+// Applies the mandate's threat model to our re-implementation of the Claw Guard design, adapted to
+// the pinned Intents verifier WASM, in a local sandbox. Outcomes describe that re-implementation, not
+// the deployed Claw Guard product. Every outcome is classified from executed chain state (balances,
+// nonce use, receipts), never asserted in advance; the report is out/evidence/tests/T5.baseline.json.
 #![allow(
     clippy::arithmetic_side_effects,
     clippy::as_conversions,
@@ -122,6 +123,9 @@ struct Env {
     usdc: Account,
     wnear: Account,
     filler_nonce: u64,
+    /// sha256 of the target/near WASMs this run loaded, keyed by file stem (envelope v2 `wasm_sha256`).
+    wasm_sha256: serde_json::Map<String, Value>,
+    verifier_sha256: String,
 }
 
 #[derive(Clone, Debug)]
@@ -598,6 +602,11 @@ async fn setup() -> Result<Env> {
         usdc,
         wnear,
         filler_nonce: 0,
+        wasm_sha256: [("claw_guard_adapted", &guard_wasm), ("mock_mpc", &mpc_wasm)]
+            .into_iter()
+            .map(|(stem, bytes)| (stem.to_owned(), Value::String(sha256_hex(bytes))))
+            .collect(),
+        verifier_sha256: sha256_hex(&verifier_wasm),
     };
     env.register_agent().await?;
     // Claw Guard's Hyperliquid step "approve the derived address as an API wallet": the owner
@@ -848,7 +857,7 @@ async fn t5_baseline_threat_model() -> Result<()> {
         && (c_receipt["status"] == json!("SignFailed") || c_receipt["status"] == json!("Signed"));
     rep.case("t2b_disclosed_signature_failed_callback",
         "Published signature with a failed signer callback, relayed independently", "T2b", outcome(t2b_attack),
-        "Claw Guard releases a reservation when on_signed sees a failure; a signature disclosed by the signer still executes, so executed notional is no longer counted.",
+        "Our re-implementation follows Claw Guard's design of releasing a reservation when on_signed sees a failure; a signature disclosed by the signer still executes, so executed notional is no longer counted.",
         t2b_consistent,
         json!({
             "relay_of_disclosed_order": rc_relay.observed(),
@@ -888,7 +897,7 @@ async fn t5_baseline_threat_model() -> Result<()> {
     let a_exec = ra.classify(&a, &u, &w)?;
     rep.case("t1_withheld_after_guard_revocation",
         "Withheld signed order relayed after the guard's revocation (pause + remove_agent)", "T1", outcome(a_exec),
-        "Claw Guard Q-45: pause and remove_agent stop later proposals only; issued signatures stay valid.",
+        "As documented in Claw Guard's Q-45 and re-implemented here: pause and remove_agent stop later proposals only; issued signatures stay valid.",
         true, json!({ "receipt_id": a.receipt_id, "relay": ra.observed() }));
 
     // T1 analog with venue-side revocation: the owner also removes the derived key on Intents.
@@ -920,7 +929,7 @@ async fn t5_baseline_threat_model() -> Result<()> {
     rep.case("t1_withheld_after_key_removal",
         "Withheld signed order relayed after the owner removes the derived key from the Intents account", "T1",
         outcome(b_exec),
-        "Venue-side removal (Claw Guard's documented Q-45 mitigation on Hyperliquid) makes the withheld order fail.",
+        "Venue-side key removal (the Intents analog of Claw Guard's documented Q-45 mitigation on Hyperliquid) makes the withheld order fail.",
         true, json!({ "receipt_id": b.receipt_id, "relay": rb.observed() }));
 
     // Regrant: the path is fixed per target, so re-enabling trading re-registers the same key.
@@ -1018,18 +1027,17 @@ async fn t5_baseline_threat_model() -> Result<()> {
         "Assets stay in the owner's own Intents account; the owner's predecessor-authorized mt_transfer needs no agent, signer or oracle.",
         true, json!({ "transfers": moved, "owner_cold_received": [cold.0.to_string(), cold.1.to_string()], "owner_left": [left.0.to_string(), left.1.to_string()] }));
 
-    let manifest = |rel: &str| read_wasm(rel).map(|b| sha256_hex(&b)).unwrap_or_default();
     let passed = rep.assertions.iter().all(|a| a["passed"] == json!(true));
     let data = json!({
         "command": "cargo test -p claw-guard-adapted --test t5_baseline",
         "hashes": {
-            "verifier_wasm_sha256": manifest("fixtures/verifier/defuse-0.4.5.wasm"),
-            "baseline_wasm_sha256": manifest("target/near/claw_guard_adapted/claw_guard_adapted.wasm"),
-            "mock_mpc_wasm_sha256": manifest("target/near/mock_mpc/mock_mpc.wasm"),
+            "verifier_wasm_sha256": env.verifier_sha256,
+            "claw_guard_adapted_wasm_sha256": env.wasm_sha256["claw_guard_adapted"],
+            "mock_mpc_wasm_sha256": env.wasm_sha256["mock_mpc"],
         },
         "environment": { "sandbox": "near-workspaces 0.23.0", "signer": "stubs/mock-mpc TEST DOUBLE (not MPC)", "fee_pips": FEE_PIPS.to_string() },
         "baseline": {
-            "name": "Claw Guard, adapted to NEAR Intents token_diff",
+            "name": "Our re-implementation of the Claw Guard design, adapted to NEAR Intents token_diff (not the deployed Claw Guard product)",
             "repository": CLAW_GUARD_REPO,
             "commit": CLAW_GUARD_COMMIT,
             "license": "MIT, Copyright (c) 2026 Patrick Baur (RUNECLAW)",
@@ -1045,15 +1053,22 @@ async fn t5_baseline_threat_model() -> Result<()> {
         "assertions": rep.assertions,
         "cases": rep.cases,
     });
-    // Same envelope as contract/tests/common/evidence.rs so one reader handles every gate.
+    // Gate report envelope v2 (shared with contract/tests/common/evidence.rs and tools/src/evidence/report.ts).
     let report = json!({
+        "schema": "bounded-mandate/gate-report/2",
         "gate": "T5",
-        "part": null,
+        "case": "baseline",
         "passed": passed,
         "mode": "sandbox",
-        "source_revision": git(&["rev-parse", "HEAD"]),
-        "dirty": git(&["status", "--porcelain"]).map(|s| !s.is_empty()),
-        "test_binary": std::env::args().next(),
+        "run_id": std::env::var("MANDATE_RUN_ID").ok(),
+        "source": {
+            "revision": git(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_owned()),
+            "dirty": git(&["status", "--porcelain"]).is_none_or(|s| !s.is_empty()),
+        },
+        "spec_sha256": sha256_hex(&std::fs::read(root_dir().join("SPEC.md"))?),
+        "fixture_manifest_sha256": sha256_hex(&std::fs::read(root_dir().join("fixtures/manifest.json"))?),
+        "wasm_sha256": env.wasm_sha256,
+        "command": std::env::args().collect::<Vec<_>>().join(" "),
         "generated_at_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default(),
         "data": data,
     });
@@ -1070,5 +1085,5 @@ async fn t5_baseline_threat_model() -> Result<()> {
 }
 
 fn evidence_path() -> PathBuf {
-    root_dir().join("out/evidence/tests/T5.json")
+    root_dir().join("out/evidence/tests/T5.baseline.json")
 }

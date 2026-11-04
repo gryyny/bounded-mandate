@@ -1747,10 +1747,11 @@ fn t2_seeded_interleavings_unit_vm() {
     let passed = failing.is_empty() && coverage_ok;
     common::evidence::write(
         "T2",
-        Some("unit-interleavings"),
+        "unit-interleavings",
         passed,
-        "unit VM (near-sdk unit-testing) driving real contract code; verifier/MPC/oracle are an independent model",
+        "unit-vm",
         json!({
+            "environment": "near-sdk unit-testing VM driving the real contract code; verifier, MPC and oracle are an independent model",
             "seeds": seeds,
             "steps_per_seed": STEPS,
             "failing_seeds": failing.iter().map(|r| json!({"seed": r.seed, "first_violation": r.first_violation, "violations": r.violations, "tail": r.tail})).collect::<Vec<_>>(),
