@@ -87,6 +87,8 @@ export interface Outcome {
   /** Sum of attached deposits and transfers, yocto. */
   deposit_yocto: string;
   final_execution_status?: string;
+  /** The RPC reported the outcome FINAL (all receipts in final blocks). */
+  final: boolean;
   return_value?: unknown;
   error?: string;
   receipts: ReceiptOutcome[];
@@ -178,11 +180,22 @@ export class NearClient {
   readonly provider: Provider;
   private readonly heights = new Map<string, number>();
 
+  /**
+   * `finality` governs every state read; `waitUntil` governs `submit`/`resolve`. The demo and sandbox
+   * tests read optimistic state; the live runner uses `final()` so reads and outcomes are finalized.
+   */
   constructor(
     readonly rpcUrl: string,
     provider?: Provider,
+    readonly finality: "final" | "optimistic" = "optimistic",
+    readonly waitUntil: "FINAL" | "EXECUTED_OPTIMISTIC" = "EXECUTED_OPTIMISTIC",
   ) {
     this.provider = provider ?? new JsonRpcProvider({ url: rpcUrl });
+  }
+
+  /** Same transport, finalized reads and transactions awaited to FINAL. */
+  final(): NearClient {
+    return new NearClient(this.rpcUrl, this.provider, "final", "FINAL");
   }
 
   account(accountId: string, key?: KeyPair): Account {
@@ -202,7 +215,7 @@ export class NearClient {
   }
 
   async view<T>(contractId: string, method: string, args: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
-    const raw = await this.provider.callFunctionRaw({ contractId, method, args, blockQuery: { finality: "optimistic" } });
+    const raw = await this.provider.callFunctionRaw({ contractId, method, args, blockQuery: { finality: this.finality } });
     const text = Buffer.from(raw.result).toString("utf8");
     return schema.parse(text === "" ? null : JSON.parse(text));
   }
@@ -222,12 +235,14 @@ export class NearClient {
   }
 
   async blockTimestampNs(): Promise<bigint> {
-    const block = await this.provider.viewBlock({ finality: "optimistic" });
+    const block = await this.provider.viewBlock({ finality: this.finality });
     return BigInt(block.header.timestamp_nanosec);
   }
 
+  /** Gas price at the latest block of this client's finality. */
   async gasPrice(): Promise<bigint> {
-    const res = await this.provider.viewGasPrice();
+    const block = await this.provider.viewBlock({ finality: this.finality });
+    const res = await this.provider.viewGasPrice(block.header.hash);
     return BigInt(res.gas_price);
   }
 
@@ -236,7 +251,7 @@ export class NearClient {
     const base = { label, signer_id: signer.accountId, receiver_id: receiverId, method };
     let response: unknown;
     try {
-      response = await signer.signAndSendTransaction({ receiverId, actions: txActions, waitUntil: "EXECUTED_OPTIMISTIC", throwOnFailure: false });
+      response = await signer.signAndSendTransaction({ receiverId, actions: txActions, waitUntil: this.waitUntil, throwOnFailure: false });
     } catch (error) {
       const message = errorMessage(error);
       const definitive = DEFINITIVE_REJECTION.test(message);
@@ -244,6 +259,7 @@ export class NearClient {
         ...base,
         submitted: false,
         ambiguous: !definitive,
+        final: false,
         success: false,
         any_receipt_failed: false,
         fee_yocto: "0",
@@ -292,10 +308,10 @@ export class NearClient {
     };
     await beforeSend?.(info);
     const base = { label, signer_id: signer.accountId, receiver_id: receiverId, method, nonce: info.nonce, public_key: info.public_key };
-    const empty = { success: false, any_receipt_failed: false, fee_yocto: "0", deposit_yocto: "0", receipts: [], logs: [], events: [], tx_hash: txHash };
+    const empty = { final: false, success: false, any_receipt_failed: false, fee_yocto: "0", deposit_yocto: "0", receipts: [], logs: [], events: [], tx_hash: txHash };
     let response: unknown;
     try {
-      response = await this.provider.sendTransactionUntil(signed, "EXECUTED_OPTIMISTIC");
+      response = await this.provider.sendTransactionUntil(signed, this.waitUntil);
     } catch (error) {
       const message = errorMessage(error);
       if (DEFINITIVE_REJECTION.test(message)) return { ...base, ...empty, submitted: false, ambiguous: false, error: message };
@@ -321,7 +337,7 @@ export class NearClient {
   /** Looks a transaction up by hash. Returns null when the node does not know it (or cannot say). */
   async resolve(label: string, signerId: string, txHash: string, method = "-"): Promise<Outcome | null> {
     try {
-      const response = await this.provider.viewTransactionStatusWithReceipts({ txHash, accountId: signerId, waitUntil: "EXECUTED_OPTIMISTIC" });
+      const response = await this.provider.viewTransactionStatusWithReceipts({ txHash, accountId: signerId, waitUntil: this.waitUntil });
       const tx = TxResponse.parse(response);
       return await this.toOutcome({ label, signer_id: signerId, receiver_id: tx.transaction.receiver_id, method }, tx);
     } catch {
@@ -331,7 +347,7 @@ export class NearClient {
 
   async accessKeyNonce(accountId: string, publicKey: string): Promise<bigint | null> {
     try {
-      const key = await this.provider.viewAccessKey({ accountId, publicKey, finalityQuery: { finality: "optimistic" } });
+      const key = await this.provider.viewAccessKey({ accountId, publicKey, finalityQuery: { finality: this.finality } });
       return key.nonce;
     } catch {
       return null;
@@ -340,7 +356,7 @@ export class NearClient {
 
   private async rawQuery(params: Record<string, unknown>): Promise<unknown> {
     const query = this.provider.query.bind(this.provider) as (p: Record<string, unknown>) => Promise<unknown>;
-    return query({ finality: "optimistic", ...params });
+    return query({ finality: this.finality, ...params });
   }
 
   /** view_account, validated. */
@@ -417,6 +433,7 @@ export class NearClient {
       fee_yocto: fee.toString(),
       deposit_yocto: depositOf(tx.transaction.actions ?? []).toString(),
       ...(tx.final_execution_status === undefined ? {} : { final_execution_status: tx.final_execution_status }),
+      final: tx.final_execution_status === "FINAL",
       return_value: statusValue(tx.status),
       ...(error === undefined ? (unknown ? { error: "ambiguous: transaction or receipt status unknown" } : {}) : { error }),
       receipts,
@@ -438,6 +455,7 @@ export function toEvidenceReceipt(outcome: Outcome, detail: Record<string, unkno
       method: outcome.method,
       submitted: outcome.submitted,
       ambiguous: outcome.ambiguous,
+      final: outcome.final,
       any_receipt_failed: outcome.any_receipt_failed,
       fee_yocto: outcome.fee_yocto,
       deposit_yocto: outcome.deposit_yocto,

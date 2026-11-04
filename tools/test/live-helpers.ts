@@ -27,6 +27,7 @@ export function offlineManifest(dir: string, over: Partial<LiveManifest> = {}): 
     accounts,
     code_hashes: { mandate: "11111111111111111111111111111111", verifier: "11111111111111111111111111111111", signer: "11111111111111111111111111111111", oracle: "11111111111111111111111111111111" },
     versions: {},
+    verifier_fee_pips: 1,
     mandate_config: {
       owner_id: accounts.owner,
       agent_id: accounts.agent,
@@ -51,10 +52,45 @@ export function offlineManifest(dir: string, over: Partial<LiveManifest> = {}): 
       max_order_sell: { usdc: "0", wnear: "0" },
       max_total_sell: { usdc: "0", wnear: "0" },
       filler_spend_max: { usdc: "0", wnear: "0" },
+      owner_recovery_reserve_yocto: "0",
     },
     gas_tgas: { grant: 250, propose: 150, fill: 100, settle: 50, revoke: 150, reconcile_registration: 200, recover: 80 },
+    storage: { order_record_bytes: 1_000, grant_state_bytes: 2_000 },
+    expect_existing_grant: false,
     fillable_preexisting_orders: [],
     steps: [{ kind: "check" }],
     ...over,
   };
+}
+
+export interface RpcCall {
+  method: string;
+  params: unknown;
+}
+
+/** Records every JSON-RPC request a provider sends (the transport), then forwards it. */
+export function recordRpc(provider: object): RpcCall[] {
+  const calls: RpcCall[] = [];
+  const target = provider as unknown as { sendJsonRpc: (method: string, params: unknown) => Promise<unknown> };
+  const original = target.sendJsonRpc.bind(provider);
+  target.sendJsonRpc = (method: string, params: unknown) => {
+    calls.push({ method, params });
+    return original(method, params);
+  };
+  return calls;
+}
+
+/** Replaces a provider's transport with `handler` (no network), recording every request. */
+export function stubRpc(provider: object, handler: (method: string, params: unknown) => unknown): RpcCall[] {
+  const calls: RpcCall[] = [];
+  const target = provider as unknown as { sendJsonRpc: (method: string, params: unknown) => Promise<unknown> };
+  target.sendJsonRpc = (method: string, params: unknown) => {
+    calls.push({ method, params });
+    try {
+      return Promise.resolve(handler(method, params));
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
+  return calls;
 }

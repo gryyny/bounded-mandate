@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { Asset, Policy, Proposal } from "../types.js";
+import { networkProblems } from "./network.js";
 
 const Units = z.string().regex(/^(0|[1-9][0-9]*)$/, "decimal integer string");
 const AccountId = z
@@ -74,6 +75,8 @@ export const LiveManifest = z
     code_hashes: z.object({ mandate: CodeHash, verifier: CodeHash, signer: CodeHash, oracle: CodeHash }).strict(),
     /** NEP-330 `contract_source_metadata.version`, when pinned. */
     versions: z.object({ verifier: z.string(), signer: z.string(), oracle: z.string() }).partial().strict().default({}),
+    /** Pinned verifier fee (pips); mainnet is 1. */
+    verifier_fee_pips: z.number().int().min(0).max(1_000_000),
     mandate_config: z
       .object({
         owner_id: AccountId,
@@ -101,7 +104,8 @@ export const LiveManifest = z
         max_fee_yocto: Units,
         /** Cap on attached deposits (e.g. 1 yocto calls). */
         max_deposit_yocto: Units,
-        max_transactions: z.number().int().positive(),
+        /** 0 allows a read-only (check) run. */
+        max_transactions: z.number().int().nonnegative(),
         /** Owner inventory: the mandate's Intents holdings may not exceed this when the run starts. */
         owner_inventory_max: PerAsset,
         /** Largest single order the mandate may sell (proposals and filled pre-existing orders). */
@@ -110,9 +114,18 @@ export const LiveManifest = z
         max_total_sell: PerAsset,
         /** Cumulative units the filler may pay out, fees included. */
         filler_spend_max: PerAsset,
+        /** NEAR the owner must still hold (free of storage) after worst-case fees, for revoke/recover retries. */
+        owner_recovery_reserve_yocto: Units,
       })
       .strict(),
     gas_tgas: GasTgas.default(DEFAULT_GAS_TGAS),
+    /** Expected storage growth the mandate's free NEAR must cover. */
+    storage: z
+      .object({ order_record_bytes: z.number().int().positive(), grant_state_bytes: z.number().int().positive() })
+      .strict()
+      .default({ order_record_bytes: 1_000, grant_state_bytes: 2_000 }),
+    /** A fresh start normally requires no active or in-flight grant; set to continue an existing grant. */
+    expect_existing_grant: z.boolean().default(false),
     /** Orders that existed before the run and may be filled/settled by it. Others are refused. */
     fillable_preexisting_orders: z.array(Units).default([]),
     /** Optional: access-key nonces at approval time; any earlier use of the keys refuses a fresh start. */
@@ -149,6 +162,8 @@ export function loadManifest(env: NodeJS.ProcessEnv): LoadedManifest {
   }
   const result = LiveManifest.safeParse(parsed);
   if (!result.success) throw new Refusal(`live: invalid manifest: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  const shape = networkProblems(result.data);
+  if (shape.length > 0) throw new Refusal(`live: manifest inconsistent with network ${result.data.network.name}: ${shape.join("; ")}`);
   if (result.data.network.name === "mainnet" && env.MANDATE_LIVE_CONFIRM !== sha256) {
     throw new Refusal(`live: mainnet requires MANDATE_LIVE_CONFIRM=<sha256 of the approved manifest> (this manifest: ${sha256})`);
   }

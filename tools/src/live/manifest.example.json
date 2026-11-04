@@ -6,7 +6,9 @@
     "Budget caps follow the build plan's lead-run proposal: owner inventory <= $10 equivalent, one fill <= $2, filler inventory <= $2 equivalent, fees <= 0.1 NEAR. wNEAR unit caps assume NEAR ~= $3.3: recompute from the price on the approval day.",
     "Deployment and storage (<= 5 NEAR allocation) and all funding are done separately by the owner; this runner never funds, deposits or deploys.",
     "The worst-case fee of the steps below at gas price 1e8 yocto is (sum of gas_tgas + 5 per step) x 1e12 x 1e8 = 0.0895 NEAR; preflight refuses if the live gas price makes it exceed max_fee_yocto.",
-    "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first)."
+    "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
+    "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
+    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders."
   ],
   "network": {
     "name": "mainnet",
@@ -28,7 +30,7 @@
     "oracle": "aggregate-oracle.near"
   },
   "code_hashes": {
-    "mandate": "REPLACE_ME: base58 sha256 of the reviewed mandate WASM (equals view_account code_hash after deployment)",
+    "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
     "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
     "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
     "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg"
@@ -38,6 +40,7 @@
     "signer": "3.17.0",
     "oracle": "0.4.1"
   },
+  "verifier_fee_pips": 1,
   "mandate_config": {
     "owner_id": "REPLACE_ME: same as accounts.owner",
     "agent_id": "REPLACE_ME: same as accounts.agent",
@@ -56,12 +59,16 @@
     }
   },
   "keys": {
-    "mandate_full_access": ["REPLACE_ME: each full-access key the approved upgrade-key policy allows on the mandate account; use [] for a locked account"],
+    "mandate_full_access": [
+      "REPLACE_ME: each full-access key the approved upgrade-key policy allows on the mandate account; use [] for a locked account"
+    ],
     "agent": {
       "public_key": "REPLACE_ME: ed25519 public key of the agent's function-call key",
       "max_allowance_yocto": "250000000000000000000000"
     },
-    "owner": { "public_key": "REPLACE_ME: ed25519 public key of the owner's full-access key used here" },
+    "owner": {
+      "public_key": "REPLACE_ME: ed25519 public key of the owner's full-access key used here"
+    },
     "filler": {
       "public_key": "REPLACE_ME: ed25519 public key of the filler's full-access key",
       "intents_public_key": "REPLACE_ME: ed25519 key the filler registered on intents.near (add_public_key)"
@@ -77,10 +84,23 @@
     "max_fee_yocto": "100000000000000000000000",
     "max_deposit_yocto": "0",
     "max_transactions": 10,
-    "owner_inventory_max": { "usdc": "5000000", "wnear": "1500000000000000000000000" },
-    "max_order_sell": { "usdc": "2000000", "wnear": "600000000000000000000000" },
-    "max_total_sell": { "usdc": "2000000", "wnear": "600000000000000000000000" },
-    "filler_spend_max": { "usdc": "2000000", "wnear": "600000000000000000000000" }
+    "owner_inventory_max": {
+      "usdc": "5000000",
+      "wnear": "1500000000000000000000000"
+    },
+    "max_order_sell": {
+      "usdc": "2000000",
+      "wnear": "600000000000000000000000"
+    },
+    "max_total_sell": {
+      "usdc": "2000000",
+      "wnear": "600000000000000000000000"
+    },
+    "filler_spend_max": {
+      "usdc": "2000000",
+      "wnear": "600000000000000000000000"
+    },
+    "owner_recovery_reserve_yocto": "500000000000000000000000"
   },
   "gas_tgas": {
     "grant": 250,
@@ -91,6 +111,11 @@
     "reconcile_registration": 200,
     "recover": 80
   },
+  "storage": {
+    "order_record_bytes": 1000,
+    "grant_state_bytes": 2000
+  },
+  "expect_existing_grant": false,
   "fillable_preexisting_orders": [],
   "expected_nonces": {
     "owner": "REPLACE_ME: owner key nonce read at approval time",
@@ -98,7 +123,9 @@
     "filler": "REPLACE_ME: filler key nonce read at approval time"
   },
   "steps": [
-    { "kind": "check" },
+    {
+      "kind": "check"
+    },
     {
       "kind": "grant",
       "policy": {
@@ -117,13 +144,32 @@
     },
     {
       "kind": "propose",
-      "source": { "from": "manifest", "proposal": { "sell": "usdc", "sell_amount": "1500000", "max_concession_bps": 30 } },
+      "source": {
+        "from": "manifest",
+        "proposal": {
+          "sell": "usdc",
+          "sell_amount": "1500000",
+          "max_concession_bps": 30
+        }
+      },
       "expect": "signed"
     },
-    { "kind": "fill" },
-    { "kind": "settle" },
-    { "kind": "revoke" },
-    { "kind": "recover", "asset": "usdc" },
-    { "kind": "recover", "asset": "wnear" }
+    {
+      "kind": "fill"
+    },
+    {
+      "kind": "settle"
+    },
+    {
+      "kind": "revoke"
+    },
+    {
+      "kind": "recover",
+      "asset": "usdc"
+    },
+    {
+      "kind": "recover",
+      "asset": "wnear"
+    }
   ]
 }

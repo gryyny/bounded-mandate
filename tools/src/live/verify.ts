@@ -49,6 +49,7 @@ const str = (b: Balances) => ({ usdc: b.usdc.toString(), wnear: b.wnear.toString
 export function receiptTree(outcome: Outcome, allowFailureFrom: (executor: string) => boolean = () => false): string[] {
   const out: string[] = [];
   if (outcome.ambiguous) out.push(`outcome ambiguous: ${outcome.error ?? ""}`);
+  if (!outcome.final) out.push(`outcome not final (${outcome.final_execution_status ?? "unknown"})`);
   if (!outcome.submitted) out.push(`not executed: ${outcome.error ?? ""}`);
   if (!outcome.success) out.push(`final status not success: ${outcome.error ?? ""}`);
   for (const r of outcome.receipts) {

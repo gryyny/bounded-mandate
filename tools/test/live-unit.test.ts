@@ -36,13 +36,13 @@ describe("live refusals before any network access", () => {
     expect((await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: deposit })).exitCode).toBe(2);
   });
 
-  it("refuses mainnet unless MANDATE_LIVE_CONFIRM is the exact manifest sha256", async () => {
+  it("refuses a sandbox manifest relabelled as mainnet", async () => {
     const d = tmp();
     const m = offlineManifest(d);
     const path = writeJson(d, "m.json", { ...m, network: { ...m.network, name: "mainnet" } });
-    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path, MANDATE_LIVE_CONFIRM: "0".repeat(64) });
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path });
     expect(r.exitCode).toBe(2);
-    expect(r.message).toMatch(/MANDATE_LIVE_CONFIRM/);
+    expect(r.message).toMatch(/inconsistent with network mainnet/);
   });
 
   it("refuses credentials that are world-readable or for another account", async () => {
@@ -157,6 +157,7 @@ describe("receipt tree inspection", () => {
     method: "f",
     submitted: true,
     ambiguous: false,
+    final: true,
     success: true,
     any_receipt_failed: false,
     fee_yocto: "0",

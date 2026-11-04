@@ -23,6 +23,7 @@ import { Evidence, GrantView, OrderView, type Asset, type Assertion, type Propos
 import { BudgetExceeded, checkActual, checkPlanned, totals, type Planned } from "./budget.js";
 import { Ledger, type LedgerEntry } from "./ledger.js";
 import { Refusal, loadManifest, type LiveManifest, type Step } from "./manifest.js";
+import { credentialProblems } from "./network.js";
 import { STEP_SIGNER, preflight, worstFee, type Check } from "./preflight.js";
 import { balancesOf, verifyFill, verifyGrant, verifyPropose, verifyReconcile, verifyRecover, verifyRevoke, verifySettle, type Balances, type Verification, type VerifyContext } from "./verify.js";
 
@@ -99,6 +100,19 @@ class Stop extends Error {}
 /** Orders created by this run (from propose step-done entries), in order. */
 const createdOrders = (ledger: Ledger): string[] =>
   ledger.ofKind("step-done").flatMap((e) => (typeof e.data.order_id === "string" ? [e.data.order_id] : []));
+
+/**
+ * Steps that will still send a new transaction: not done, and without an intent that may have executed.
+ * An intended step already holds its fee reservation (or actual fee) in the ledger: counting it again
+ * would reserve twice.
+ */
+function pendingSteps(ledger: Ledger, m: LiveManifest): Step[] {
+  const from = nextStepIndex(ledger);
+  const rejected = new Set<string>();
+  for (const e of ledger.entries) if ((e.kind === "tx-result" || e.kind === "reconciled") && e.data.status === "rejected" && typeof e.data.tx_hash === "string") rejected.add(e.data.tx_hash);
+  const intended = new Set(ledger.ofKind("tx-intent").filter((e) => !rejected.has(String(e.data.tx_hash))).map((e) => e.data.step));
+  return m.steps.filter((_s, i) => i >= from && !intended.has(i));
+}
 
 const nextStepIndex = (ledger: Ledger): number => {
   const done = ledger.ofKind("step-done").map((e) => z.number().int().parse(e.data.step));
@@ -279,6 +293,7 @@ const outcomeData = (o: Outcome): Record<string, unknown> => ({
 
 /** Records the verification of an executed step; a failed check stops the run. */
 async function finishStep(rt: Runtime, step: number, kind: string, pre: Pre, outcome: Outcome): Promise<void> {
+  if (!outcome.final) throw new Stop(`step ${step + 1} ${kind}: outcome of ${outcome.tx_hash ?? "?"} is not final (${outcome.final_execution_status ?? "unknown"}); rerun with MANDATE_LIVE_RESUME=1 once final`);
   const breach = checkActual(rt.m.budget, totals(rt.ledger));
   if (breach !== null) throw new Stop(`budget: ${breach}`);
   const v = await verify(rt, pre, outcome);
@@ -371,11 +386,20 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       filler: loadCredential(c.filler, a.filler),
       filler_intents: loadCredential(c.filler_intents, a.filler),
     };
+    const keyProblems = credentialProblems(loaded.manifest, {
+      ...Object.fromEntries(Object.entries(creds).map(([role, cred]) => [`credential.${role}`, cred.key.getPublicKey().toString()])),
+      "manifest.owner": loaded.manifest.keys.owner.public_key,
+      "manifest.agent": loaded.manifest.keys.agent.public_key,
+      "manifest.filler": loaded.manifest.keys.filler.public_key,
+      "manifest.filler_intents": loaded.manifest.keys.filler.intents_public_key,
+    });
+    if (keyProblems.length > 0) throw new Refusal(`live: ${keyProblems.join("; ")}`);
   } catch (error) {
     return { exitCode: 2, message: error instanceof Error ? error.message : String(error) };
   }
   const m = loaded.manifest;
-  const client = deps.client ?? new NearClient(m.network.rpc_url);
+  // Finalized reads everywhere and transactions awaited to FINAL.
+  const client = (deps.client ?? new NearClient(m.network.rpc_url)).final();
   const mandate = new MandateClient(client, m.accounts.mandate);
   const verifier = new VerifierClient(client, m.accounts.verifier);
   const dir = Ledger.dirFor(deps.outRoot ?? join(REPO_ROOT, "out/live"), loaded.sha256);
@@ -389,8 +413,35 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
   try {
     if (resume) ledger = Ledger.load(dir, loaded.sha256);
     else if (Ledger.exists(dir)) throw new Refusal(`ledger already exists at ${dir}; set MANDATE_LIVE_RESUME=1 to resume it`);
-    const spent = ledger === null ? 0n : totals(ledger).fee_yocto;
-    const from = ledger === null ? 0 : nextStepIndex(ledger);
+    const ctx: VerifyContext = { mandate, verifier, tokens: { usdc: m.mandate_config.usdc.token, wnear: m.mandate_config.wnear.token }, timeoutMs: deps.timeoutMs ?? 180_000, pollMs: deps.pollMs ?? 1_000 };
+    const runtime = (l: Ledger, gasPrice: bigint): Runtime => ({
+      m,
+      client,
+      mandate,
+      verifier,
+      ledger: l,
+      ctx,
+      accounts: {
+        owner: client.account(creds.owner.accountId, creds.owner.key),
+        agent: client.account(creds.agent.accountId, creds.agent.key),
+        filler: client.account(creds.filler.accountId, creds.filler.key),
+      },
+      filler: new Filler({ client, mandate, verifier, account: client.account(creds.filler.accountId, creds.filler.key), key: creds.filler_intents.key, statePath: join(dir, "filler-unused.json") }),
+      gasPrice,
+      receipts,
+      assertions,
+    });
+    // A resume first proves it is on the ledger's chain, then reconciles (reads only, nothing is sent),
+    // so that preflight sees the orders and fees the interrupted run actually produced.
+    let rt: Runtime | null = null;
+    if (ledger !== null) {
+      const status = await client.nodeStatus();
+      const start = ledger.entries[0];
+      if (start === undefined || start.data.genesis_hash !== status.genesis_hash) throw new Refusal("cannot resume: ledger was written against another chain");
+      const startNonces = z.object({ owner: z.string(), agent: z.string(), filler: z.string() }).parse(start.data.nonces);
+      rt = runtime(ledger, await client.gasPrice());
+      await reconcile(rt, startNonces);
+    }
     const pf = await preflight({
       client,
       manifest: m,
@@ -403,38 +454,17 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
         filler_intents: creds.filler_intents.key.getPublicKey().toString(),
       },
       fresh: ledger === null,
-      spentFeeYocto: spent,
-      remaining: m.steps.slice(from),
+      spentFeeYocto: ledger === null ? 0n : totals(ledger).fee_yocto,
+      pending: ledger === null ? m.steps : pendingSteps(ledger, m),
+      createdOrders: ledger === null ? [] : createdOrders(ledger),
     });
     checks = pf.checks;
     if (!pf.passed) throw new Refusal(`preflight refused: ${pf.checks.filter((c) => !c.passed).map((c) => c.id).join(", ")}`);
     if (ledger === null) {
       ledger = Ledger.create(dir, loaded.sha256);
       ledger.append("start", { manifest_sha256: loaded.sha256, ...pf.facts, preflight: pf.checks });
-    } else if (ledger.entries[0]?.data.genesis_hash !== pf.facts.genesis_hash) {
-      throw new Refusal("cannot resume: ledger was written against another chain");
     }
-    const start = ledger.entries[0];
-    const startNonces = z.object({ owner: z.string(), agent: z.string(), filler: z.string() }).parse(start?.data.nonces);
-    const ctx: VerifyContext = { mandate, verifier, tokens: { usdc: m.mandate_config.usdc.token, wnear: m.mandate_config.wnear.token }, timeoutMs: deps.timeoutMs ?? 180_000, pollMs: deps.pollMs ?? 1_000 };
-    const rt: Runtime = {
-      m,
-      client,
-      mandate,
-      verifier,
-      ledger,
-      ctx,
-      accounts: {
-        owner: client.account(creds.owner.accountId, creds.owner.key),
-        agent: client.account(creds.agent.accountId, creds.agent.key),
-        filler: client.account(creds.filler.accountId, creds.filler.key),
-      },
-      filler: new Filler({ client, mandate, verifier, account: client.account(creds.filler.accountId, creds.filler.key), key: creds.filler_intents.key, statePath: join(dir, "filler-unused.json") }),
-      gasPrice: BigInt(pf.facts.gas_price),
-      receipts,
-      assertions,
-    };
-    if (resume) await reconcile(rt, startNonces);
+    rt = { ...(rt ?? runtime(ledger, 0n)), gasPrice: BigInt(pf.facts.gas_price) };
     await execute(rt, nextStepIndex(ledger));
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
@@ -466,7 +496,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {
   const result = await runLive();
-  for (const c of result.preflight?.filter((x) => !x.passed) ?? []) console.error(`preflight FAILED ${c.id}: ${JSON.stringify(c.observed)}`);
+  for (const c of result.preflight ?? []) console.log(`preflight ${c.passed ? "PASS" : "FAIL"} ${c.id}${c.passed ? "" : `: ${JSON.stringify(c.observed)}`}`);
   console.log(result.message);
   process.exitCode = result.exitCode;
 }
