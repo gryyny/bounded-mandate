@@ -2,7 +2,7 @@
   "schema_version": 2,
   "notes": [
     "TEMPLATE for the mainnet approval package. Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is.",
-    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account); versions from contract_source_metadata.",
+    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata.",
     "Budget caps follow the build plan's lead-run proposal: owner inventory <= $10 equivalent, one fill <= $2, filler inventory <= $2 equivalent, fees <= 0.1 NEAR. wNEAR unit caps assume NEAR ~= $3.3: recompute from the price on the approval day.",
     "Deployment and storage (<= 5 NEAR allocation) and all funding are done separately by the owner; this runner never funds, deposits or deploys.",
     "The worst-case fee of the steps below at gas price 1e8 yocto is (sum of gas_tgas + 5 per step) x 1e12 x 1e8 = 0.0895 NEAR; preflight refuses if the live gas price makes it exceed max_fee_yocto.",
@@ -33,7 +33,9 @@
     "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
     "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
     "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
-    "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg"
+    "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+    "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+    "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
   },
   "versions": {
     "verifier": "0.4.5",

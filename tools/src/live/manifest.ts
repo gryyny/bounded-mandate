@@ -72,7 +72,8 @@ export const LiveManifest = z
     accounts: z
       .object({ mandate: AccountId, owner: AccountId, agent: AccountId, filler: AccountId, verifier: AccountId, signer: AccountId, oracle: AccountId })
       .strict(),
-    code_hashes: z.object({ mandate: CodeHash, verifier: CodeHash, signer: CodeHash, oracle: CodeHash }).strict(),
+    /** Code hash of every contract the run relies on, including both token contracts (keyed by asset). */
+    code_hashes: z.object({ mandate: CodeHash, verifier: CodeHash, signer: CodeHash, oracle: CodeHash, usdc: CodeHash, wnear: CodeHash }).strict(),
     /** NEP-330 `contract_source_metadata.version`, when pinned. */
     versions: z.object({ verifier: z.string(), signer: z.string(), oracle: z.string() }).partial().strict().default({}),
     /** Pinned verifier fee (pips); mainnet is 1. */

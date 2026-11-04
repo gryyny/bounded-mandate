@@ -25,7 +25,7 @@ export function offlineManifest(dir: string, over: Partial<LiveManifest> = {}): 
     network: { name: "sandbox", chain_id: "test-chain", genesis_hash: "11111111111111111111111111111111", rpc_url: "http://127.0.0.1:9" },
     approval: { approved_by: "test", reference: "unit test" },
     accounts,
-    code_hashes: { mandate: "11111111111111111111111111111111", verifier: "11111111111111111111111111111111", signer: "11111111111111111111111111111111", oracle: "11111111111111111111111111111111" },
+    code_hashes: { mandate: "11111111111111111111111111111111", verifier: "11111111111111111111111111111111", signer: "11111111111111111111111111111111", oracle: "11111111111111111111111111111111", usdc: "11111111111111111111111111111111", wnear: "11111111111111111111111111111111" },
     versions: {},
     verifier_fee_pips: 1,
     mandate_config: {

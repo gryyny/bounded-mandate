@@ -214,7 +214,7 @@ describe("mainnet manifest template", () => {
     };
     const parsed = LiveManifest.parse(fill(template));
     expect(parsed.network).toMatchObject({ chain_id: "mainnet", genesis_hash: "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H" });
-    expect(parsed.code_hashes).toMatchObject({ verifier: "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk", oracle: "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg" });
+    expect(parsed.code_hashes).toMatchObject({ verifier: "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk", oracle: "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg", usdc: "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q", wnear: "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1" });
     expect(parsed.mandate_config.usdc.token).toBe("17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1");
     expect(parsed.mandate_config.wnear.token).toBe("wrap.near");
     expect(parsed.accounts.signer).toBe("v1.signer");

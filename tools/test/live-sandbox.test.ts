@@ -72,7 +72,7 @@ beforeAll(async () => {
     network: { name: "sandbox", chain_id: status.chain_id, genesis_hash: status.genesis_hash, rpc_url: w.client.rpcUrl },
     accounts: { mandate: w.mandate.id, owner: w.owner.id, agent: w.agent.id, filler: w.filler.id, verifier: w.verifier.id, signer: w.mpcId, oracle: w.oracleId },
     // Independently derived from the local build artifacts, not read back from the chain.
-    code_hashes: { mandate: hash58(w.wasm.mandate.bytes), verifier: hash58(w.wasm.verifier.bytes), signer: hash58(w.wasm.mpc.bytes), oracle: hash58(w.wasm.oracle.bytes) },
+    code_hashes: { mandate: hash58(w.wasm.mandate.bytes), verifier: hash58(w.wasm.verifier.bytes), signer: hash58(w.wasm.mpc.bytes), oracle: hash58(w.wasm.oracle.bytes), usdc: hash58(w.wasm.ft.bytes), wnear: hash58(w.wasm.ft.bytes) },
     mandate_config: {
       owner_id: w.owner.id,
       agent_id: w.agent.id,
@@ -122,6 +122,8 @@ describe("preflight binds the chain to the manifest", () => {
     ["mandate code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, mandate: "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV" } }), "code_hash.mandate"],
     ["verifier code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, verifier: "11111111111111111111111111111111" } }), "code_hash.verifier"],
     ["oracle code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, oracle: "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg" } }), "code_hash.oracle"],
+    ["USDC token code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, usdc: "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q" } }), "code_hash.usdc"],
+    ["wNEAR token code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, wnear: "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1" } }), "code_hash.wnear"],
     ["verifier fee", (m) => ({ ...m, verifier_fee_pips: 2 }), "verifier.fee_pips"],
     ["config price id", (m) => ({ ...m, mandate_config: { ...m.mandate_config, usdc: { ...m.mandate_config.usdc, price_id: "00" } } }), "mandate.config"],
     ["config decimals", (m) => ({ ...m, mandate_config: { ...m.mandate_config, wnear: { ...m.mandate_config.wnear, decimals: 18 } } }), "mandate.config"],

@@ -17,6 +17,8 @@ export const MAINNET = {
     verifier: "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
     signer: "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
     oracle: "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+    usdc: "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+    wnear: "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1",
   },
   accounts: { verifier: "intents.near", signer: "v1.signer", oracle: "aggregate-oracle.near" },
   tokens: { usdc: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", wnear: "wrap.near" },
@@ -89,6 +91,9 @@ export function networkProblems(m: LiveManifest, root = REPO_ROOT): string[] {
       if (m.code_hashes[role] !== MAINNET.code_hashes[role]) p.push(`mainnet ${role} code hash must be the pinned ${MAINNET.code_hashes[role]}`);
     }
     if (m.mandate_config.usdc.token !== MAINNET.tokens.usdc || m.mandate_config.wnear.token !== MAINNET.tokens.wnear) p.push("mainnet tokens must be the pinned USDC and wrap.near");
+    for (const asset of ["usdc", "wnear"] as const) {
+      if (m.code_hashes[asset] !== MAINNET.code_hashes[asset]) p.push(`mainnet ${asset} token code hash must be the pinned ${MAINNET.code_hashes[asset]}`);
+    }
     const local = localBuildHashes(root);
     for (const [role, hash] of Object.entries(m.code_hashes)) {
       const build = local.get(hash);

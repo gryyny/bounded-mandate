@@ -115,6 +115,8 @@ describe("mainnet manifests refuse anything sandbox- or test-shaped before any R
     ["mock FT code as verifier", (m) => ({ ...m, code_hashes: { ...m.code_hashes, verifier: stub("mock_ft") } }), /verifier code hash equals local build target\/near\/mock_ft/],
     ["non-reproducible mandate build", (m) => ({ ...m, code_hashes: { ...m.code_hashes, mandate: stub("bounded_mandate") } }), /mandate code hash equals local build target\/near\/bounded_mandate/],
     ["unpinned mandate code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, mandate: "11111111111111111111111111111111" } }), /not a pinned reproducible build/],
+    ["mock FT code as USDC", (m) => ({ ...m, code_hashes: { ...m.code_hashes, usdc: stub("mock_ft") } }), /usdc token code hash must be the pinned/],
+    ["unpinned wNEAR code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, wnear: "11111111111111111111111111111111" } }), /wnear token code hash must be the pinned/],
     ["verifier fee", (m) => ({ ...m, verifier_fee_pips: 2 }), /verifier fee must be pinned/],
     ["agent allowance above 0.25 NEAR", (m) => ({ ...m, keys: { ...m.keys, agent: { ...m.keys.agent, max_allowance_yocto: "250000000000000000000001" } } }), /at most 0\.25 NEAR/],
   ];

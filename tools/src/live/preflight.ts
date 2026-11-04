@@ -97,6 +97,11 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
     const info = await client.accountView(account).catch(() => null);
     check(`code_hash.${role}`, info?.code_hash === m.code_hashes[role], { account, chain: info?.code_hash ?? null, manifest: m.code_hashes[role] });
   }
+  for (const asset of ["usdc", "wnear"] as const) {
+    const account = m.mandate_config[asset].token;
+    const info = await client.accountView(account).catch(() => null);
+    check(`code_hash.${asset}`, info?.code_hash === m.code_hashes[asset], { account, chain: info?.code_hash ?? null, manifest: m.code_hashes[asset] });
+  }
   for (const role of ["verifier", "signer", "oracle"] as const) {
     const expected = m.versions[role];
     if (expected === undefined) continue;
