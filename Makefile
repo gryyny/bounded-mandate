@@ -8,21 +8,32 @@ CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stub
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
 TSX := cd tools && npx --no-install tsx
 
+# The fault-injection build is a separately named test WASM; --no-abi keeps production artifacts untouched.
 define build_wasm
 	for crate in $(CONTRACT_CRATES); do \
 	  cargo near build non-reproducible-wasm --locked --manifest-path "$$crate/Cargo.toml" >/dev/null; \
 	done
+	cargo near build non-reproducible-wasm --locked --manifest-path contract/Cargo.toml --features fault-injection --no-abi --out-dir target/near/bounded_mandate_fault >/dev/null
+	mv target/near/bounded_mandate_fault/bounded_mandate.wasm target/near/bounded_mandate_fault/bounded_mandate_fault.wasm
 endef
+
+# Every acceptance report is bound to this run: run.ts start records the run and clears old results.
+RUN_ID = MANDATE_RUN_ID="$$(cat $(CURDIR)/out/run/run_id)"
 
 test:
 	$(NPM_CI)
+	$(TSX) src/checks/run.ts start
 	$(TSX) src/checks/integrity.ts
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets --locked -- -D warnings
+	cargo clippy -p bounded-mandate --all-targets --locked --features fault-injection -- -D warnings
 	$(call build_wasm)
-	cargo test --workspace --locked
-	cd tools && npm run lint && npm run typecheck && npm run build && npm test
+	$(TSX) src/checks/run.ts wasm
+	$(RUN_ID) cargo test --workspace --locked
+	$(RUN_ID) cargo test -p bounded-mandate --lib --locked --features fault-injection
+	cd tools && npm run lint && npm run typecheck && npm run build && $(RUN_ID) npm test
 	$(TSX) src/checks/gates.ts
+	$(TSX) src/checks/acceptance.ts
 
 demo:
 	$(NPM_CI)

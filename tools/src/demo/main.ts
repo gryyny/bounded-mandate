@@ -18,7 +18,6 @@ import { Recorder, chainSnapshot, grantDemo, tryLoadRecording } from "./story.js
 import { balances, fillerKey, postPrices, setupWorld, type World } from "./world.js";
 import { valueUnits } from "../agent/snapshot.js";
 import { renderPage } from "../page/render.js";
-import { loadGateReports } from "../page/reports.js";
 
 const str = (v: bigint): string => v.toString();
 const balStr = (b: Record<string, bigint>): Record<string, string> => Object.fromEntries(Object.entries(b).map(([k, v]) => [k, str(v)]));
@@ -218,8 +217,8 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
 }
 
 function render(evidence: Evidence, outDir: string): string {
-  const reports = loadGateReports(join(REPO_ROOT, "out/evidence/tests"));
-  return `rendered ${renderPage(evidence, outDir, { gateReports: reports, policy: DEMO_POLICY })} with ${reports.length} gate reports`;
+  // Gate status comes only from out/evidence/acceptance.json written by make test; demo checks never mark a gate.
+  return `rendered ${renderPage(evidence, outDir, { policy: DEMO_POLICY })}`;
 }
 
 async function main(): Promise<number> {

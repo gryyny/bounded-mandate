@@ -8,9 +8,12 @@ import { chainSnapshot, grantDemo, tryLoadRecording } from "../src/demo/story.js
 import { setupWorld, type World } from "../src/demo/world.js";
 import { settledOrder } from "../src/near/contracts.js";
 import { LocalNetwork } from "../src/near/sandbox.js";
+import { CaseRecorder, wasmHashes } from "../src/evidence/report.js";
 
 let net: LocalNetwork;
 let world: World;
+// MODEL.recorded-proposal passes only if both checks ran and passed (src/evidence/report.ts).
+const evidence = new CaseRecorder("MODEL", "recorded-proposal", ["genuine-untampered-bound", "reaches-propose-order-on-chain"]);
 
 beforeAll(async () => {
   net = await LocalNetwork.start();
@@ -19,6 +22,8 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
+  const loaded = typeof world === "undefined" ? [] : Object.values(world.wasm);
+  evidence.write("sandbox", wasmHashes(loaded));
   await net.stop();
 });
 
@@ -34,15 +39,15 @@ const requireRecording = () => {
 
 describe("recorded genuine model proposal", () => {
   // gate: MODEL
-  it("is genuine, untampered and bound to the demo market", () => {
+  it("is genuine, untampered and bound to the demo market", () => evidence.check("genuine-untampered-bound", () => {
     const rec = requireRecording();
     expect(rec.interaction.origin).toBe("genuine-model");
     expect(rec.interaction.prompt_variant).toBe("normal");
     expect(rec.interaction.snapshot).toEqual(demoSnapshot("normal"));
-  });
+  }));
 
   // gate: MODEL
-  it("goes through the adapter into propose_order and the order exists on-chain", async () => {
+  it("goes through the adapter into propose_order and the order exists on-chain", () => evidence.check("reaches-propose-order-on-chain", async () => {
     const rec = requireRecording();
     const snapshot = await chainSnapshot(world, BENIGN_NOTES);
     // The recorded provider refuses unless the prompt rebuilt from chain state hashes to the recorded prompt.
@@ -60,5 +65,5 @@ describe("recorded genuine model proposal", () => {
       concession_bps: proposal.max_concession_bps,
     });
     expect(order?.state.state).toBe("signed");
-  });
+  }));
 });

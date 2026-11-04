@@ -85,9 +85,9 @@ code, .mono { font-family: var(--mono); font-size: .84em; word-break: break-all;
   text-transform: uppercase; padding: .32rem .5rem; border-radius: 3px; white-space: nowrap; border: 1px solid currentColor;
 }
 .status.passed, .status.blocked, .status.executed, .status.demonstrated, .status.success { color: var(--pass); background: var(--pass-bg); }
-.status.failed, .status.attack_succeeded, .status.failure { color: var(--fail); background: var(--fail-bg); }
-.status.stale, .status.unproven, .status.parity { color: var(--stale); background: var(--stale-bg); }
-.status.not-run, .status.unsupported_by_design, .status.not_run, .status.not-comparable {
+.status.failed, .status.attack_succeeded, .status.failure, .status.mismatched, .status.duplicate { color: var(--fail); background: var(--fail-bg); }
+.status.stale, .status.unproven, .status.parity, .status.uncertified { color: var(--stale); background: var(--stale-bg); }
+.status.not-run, .status.unsupported_by_design, .status.not_run, .status.not-comparable, .status.missing, .status.incomplete {
   color: var(--none); background: repeating-linear-gradient(135deg, var(--none-bg) 0 6px, transparent 6px 9px);
 }
 .mode {
@@ -101,6 +101,7 @@ code, .mono { font-family: var(--mono); font-size: .84em; word-break: break-all;
 .mode.mainnet { color: var(--sheet); background: var(--m-mainnet); border: 3px double var(--sheet); outline: 1px solid var(--m-mainnet); }
 .mode.other { color: var(--muted); border: 1px solid var(--rule-strong); white-space: normal; line-height: 1.4; }
 th[scope="row"], td code { white-space: nowrap; }
+td.reason { min-width: 16rem; }
 ol.timeline { list-style: none; margin: 0; padding: 0; position: relative; counter-reset: step; }
 ol.timeline::before { content: ""; position: absolute; left: 1.05rem; top: .4rem; bottom: .4rem; width: 2px; background: var(--rule-strong); }
 ol.timeline > li {

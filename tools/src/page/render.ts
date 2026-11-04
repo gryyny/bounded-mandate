@@ -1,46 +1,44 @@
-// Renders the static evidence page. Every status shown is computed from validated evidence:
-// a gate is "passed" only when at least one passed assertion exists and none failed or is stale.
-import { mkdirSync, writeFileSync } from "node:fs";
+// Renders the static evidence page. Gate status comes only from out/evidence/acceptance.json
+// (src/checks/acceptance.ts): a gate shows "passed" only when every required case of a certified
+// run for this revision passed. Demo assertions are story checks and never mark a gate.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { REQUIRED_GATES } from "../checks/gates.js";
+import { REPO_ROOT } from "../evidence/report.js";
+import { REQUIRED_CASES } from "../evidence/required.js";
+import { Acceptance, type BaselineCase, type CaseResult } from "../evidence/schema.js";
 import { Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
-import { type BaselineCase, GateReport, T5Data } from "./reports.js";
+import { LegacyGateReport, loadGateReports } from "./reports.js";
 import { STYLES } from "./styles.js";
 
 export interface RenderExtras {
-  /** Per-gate test reports, e.g. from `loadGateReports("out/evidence/tests")`. */
-  gateReports?: readonly GateReport[];
+  /**
+   * The acceptance verdict of a `make test` run. `null`: no run (gates show "not run").
+   * `renderPage` loads out/evidence/acceptance.json when this is omitted.
+   */
+  acceptance?: unknown;
   /** The grant's immutable policy as read from the contract (`get_grant().policy`). */
   policy?: Policy;
+  /** Historical envelope-v1 reports, shown as "legacy, uncertified by v2 rules"; never mark a gate. */
+  legacy?: { label: string; reports: readonly unknown[] };
+  /** @deprecated Ignored: gate status comes only from acceptance.json. */
+  gateReports?: unknown;
 }
 
-export type GateStatus = "passed" | "failed" | "stale" | "not-run";
+export type GateStatus = "passed" | "uncertified" | "failed" | "incomplete" | "stale" | "not-run";
 
-interface GateSource {
-  label: string;
-  passed: boolean;
-  mode: string;
-  revision: string | null;
-  stale: boolean;
-}
-
-export interface GateRow {
+export interface GateView {
   gate: string;
   status: GateStatus;
-  sources: GateSource[];
+  cases: CaseResult[];
 }
 
 const MAX_DETAIL_CHARS = 6000;
+const GATES = Object.keys(REQUIRED_CASES);
 
 export const escapeHtml = (value: string): string =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 
 const json = (value: unknown): string => {
   const text = JSON.stringify(value === undefined ? null : value, null, 2);
@@ -51,27 +49,43 @@ const fail = (what: string, error: z.ZodError): never => {
   throw new Error(`${what} failed schema validation:\n${z.prettifyError(error)}`);
 };
 
-function parseInputs(evidence: unknown, extras: RenderExtras): { ev: Evidence; reports: GateReport[]; policy: Policy | null } {
+interface Inputs {
+  ev: Evidence;
+  acc: Acceptance | null;
+  policy: Policy | null;
+  legacy: { label: string; reports: LegacyGateReport[] } | null;
+}
+
+function parseInputs(evidence: unknown, extras: RenderExtras): Inputs {
   const ev = Evidence.safeParse(evidence);
   if (!ev.success) return fail("evidence", ev.error);
-  const reports = (extras.gateReports ?? []).map((r, i) => {
-    const parsed = GateReport.safeParse(r);
-    return parsed.success ? parsed.data : fail(`gate report #${String(i)}`, parsed.error);
-  });
+  let acc: Acceptance | null = null;
+  if (extras.acceptance !== undefined && extras.acceptance !== null) {
+    const parsed = Acceptance.safeParse(extras.acceptance);
+    acc = parsed.success ? parsed.data : fail("acceptance", parsed.error);
+  }
   let policy: Policy | null = null;
   if (extras.policy !== undefined) {
     const parsed = Policy.safeParse(extras.policy);
     policy = parsed.success ? parsed.data : fail("policy", parsed.error);
   }
-  return { ev: ev.data, reports, policy };
+  const legacy =
+    extras.legacy === undefined
+      ? null
+      : {
+          label: extras.legacy.label,
+          reports: extras.legacy.reports.map((r, i) => {
+            const parsed = LegacyGateReport.safeParse(r);
+            return parsed.success ? parsed.data : fail(`legacy report #${String(i)}`, parsed.error);
+          }),
+        };
+  return { ev: ev.data, acc, policy, legacy };
 }
 
 /** Mode of one demo step: the run's mode unless the receipt declares a weaker, valid one. */
 function stepMode(receipt: Receipt, ev: Evidence): EvidenceMode {
   const declared =
-    typeof receipt.detail === "object" && receipt.detail !== null && "mode" in receipt.detail
-      ? EvidenceMode.safeParse(receipt.detail.mode)
-      : null;
+    typeof receipt.detail === "object" && receipt.detail !== null && "mode" in receipt.detail ? EvidenceMode.safeParse(receipt.detail.mode) : null;
   if (declared !== null && !declared.success) throw new Error(`receipt "${receipt.label}" declares an unknown mode`);
   const mode = declared?.data ?? ev.mode;
   if (mode === "mainnet" && (ev.mode !== "mainnet" || receipt.tx_hash === undefined)) {
@@ -80,41 +94,27 @@ function stepMode(receipt: Receipt, ev: Evidence): EvidenceMode {
   return mode;
 }
 
-export function gateRows(ev: Evidence, reports: readonly GateReport[]): GateRow[] {
-  const gates = [...new Set<string>([...REQUIRED_GATES, ...reports.map((r) => r.gate), ...ev.assertions.map((a) => a.gate)])];
-  return gates.map((gate) => {
-    const sources: GateSource[] = [
-      ...reports
-        .filter((r) => r.gate === gate)
-        .map((r) => {
-          const revision = r.source_revision ?? null;
-          return {
-            label: `out/evidence/tests/${gate}${r.part ? `.${r.part}` : ""}.json`,
-            passed: r.passed,
-            mode: r.mode,
-            revision,
-            stale: revision !== ev.source.product_commit,
-          };
-        }),
-      ...ev.assertions
-        .filter((a) => a.gate === gate)
-        .map((a) => ({ label: `evidence assertion ${a.id}`, passed: a.passed, mode: ev.mode, revision: ev.source.product_commit, stale: false })),
-    ];
-    const status: GateStatus =
-      sources.length === 0
-        ? "not-run"
-        : sources.some((s) => !s.passed)
-          ? "failed"
-          : sources.some((s) => s.stale)
-            ? "stale"
-            : "passed";
-    return { gate, status, sources };
+/** Gate status from acceptance only. An acceptance run for another revision never counts. */
+export function gateViews(ev: Evidence, acc: Acceptance | null): GateView[] {
+  return GATES.map((gate) => {
+    if (acc === null) return { gate, status: "not-run" as const, cases: [] };
+    const cases = acc.cases.filter((c) => c.gate === gate);
+    const required: readonly string[] = REQUIRED_CASES[gate as keyof typeof REQUIRED_CASES];
+    const covered = required.every((name) => cases.some((c) => c.case === name));
+    let status: GateStatus;
+    if (acc.revision !== ev.source.product_commit) status = "stale";
+    else if (cases.some((c) => c.status === "failed" || c.status === "mismatched" || c.status === "duplicate")) status = "failed";
+    else if (covered && cases.every((c) => c.status === "passed")) status = acc.certified ? "passed" : "uncertified";
+    else status = "incomplete";
+    return { gate, status, cases };
   });
 }
 
 const STATUS_TEXT: Record<GateStatus, string> = {
   passed: "✓ passed",
+  uncertified: "! uncertified",
   failed: "✕ failed",
+  incomplete: "– incomplete",
   stale: "! stale",
   "not-run": "– not run",
 };
@@ -122,6 +122,9 @@ const STATUS_TEXT: Record<GateStatus, string> = {
 const statusBadge = (status: GateStatus): string => `<span class="status ${status}">${STATUS_TEXT[status]}</span>`;
 
 const word = (cls: string, text: string): string => `<span class="status ${escapeHtml(cls)}">${escapeHtml(text)}</span>`;
+
+const caseBadge = (c: CaseResult, certified: boolean): string =>
+  c.status === "passed" && !certified ? word("uncertified", "passed (uncertified run)") : word(c.status, c.status);
 
 const modeBadge = (mode: string): string => {
   const known = EvidenceMode.safeParse(mode);
@@ -153,17 +156,15 @@ const NON_CLAIMS = [
   "While revoking (before confirmed removal), already-signed orders may still execute.",
 ];
 
-function claimSection(ev: Evidence, rows: readonly GateRow[]): string {
-  const byGate = new Map(rows.map((r) => [r.gate, r.status]));
+const combine = (statuses: readonly GateStatus[]): GateStatus => {
+  for (const s of ["failed", "stale", "not-run", "incomplete", "uncertified"] as const) if (statuses.includes(s)) return s;
+  return "passed";
+};
+
+function claimSection(ev: Evidence, views: readonly GateView[]): string {
+  const byGate = new Map(views.map((v) => [v.gate, v.status]));
   const items = CLAIM_PARTS.map((part) => {
-    const statuses = part.gates.map((g) => byGate.get(g) ?? "not-run");
-    const status: GateStatus = statuses.includes("failed")
-      ? "failed"
-      : statuses.every((s) => s === "passed")
-        ? "passed"
-        : statuses.includes("stale")
-          ? "stale"
-          : "not-run";
+    const status = combine(part.gates.map((g) => byGate.get(g) ?? "not-run"));
     return `<tr><td>${escapeHtml(part.text)}</td><td>${part.gates.map((g) => `<code>${escapeHtml(g)}</code>`).join(" ")}</td><td>${statusBadge(status)}</td></tr>`;
   }).join("");
   return section(
@@ -171,13 +172,13 @@ function claimSection(ev: Evidence, rows: readonly GateRow[]): string {
     "claim",
     "claim",
     "What is claimed, and what is not",
-    `<p class="source">Claim text: SPEC.md sha256 <code>${escapeHtml(ev.source.spec_sha256)}</code>. Status per part: gate results in §4.</p>
+    `<p class="source">Claim text: SPEC.md sha256 <code>${escapeHtml(ev.source.spec_sha256)}</code>. Status per part: acceptance results in §5.</p>
 <div class="claims">
 <div class="card"><h3>Claim under test</h3><p>One owner delegates a bounded USDC/wNEAR trading mandate inside NEAR Intents. The mandate contract owns its Intents account, builds every policy-approved trade itself and obtains its own derived MPC signatures. The differentiator is control over the lifetime of outstanding signed authority.</p></div>
 <div class="card not"><h3>Not guaranteed</h3><ul>${NON_CLAIMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>
 </div>
 <h3>Claim parts and blocking gates</h3>
-<div class="scroll"><table><caption>A part is supported only when every listed gate passed in this source revision</caption>
+<div class="scroll"><table><caption>A part is supported only when every listed gate passed in a certified run of this revision</caption>
 <thead><tr><th scope="col">Part of the claim</th><th scope="col">Gates</th><th scope="col">Status</th></tr></thead><tbody>${items}</tbody></table></div>`,
   );
 }
@@ -208,84 +209,112 @@ ${ev.receipts.length > 0 ? `<ol class="timeline">${steps}</ol>` : `<p class="mut
   );
 }
 
-function gatesSection(ev: Evidence, rows: readonly GateRow[]): string {
-  const body = rows
-    .map((row) => {
-      const sources = row.sources.length === 0
-        ? `<span class="muted">no executed test or assertion recorded</span>`
-        : row.sources
-            .map((s) => `<div><code>${escapeHtml(s.label)}</code> ${word(s.passed ? "passed" : "failed", s.passed ? "pass" : "fail")} ${modeBadge(s.mode)}${s.stale ? ` <span class="status stale">rev ${escapeHtml((s.revision ?? "unknown").slice(0, 12))}</span>` : ""}</div>`)
-            .join("");
-      return `<tr><th scope="row"><code>${escapeHtml(row.gate)}</code></th><td>${statusBadge(row.status)}</td><td>${sources}</td></tr>`;
-    })
+function demoChecksSection(ev: Evidence): string {
+  const rows = ev.assertions
+    .map(
+      (a) =>
+        `<tr><td><code>${escapeHtml(a.id)}</code></td><td>${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(json(a.observed))}</pre></details></td><td><code>${escapeHtml(a.gate)}</code></td><td>${word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold")}</td></tr>`,
+    )
     .join("");
   return section(
     "§4",
+    "demo checks",
+    "demo-checks",
+    "Demo story checks",
+    `<p class="source">Source: evidence.assertions (${String(ev.assertions.length)}). These are checks on the demonstration story. They never mark an acceptance gate passed; gate results come only from the acceptance run in §5.</p>
+${rows.length > 0 ? `<div class="scroll"><table><caption>Story checks (not acceptance results)</caption><thead><tr><th scope="col">Check</th><th scope="col">What was checked</th><th scope="col">Relates to</th><th scope="col">Outcome</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="muted">No story checks recorded.</p>`}`,
+  );
+}
+
+function gatesSection(ev: Evidence, acc: Acceptance | null, views: readonly GateView[]): string {
+  if (acc === null) {
+    const rows = views.map((v) => `<tr><th scope="row"><code>${escapeHtml(v.gate)}</code></th><td>${statusBadge(v.status)}</td><td class="muted">no acceptance run recorded (out/evidence/acceptance.json absent)</td></tr>`).join("");
+    return section("§5", "gates", "gates", "Acceptance gates",
+      `<p class="source">Source: none. Run <code>make test</code> to produce out/evidence/acceptance.json.</p><div class="scroll"><table><caption>T1–T5, BOUNDARY and MODEL</caption><thead><tr><th scope="col">Gate</th><th scope="col">Result</th><th scope="col">Cases</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  }
+  const rows = views
+    .map((v) => {
+      const cases = v.cases.length === 0 ? [null] : v.cases;
+      return cases
+        .map((c, i) => {
+          const head = i === 0 ? `<th scope="row" rowspan="${String(cases.length)}"><code>${escapeHtml(v.gate)}</code><br>${statusBadge(v.status)}</th>` : "";
+          if (c === null) return `<tr>${head}<td colspan="3" class="muted">no cases recorded</td></tr>`;
+          return `<tr>${head}<td><code>${escapeHtml(c.case)}</code></td><td>${caseBadge(c, acc.certified)}${c.mode === null ? "" : ` ${modeBadge(c.mode)}`}</td><td class="reason">${escapeHtml(c.reason)}${c.files.length > 0 ? `<br><span class="muted mono">${escapeHtml(c.files.join(", "))}</span>` : ""}</td></tr>`;
+        })
+        .join("");
+    })
+    .join("");
+  const runState = acc.certified
+    ? "certified: clean tree, unchanged during the run, every required case present once, passed and matched"
+    : acc.complete
+      ? "uncertified: every required case passed, but the working tree was dirty"
+      : "uncertified: the run is incomplete or has failures";
+  const separate = acc.separate.length === 0
+    ? ""
+    : `<h3>Reported separately (never counts toward T4 or any gate)</h3><div class="scroll"><table><caption>Emergency paths</caption><thead><tr><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${acc.separate
+        .map((c) => `<tr><th scope="row"><code>${escapeHtml(c.id)}</code></th><td>${caseBadge(c, acc.certified)}</td><td>${escapeHtml(c.reason)}</td></tr>`)
+        .join("")}</tbody></table></div>`;
+  const problems = acc.problems.length === 0 ? "" : `<h3>Run problems</h3><ul class="unknowns">${acc.problems.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`;
+  const ignored = acc.ignored.length === 0
+    ? ""
+    : `<h3>Files not counted</h3><div class="scroll"><table><caption>Other runs, legacy reports and unknown files</caption><thead><tr><th scope="col">File</th><th scope="col">Reason</th></tr></thead><tbody>${acc.ignored
+        .map((i) => `<tr><td><code>${escapeHtml(i.file)}</code></td><td>${escapeHtml(i.reason)}</td></tr>`)
+        .join("")}</tbody></table></div>`;
+  const staleNote = acc.revision !== ev.source.product_commit
+    ? `<p class="banner">This acceptance run is for revision <code>${escapeHtml(String(acc.revision))}</code>, not the demo's <code>${escapeHtml(ev.source.product_commit)}</code>; its results are shown as stale and do not count.</p>`
+    : "";
+  return section(
+    "§5",
     "gates",
     "gates",
     "Acceptance gates",
-    `<p class="source">Source: out/evidence/tests/*.json and evidence.assertions. A report from another revision than <code>${escapeHtml(ev.source.product_commit.slice(0, 12))}</code> is shown as stale and never counts as a pass.</p>
-<div class="scroll"><table><caption>T1–T5, BOUNDARY and MODEL</caption><thead><tr><th scope="col">Gate</th><th scope="col">Result</th><th scope="col">Evidence</th></tr></thead><tbody>${body}</tbody></table></div>`,
+    `<p class="source">Source: out/evidence/acceptance.json, run <code>${escapeHtml(String(acc.run_id))}</code> at <code>${escapeHtml(String(acc.revision))}</code>, evaluated ${escapeHtml(acc.evaluated_at)}. Run state: ${escapeHtml(runState)}.</p>
+${staleNote}
+<div class="scroll"><table><caption>Every required case per gate</caption><thead><tr><th scope="col">Gate</th><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${rows}</tbody></table></div>
+${problems}${separate}${ignored}`,
   );
 }
 
 type Increment = "demonstrated" | "parity" | "unproven" | "not-comparable";
 
-function comparisonSection(ev: Evidence, reports: readonly GateReport[], rows: readonly GateRow[]): string {
-  const t5Reports = reports.filter((r) => r.gate === "T5");
-  const t5Status = rows.find((r) => r.gate === "T5")?.status ?? "not-run";
-  if (t5Reports.length === 0) {
-    return section("§5", "baseline", "baseline", "Matched baseline comparison",
-      `<div class="verdict">${word("unproven", "unproven")}<p>No T5 baseline run is recorded, so differentiation is unproven.</p></div>`);
+function comparisonSection(acc: Acceptance | null, views: readonly GateView[]): string {
+  const title = "Matched baseline: our re-implementation of the Claw Guard design";
+  const framing = `<p>The baseline is our own re-implementation of the authority model of Claw Guard at a pinned commit, adapted to the same USDC/wNEAR trading authority on the pinned Intents verifier and executed in a local sandbox. Its outcomes describe that re-implementation under our threat model. They are not evidence of an exploit against the deployed Claw Guard product.</p>`;
+  const byGate = new Map(views.map((v) => [v.gate, v.status]));
+  const t5Status = byGate.get("T5") ?? "not-run";
+  const data = acc?.baseline ?? null;
+  if (data === null) {
+    return section("§6", "baseline", "baseline", title, `${framing}<div class="verdict">${word("unproven", "unproven")}<p>No T5 baseline report in this acceptance run, so differentiation is unproven.</p></div>`);
   }
-  const datas = t5Reports.map((r, i) => {
-    const parsed = T5Data.safeParse(r.data);
-    return parsed.success ? parsed.data : fail(`T5 report #${String(i)} data`, parsed.error);
-  });
-  const byGate = new Map(rows.map((r) => [r.gate, r.status]));
-  const mandateStatus = (c: BaselineCase): GateStatus => {
-    if (c.mandate_assertion !== undefined) {
-      const a = ev.assertions.find((x) => x.id === c.mandate_assertion);
-      if (a !== undefined) return a.passed ? "passed" : "failed";
-    }
-    return byGate.get(c.compare_gate) ?? "not-run";
-  };
   const increment = (c: BaselineCase, mandate: GateStatus): Increment => {
-    // Controls ("executed"/"failed") and cases without an executed attack carry no comparison.
-    if (!["attack_succeeded", "blocked"].includes(c.baseline_outcome)) return "not-comparable";
+    if (c.baseline_outcome !== "attack_succeeded" && c.baseline_outcome !== "blocked") return "not-comparable";
     if (mandate !== "passed") return "unproven";
-    if (c.baseline_outcome === "attack_succeeded") return "demonstrated";
-    return "parity";
+    return c.baseline_outcome === "attack_succeeded" ? "demonstrated" : "parity";
   };
-  const cases = datas.flatMap((d) => d.cases);
-  const tableRows = cases
+  const rows = data.cases
     .map((c) => {
-      const m = mandateStatus(c);
+      const m = byGate.get(c.compare_gate) ?? "not-run";
       const inc = increment(c, m);
       return `<tr><td><strong>${escapeHtml(c.threat)}</strong><br><span class="muted">${escapeHtml(c.summary)}</span>
-<details><summary>Observed (baseline)</summary><pre>${escapeHtml(json(c.observed))}</pre></details></td>
-<td>${word(c.baseline_outcome, c.baseline_outcome.replaceAll("_", " "))}</td><td>${statusBadge(m)} <code>${escapeHtml(c.mandate_assertion ?? c.compare_gate)}</code></td><td>${word(inc, inc.replace("-", " "))}</td></tr>`;
+<details><summary>Observed (re-implemented baseline)</summary><pre>${escapeHtml(json(c.observed))}</pre></details></td>
+<td>${word(c.baseline_outcome, c.baseline_outcome.replaceAll("_", " "))}</td><td>${statusBadge(m)} <code>${escapeHtml(c.compare_gate)}</code></td><td>${word(inc, inc.replace("-", " "))}</td></tr>`;
     })
     .join("");
-  const demonstrated = t5Status === "passed" && cases.some((c) => increment(c, mandateStatus(c)) === "demonstrated");
-  const first = datas[0];
-  const baselineInfo = first === undefined
-    ? ""
-    : `<dl class="kv"><dt>Baseline</dt><dd>${escapeHtml(first.baseline.name)}</dd><dt>Repository</dt><dd>${escapeHtml(first.baseline.repository)}</dd><dt>Commit</dt><dd>${escapeHtml(first.baseline.commit)}</dd><dt>License</dt><dd>${escapeHtml(first.baseline.license)}</dd><dt>Command</dt><dd>${escapeHtml(first.command)}</dd></dl>
-<h3>Disclosed adaptations</h3><ul>${first.baseline.adaptations.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`;
+  const demonstrated = t5Status === "passed" && data.cases.some((c) => increment(c, byGate.get(c.compare_gate) ?? "not-run") === "demonstrated");
   return section(
-    "§5",
+    "§6",
     "baseline",
     "baseline",
-    "Matched baseline comparison",
-    `<div class="verdict">${word(demonstrated ? "demonstrated" : "unproven", demonstrated ? "increment demonstrated" : "differentiation unproven")}<p>${
+    title,
+    `${framing}<div class="verdict">${word(demonstrated ? "demonstrated" : "unproven", demonstrated ? "increment demonstrated" : "differentiation unproven")}<p>${
       demonstrated
-        ? "At least one attack executed successfully against the baseline while the matching mandate gate passed in this revision."
-        : "No case has both an executed baseline failure and a passing, current mandate gate; differentiation stays unproven."
+        ? "At least one attack executed against the re-implemented baseline while the matching mandate gate passed in a certified run of this revision."
+        : "No case has both an executed attack on the re-implemented baseline and a passing mandate gate in a certified run of this revision; differentiation stays unproven."
     } T5 gate: ${statusBadge(t5Status)}</p></div>
-<p class="source">Source: out/evidence/tests/T5*.json (baseline outcomes classified from executed sandbox state) joined with §4 gate results. The mandate column is the matching gate's result unless a per-case assertion id is recorded.</p>
-<div class="scroll"><table><caption>Same threat model, same trading authority</caption><thead><tr><th scope="col">Threat case</th><th scope="col">Baseline (executed)</th><th scope="col">Mandate</th><th scope="col">Increment</th></tr></thead><tbody>${tableRows}</tbody></table></div>
-${baselineInfo}`,
+<p class="source">Source: acceptance.json baseline data (T5.baseline report of this run), joined with the §5 gate status of the matching gate.</p>
+<div class="scroll"><table><caption>Same threat model, same trading authority</caption><thead><tr><th scope="col">Threat case</th><th scope="col">Re-implemented baseline (sandbox)</th><th scope="col">Mandate gate</th><th scope="col">Increment</th></tr></thead><tbody>${rows}</tbody></table></div>
+<dl class="kv"><dt>Design source</dt><dd>${escapeHtml(data.baseline.repository)} @ ${escapeHtml(data.baseline.commit)}</dd><dt>License</dt><dd>${escapeHtml(data.baseline.license)}</dd><dt>Our implementation</dt><dd>${escapeHtml(data.baseline.name)}</dd><dt>Command</dt><dd>${escapeHtml(data.command)}</dd></dl>
+<h3>Disclosed adaptations</h3><ul>${data.baseline.adaptations.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`,
   );
 }
 
@@ -293,7 +322,7 @@ const pct = (bps: number): string => `${(bps / 100).toFixed(2)}%`;
 
 function policySection(policy: Policy | null): string {
   if (policy === null) {
-    return section("§6", "policy", "policy", "Policy parameters", `<p class="muted">No grant policy was supplied with this evidence; parameters are not shown rather than assumed.</p>`);
+    return section("§7", "policy", "policy", "Policy parameters", `<p class="muted">No grant policy was supplied with this evidence; parameters are not shown rather than assumed.</p>`);
   }
   const rows: [string, string][] = [
     ["Per-order cap", `${pct(policy.per_order_cap_bps)} of initial reference value`],
@@ -306,20 +335,44 @@ function policySection(policy: Policy | null): string {
     ["Order deadline", `${String(policy.order_ttl_sec)} s after authorization; refuse below ${String(policy.min_remaining_sec)} s remaining`],
     ["Max pricing delay", `${String(policy.max_pricing_delay_sec)} s`],
   ];
-  return section("§6", "policy", "policy", "Policy parameters",
+  return section("§7", "policy", "policy", "Policy parameters",
     `<p class="source">Source: grant policy supplied with the evidence (immutable per grant).</p>
 <div class="scroll"><table><caption>Immutable grant parameters</caption><thead><tr><th scope="col">Parameter</th><th scope="col">Value</th></tr></thead><tbody>${rows
       .map(([k, v]) => `<tr><th scope="row">${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
       .join("")}</tbody></table></div>`);
 }
 
+/** What each built WASM is; only `bounded_mandate` is the production contract. */
+export const wasmRole = (stem: string): string =>
+  stem === "bounded_mandate"
+    ? "production contract"
+    : stem.endsWith("_fault")
+      ? "fault-injection test build, not the production contract"
+      : stem.startsWith("mock_")
+        ? "labelled test double"
+        : stem === "claw_guard_adapted"
+          ? "T5 baseline re-implementation"
+          : "test build";
+
 const kv = (entries: readonly [string, string][]): string =>
   entries.length === 0 ? `<p class="muted">none recorded</p>` : `<dl class="kv">${entries.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("")}</dl>`;
 
-function provenanceSection(ev: Evidence): string {
+function provenanceSection(ev: Evidence, acc: Acceptance | null): string {
   const s = ev.source;
-  return section("§7", "sources", "sources", "Source, hashes and environment",
-    `<h3>Source</h3>${kv([
+  const run = acc === null
+    ? `<p class="muted">no acceptance run</p>`
+    : `${kv([
+        ["Run id", String(acc.run_id)],
+        ["Revision", String(acc.revision)],
+        ["Dirty", String(acc.dirty)],
+        ["Certified", String(acc.certified)],
+        ["Spec sha256", String(acc.hashes.spec_sha256)],
+        ["Fixture manifest sha256", String(acc.hashes.fixture_manifest_sha256)],
+        ...Object.entries(acc.hashes.wasm).map(([k, v]): [string, string] => [`${k}.wasm (${wasmRole(k)})`, v]),
+        ...Object.entries(acc.environment),
+      ])}<h3>make test steps</h3><pre>${escapeHtml(acc.commands.join("\n"))}</pre>`;
+  return section("§8", "sources", "sources", "Source, hashes and environment",
+    `<h3>Demo run</h3>${kv([
       ["Product commit", s.product_commit],
       ["Working tree", s.dirty ? "dirty (uncommitted changes)" : "clean"],
       ["Spec sha256", s.spec_sha256],
@@ -330,33 +383,51 @@ function provenanceSection(ev: Evidence): string {
     ])}
 <h3>Fixtures</h3>${kv(Object.entries(s.fixtures))}
 <h3>Identifiers</h3>${kv(Object.entries(ev.identifiers))}
-<h3>Environment</h3>${kv(Object.entries(ev.environment))}`);
+<h3>Environment</h3>${kv(Object.entries(ev.environment))}
+<h3>Acceptance run</h3>${run}`);
 }
 
-function unknownsSection(ev: Evidence, rows: readonly GateRow[]): string {
+function legacySection(legacy: Inputs["legacy"]): string {
+  if (legacy === null) return "";
+  const rows = legacy.reports
+    .map((r) => `<tr><td><code>${escapeHtml(r.gate)}${r.part ? `.${escapeHtml(r.part)}` : ""}</code></td><td>${word("stale", r.passed ? "legacy pass (uncertified)" : "legacy fail")}</td><td><code>${escapeHtml(r.source_revision ?? "unknown")}</code></td><td>${escapeHtml(r.mode)}</td></tr>`)
+    .join("");
+  return section("§L", "legacy", "legacy", "Legacy reports, uncertified by v2 rules",
+    `<p class="source">Source: ${escapeHtml(legacy.label)}. These envelope-v1 reports predate run ids, per-case registration and hash binding. They are shown for the record and never mark a gate.</p>
+<div class="scroll"><table><caption>Historical v1 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">Recorded result</th><th scope="col">Revision</th><th scope="col">Mode</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+}
+
+function unknownsSection(ev: Evidence, acc: Acceptance | null, views: readonly GateView[]): string {
   const derived = [
     ...(ev.mode !== "mainnet" ? ["No mainnet receipts: encoding, key registration, the real MPC signer, settlement and recovery on mainnet are not evidenced here."] : []),
-    ...(ev.source.dirty ? ["Built from a dirty working tree: results may not match the recorded commit."] : []),
-    ...rows.filter((r) => r.status !== "passed").map((r) => `Gate ${r.gate} is ${STATUS_TEXT[r.status].replace(/^\S+ /, "")}: the claim parts it blocks are not supported.`),
+    ...(ev.source.dirty ? ["The demo ran from a dirty working tree: results may not match the recorded commit."] : []),
+    ...(acc === null ? ["No acceptance run is attached: no gate is evidenced on this page."] : []),
+    ...(acc !== null && !acc.certified ? ["The acceptance run is not certified: no gate counts as passed."] : []),
+    ...views.filter((v) => v.status !== "passed").map((v) => `Gate ${v.gate} is ${STATUS_TEXT[v.status].replace(/^\S+ /, "")}: the claim parts it blocks are not supported.`),
   ];
   const items = [...ev.unknowns, ...derived];
-  return section("§8", "unknowns", "unknowns", "Unknowns and open risks",
-    `<p class="source">Source: evidence.unknowns plus gaps derived from this page's gate table.</p>${items.length > 0 ? `<ul class="unknowns">${items.map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul>` : `<p class="muted">none recorded</p>`}`);
+  return section("§9", "unknowns", "unknowns", "Unknowns and open risks",
+    `<p class="source">Source: evidence.unknowns plus gaps derived from the acceptance run.</p>${items.length > 0 ? `<ul class="unknowns">${items.map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul>` : `<p class="muted">none recorded</p>`}`);
 }
 
-/** Pure renderer; throws when the evidence, reports or policy fail schema validation. */
+/** Pure renderer; throws when the evidence, acceptance, policy or legacy reports fail schema validation. */
 export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string {
-  const { ev, reports, policy } = parseInputs(evidence, extras);
-  const rows = gateRows(ev, reports);
-  const required = rows.filter((r) => (REQUIRED_GATES as readonly string[]).includes(r.gate));
-  const allPassed = required.every((r) => r.status === "passed");
-  const anyFailed = required.some((r) => r.status === "failed");
+  const { ev, acc, policy, legacy } = parseInputs(evidence, extras);
+  const views = gateViews(ev, acc);
+  const passedCount = views.filter((v) => v.status === "passed").length;
+  const allPassed = acc !== null && acc.certified && passedCount === views.length;
+  const anyFailed = views.some((v) => v.status === "failed");
   const stamp = allPassed
-    ? { cls: "ok", text: `All gates passed · ${ev.mode}` }
-    : anyFailed
-      ? { cls: "no", text: "Gate failures recorded · claim not supported" }
-      : { cls: "partial", text: "Incomplete evidence · claim not yet supported" };
-  const passedCount = required.filter((r) => r.status === "passed").length;
+    ? { cls: "ok", text: "All gates passed · certified run" }
+    : acc === null
+      ? { cls: "partial", text: "No acceptance run · gates not run" }
+      : anyFailed
+        ? { cls: "no", text: "Gate failures recorded · claim not supported" }
+        : views.some((v) => v.status === "stale")
+          ? { cls: "partial", text: "Acceptance run for another revision · not counted" }
+          : acc.complete
+            ? { cls: "partial", text: "Complete but uncertified run · dirty tree" }
+            : { cls: "partial", text: "Incomplete run · claim not yet supported" };
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -379,20 +450,23 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <dl class="facts">
 <div><dt>Mode</dt><dd>${modeBadge(ev.mode)}</dd></div>
 <div><dt>Commit</dt><dd>${escapeHtml(ev.source.product_commit.slice(0, 12))}${ev.source.dirty ? " (dirty)" : ""}</dd></div>
-<div><dt>Gates passed</dt><dd>${String(passedCount)} / ${String(required.length)}</dd></div>
+<div><dt>Gates passed</dt><dd>${String(passedCount)} / ${String(views.length)}${acc !== null && !acc.certified ? " (uncertified run)" : ""}</dd></div>
 <div><dt>Generated</dt><dd>${escapeHtml(ev.generated_at)}</dd></div>
 </dl>
-${ev.source.dirty ? `<p class="banner">Generated from a working tree with uncommitted changes.</p>` : ""}
-${anyFailed ? `<p class="banner fail">At least one acceptance gate failed in this run. Failed gates are listed in §4.</p>` : ""}
+${ev.source.dirty ? `<p class="banner">The demo was generated from a working tree with uncommitted changes.</p>` : ""}
+${acc !== null && !acc.certified ? `<p class="banner">The acceptance run is not certified${acc.dirty ? " (dirty working tree)" : ""}; no gate is shown as passed.</p>` : ""}
+${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §5.</p>` : ""}
 </header>
-${claimSection(ev, rows)}
-${section("§2", "lifecycle", "lifecycle", "Authority lifecycle", `<p class="source">Specified behaviour (SPEC.md “Authority lifecycle”); executed results are in §3–§5.</p><figure class="lifecycle">${LIFECYCLE_SVG}</figure>`)}
+${claimSection(ev, views)}
+${section("§2", "lifecycle", "lifecycle", "Authority lifecycle", `<p class="source">Specified behaviour (SPEC.md “Authority lifecycle”); executed results are in §3–§6.</p><figure class="lifecycle">${LIFECYCLE_SVG}</figure>`)}
 ${timelineSection(ev)}
-${gatesSection(ev, rows)}
-${comparisonSection(ev, reports, rows)}
+${demoChecksSection(ev)}
+${gatesSection(ev, acc, views)}
+${comparisonSection(acc, views)}
 ${policySection(policy)}
-${provenanceSection(ev)}
-${unknownsSection(ev, rows)}
+${provenanceSection(ev, acc)}
+${unknownsSection(ev, acc, views)}
+${legacySection(legacy)}
 <footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no scripts, fonts or network requests. Evidence schema version ${String(ev.schema_version)}.</footer>
 </main>
 </body>
@@ -400,11 +474,26 @@ ${unknownsSection(ev, rows)}
 `;
 }
 
-/** Writes `<outDir>/index.html` and returns its path. */
+/** Reads out/evidence/acceptance.json; null when absent, throws when malformed. */
+export function loadAcceptance(root: string): Acceptance | null {
+  const path = join(root, "out/evidence/acceptance.json");
+  if (!existsSync(path)) return null;
+  const parsed = Acceptance.safeParse(JSON.parse(readFileSync(path, "utf8")));
+  return parsed.success ? parsed.data : fail(path, parsed.error);
+}
+
+/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json unless given. */
 export function renderPage(evidence: Evidence, outDir: string, extras: RenderExtras = {}): string {
-  const html = renderHtml(evidence, extras);
+  const acceptance = extras.acceptance === undefined ? loadAcceptance(REPO_ROOT) : extras.acceptance;
+  const html = renderHtml(evidence, { ...extras, acceptance });
   mkdirSync(outDir, { recursive: true });
   const path = join(outDir, "index.html");
   writeFileSync(path, html);
   return path;
+}
+
+/** Renders a historical bundle (`<dir>/demo.json`, `<dir>/tests/*.json`) as legacy, uncertified by v2 rules. */
+export function renderLegacyBundle(dir: string, outDir: string): string {
+  const evidence = JSON.parse(readFileSync(join(dir, "demo.json"), "utf8")) as Evidence;
+  return renderPage(evidence, outDir, { acceptance: null, legacy: { label: dir, reports: loadGateReports(join(dir, "tests")) } });
 }

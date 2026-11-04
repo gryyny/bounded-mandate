@@ -21,6 +21,12 @@ export type MandateConfigView = z.infer<typeof MandateConfigView>;
 
 export const tokenId = (token: string): string => `nep141:${token}`;
 
+export const AssetRecoveryView = z.object({ asset: z.enum(["usdc", "wnear"]), in_flight: z.boolean(), attempts: z.number().int(), recovered: U128 }).loose();
+export type AssetRecoveryView = z.infer<typeof AssetRecoveryView>;
+
+/** Order states in which signed authority may exist or still be created. */
+export const OPEN_ORDER_STATES = ["pricing", "signing", "signed", "sign_unknown"];
+
 export class MandateClient {
   constructor(
     readonly client: NearClient,
@@ -41,6 +47,18 @@ export class MandateClient {
   }
   recovery(): Promise<unknown> {
     return this.client.view(this.id, "get_recovery", {}, z.unknown());
+  }
+  recoveryViews(): Promise<AssetRecoveryView[]> {
+    return this.client.view(this.id, "get_recovery", {}, z.array(AssetRecoveryView));
+  }
+  /** Every order, paging through list_orders (limit <= 100). */
+  async allOrders(): Promise<OrderView[]> {
+    const out: OrderView[] = [];
+    for (;;) {
+      const page = await this.listOrders(out.length, 100);
+      out.push(...page);
+      if (page.length < 100) return out;
+    }
   }
 
   grantPolicy(owner: Account, policy: Policy): Promise<Outcome> {
@@ -76,6 +94,9 @@ export class VerifierClient {
   }
   isNonceUsed(accountId: string, nonceB64: string): Promise<boolean> {
     return this.client.view(this.id, "is_nonce_used", { account_id: accountId, nonce: nonceB64 }, z.boolean());
+  }
+  publicKeysOf(accountId: string): Promise<string[]> {
+    return this.client.view(this.id, "public_keys_of", { account_id: accountId }, z.array(z.string()));
   }
   hasPublicKey(accountId: string, publicKey: string): Promise<boolean> {
     return this.client.view(this.id, "has_public_key", { account_id: accountId, public_key: publicKey }, z.boolean());
