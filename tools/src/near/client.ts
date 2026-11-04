@@ -234,6 +234,12 @@ export class NearClient {
     }
   }
 
+  /** Timestamp of a specific block (e.g. the block that executed a receipt). */
+  async blockTimestampAt(blockHash: string): Promise<bigint> {
+    const block = await this.provider.viewBlock({ blockId: blockHash });
+    return BigInt(block.header.timestamp_nanosec);
+  }
+
   async blockTimestampNs(): Promise<bigint> {
     const block = await this.provider.viewBlock({ finality: this.finality });
     return BigInt(block.header.timestamp_nanosec);

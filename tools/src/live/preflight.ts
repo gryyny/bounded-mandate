@@ -36,6 +36,7 @@ export interface PreflightResult {
 export const STEP_METHODS: Partial<Record<StepKind, string>> = {
   grant: "grant",
   propose: "propose_order",
+  refused_proposal: "propose_order",
   settle: "settle_order",
   revoke: "revoke",
   reconcile_registration: "reconcile_registration",
@@ -46,17 +47,33 @@ export const STEP_METHODS: Partial<Record<StepKind, string>> = {
 export const STEP_SIGNER: Partial<Record<StepKind, "owner" | "agent" | "filler">> = {
   grant: "owner",
   propose: "agent",
+  refused_proposal: "agent",
   fill: "filler",
+  relay_withheld: "filler",
   settle: "owner",
   revoke: "owner",
   reconcile_registration: "owner",
   recover: "owner",
 };
 
+/** Prepaid-gas allocation each transaction-bearing step uses; `check` and `withhold` send nothing. */
+export const STEP_GAS: Partial<Record<StepKind, keyof LiveManifest["gas_tgas"]>> = {
+  grant: "grant",
+  propose: "propose",
+  refused_proposal: "propose",
+  fill: "fill",
+  relay_withheld: "fill",
+  settle: "settle",
+  revoke: "revoke",
+  reconcile_registration: "reconcile_registration",
+  recover: "recover",
+};
+
 /** Worst-case fee of one step: (prepaid gas + 5 TGas of action/send costs) x gas price. */
 export function worstFee(m: LiveManifest, kind: StepKind, gasPrice: bigint): bigint {
-  if (kind === "check") return 0n;
-  return (BigInt(m.gas_tgas[kind]) + 5n) * 1_000_000_000_000n * gasPrice;
+  const gas = STEP_GAS[kind];
+  if (gas === undefined) return 0n;
+  return (BigInt(m.gas_tgas[gas]) + 5n) * 1_000_000_000_000n * gasPrice;
 }
 
 const SourceMetadata = z.object({ version: z.string().nullable().optional() }).loose();
@@ -78,6 +95,8 @@ export interface PreflightInput {
   pending: Step[];
   /** Orders created by this run (resume). */
   createdOrders: string[];
+  /** Filler payouts already counted in the ledger (resume). */
+  fillerPaid: Record<Asset, bigint>;
 }
 
 export async function preflight(input: PreflightInput): Promise<PreflightResult> {
@@ -218,7 +237,14 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   for (const a of ["usdc", "wnear"] as const) {
     if (proposedSell[a] > 0n) check(`balance.mandate_${a}_covers_proposals`, mandateBal[a] >= proposedSell[a], { mandate: mandateBal[a].toString(), proposed: proposedSell[a].toString() });
   }
-  if (has("fill")) check("balance.filler_inventory", fillerBal.usdc > 0n || fillerBal.wnear > 0n, { filler: { usdc: fillerBal.usdc.toString(), wnear: fillerBal.wnear.toString() } });
+  if (has("fill") || has("withhold")) {
+    check("balance.filler_inventory", fillerBal.usdc > 0n || fillerBal.wnear > 0n, { filler: { usdc: fillerBal.usdc.toString(), wnear: fillerBal.wnear.toString() } });
+    // A filler short of its remaining spend cap would leave the withheld order untested.
+    for (const a of ["usdc", "wnear"] as const) {
+      const remaining = BigInt(m.budget.filler_spend_max[a]) - input.fillerPaid[a];
+      if (remaining > 0n) check(`balance.filler_covers_spend_cap.${a}`, fillerBal[a] >= remaining, { filler: fillerBal[a].toString(), remaining_cap: remaining.toString() });
+    }
+  }
 
   // Fees at the live gas price, the owner's recovery reserve and the mandate's storage.
   const gasPrice = await client.gasPrice();

@@ -2,10 +2,13 @@
   "schema_version": 2,
   "notes": [
     "TEMPLATE for the mainnet approval package. Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is.",
-    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata.",
-    "Budget caps follow the build plan's lead-run proposal: owner inventory <= $10 equivalent, one fill <= $2, filler inventory <= $2 equivalent, fees <= 0.1 NEAR. wNEAR unit caps assume NEAR ~= $3.3: recompute from the price on the approval day.",
+    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata. All re-read through https://free.rpc.fastnear.com on 2026-11-04 (block ~223070360): unchanged.",
+    "RPC: https://free.rpc.fastnear.com (listed in the NEAR RPC provider directory). The rpc.mainnet.near.org endpoint is deprecated and heavily rate-limited. For reconciling older transactions, https://archival-rpc.mainnet.fastnear.com is FastNEAR's archival endpoint.",
+    "Sequence: grant; one deliberately forbidden proposal (concession 51 bps > 50 bps policy maximum) that the mandate must refuse; one valid trade of 1 USDC, filled and settled; a second signed order of 0.5 USDC that is withheld (bundle simulated, not sent); revoke; relay of the withheld bundle, which passes only if the verifier rejects it for the removed key before its deadline with both nonces unused and balances unchanged; recovery of both assets to the owner's Intents account.",
+    "Grant policy: the demo policy except order_ttl_sec 120 and oracle_max_age_sec 120 (demo: 60/60). An order's deadline is min(now + order_ttl, oldest price publish time + oracle_max_age); 60 s leaves too little time on mainnet for MPC signing, revocation to FINAL and the relay, so the revocation test would likely be inconclusive. Trade-off: prices up to 120 s old are accepted and a signed order stays executable up to 120 s while revocation is pending. Every cap is unchanged.",
+    "Budget caps: owner inventory <= 5 USDC + 1.25 wNEAR (about $10 at NEAR ~= $4.0 on 2026-11-04); single order <= 1 USDC; mandate sales <= 2 USDC in total (the refused 0.5 USDC is counted conservatively); filler pays <= 0.5 wNEAR in total (the withheld relay is counted conservatively). Recompute the wNEAR units from the price on the approval day.",
     "Deployment and storage (<= 5 NEAR allocation) and all funding are done separately by the owner; this runner never funds, deposits or deploys.",
-    "The worst-case fee of the steps below at gas price 1e8 yocto is (sum of gas_tgas + 5 per step) x 1e12 x 1e8 = 0.0895 NEAR; preflight refuses if the live gas price makes it exceed max_fee_yocto.",
+    "The worst-case fee of the steps below at gas price 1e8 yocto is (sum over transaction steps of the step's gas_tgas + 5) x 1e12 x 1e8 = 1310 TGas = 0.131 NEAR; max_fee_yocto is 0.15 NEAR. Preflight refuses if the live gas price makes the worst case exceed it.",
     "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
     "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
     "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders."
@@ -14,7 +17,7 @@
     "name": "mainnet",
     "chain_id": "mainnet",
     "genesis_hash": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
-    "rpc_url": "https://rpc.mainnet.near.org"
+    "rpc_url": "https://free.rpc.fastnear.com"
   },
   "approval": {
     "approved_by": "REPLACE_ME: approver name",
@@ -83,24 +86,24 @@
     "filler_intents": "REPLACE_ME: absolute path to the filler Intents signing key JSON"
   },
   "budget": {
-    "max_fee_yocto": "100000000000000000000000",
+    "max_fee_yocto": "150000000000000000000000",
     "max_deposit_yocto": "0",
     "max_transactions": 10,
     "owner_inventory_max": {
       "usdc": "5000000",
-      "wnear": "1500000000000000000000000"
+      "wnear": "1250000000000000000000000"
     },
     "max_order_sell": {
-      "usdc": "2000000",
-      "wnear": "600000000000000000000000"
+      "usdc": "1000000",
+      "wnear": "0"
     },
     "max_total_sell": {
       "usdc": "2000000",
-      "wnear": "600000000000000000000000"
+      "wnear": "0"
     },
     "filler_spend_max": {
-      "usdc": "2000000",
-      "wnear": "600000000000000000000000"
+      "usdc": "0",
+      "wnear": "500000000000000000000000"
     },
     "owner_recovery_reserve_yocto": "500000000000000000000000"
   },
@@ -134,15 +137,24 @@
         "per_order_cap_bps": 2000,
         "outstanding_cap_bps": 2000,
         "max_concession_bps": 50,
-        "oracle_max_age_sec": 60,
+        "oracle_max_age_sec": 120,
         "max_confidence_bps": 50,
         "breaker_drawdown_bps": 200,
         "turnover_cap_bps": 10000,
-        "order_ttl_sec": 60,
+        "order_ttl_sec": 120,
         "min_remaining_sec": 15,
         "max_pricing_delay_sec": 30,
         "proposal_charge_bps": 50
       }
+    },
+    {
+      "kind": "refused_proposal",
+      "proposal": {
+        "sell": "usdc",
+        "sell_amount": "500000",
+        "max_concession_bps": 51
+      },
+      "error": "concession above policy maximum"
     },
     {
       "kind": "propose",
@@ -150,7 +162,7 @@
         "from": "manifest",
         "proposal": {
           "sell": "usdc",
-          "sell_amount": "1500000",
+          "sell_amount": "1000000",
           "max_concession_bps": 30
         }
       },
@@ -163,7 +175,26 @@
       "kind": "settle"
     },
     {
+      "kind": "propose",
+      "source": {
+        "from": "manifest",
+        "proposal": {
+          "sell": "usdc",
+          "sell_amount": "500000",
+          "max_concession_bps": 30
+        }
+      },
+      "expect": "signed"
+    },
+    {
+      "kind": "withhold"
+    },
+    {
       "kind": "revoke"
+    },
+    {
+      "kind": "relay_withheld",
+      "min_remaining_sec": 10
     },
     {
       "kind": "recover",
@@ -172,6 +203,9 @@
     {
       "kind": "recover",
       "asset": "wnear"
+    },
+    {
+      "kind": "check"
     }
   ]
 }

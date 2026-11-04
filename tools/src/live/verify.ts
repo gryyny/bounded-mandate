@@ -39,6 +39,18 @@ class Problems {
 
 export type Balances = Record<Asset, bigint>;
 
+/**
+ * Why a `simulate_intents` result does not show an executable bundle, or null when it does. The verifier
+ * can simulate an unbalanced bundle successfully and report it in `invariant_violated`.
+ */
+export function simulationProblem(sim: { ok: true; value: unknown } | { ok: false; error: string }): string | null {
+  if (!sim.ok) return `simulate_intents refused the bundle: ${sim.error.slice(0, 300)}`;
+  if (typeof sim.value !== "object" || sim.value === null) return "simulate_intents returned no simulation output";
+  const violated = (sim.value as { invariant_violated?: unknown }).invariant_violated;
+  if (violated !== undefined && violated !== null) return `simulate_intents reports an invariant violation: ${JSON.stringify(violated).slice(0, 300)}`;
+  return null;
+}
+
 export async function balancesOf(ctx: VerifyContext, account: string): Promise<Balances> {
   return { usdc: await ctx.verifier.balance(account, ctx.tokens.usdc), wnear: await ctx.verifier.balance(account, ctx.tokens.wnear) };
 }
@@ -194,4 +206,85 @@ export async function verifyRecover(ctx: VerifyContext, outcome: Outcome, asset:
   const rec = (await ctx.mandate.recoveryViews()).find((r) => r.asset === asset);
   p.require(rec !== undefined && !rec.in_flight, "recovery still in flight");
   return { passed: p.list.length === 0, problems: p.list, observed: { asset, lost: lost.toString(), gained: gained.toString(), mandate_after: str(mandateAfter), owner_after: str(ownerAfter) } };
+}
+
+export async function verifyRefusedProposal(ctx: VerifyContext, outcome: Outcome, expectedError: string, before: GrantView, ordersBefore: number): Promise<Verification> {
+  const p = new Problems();
+  p.require(outcome.submitted && outcome.final, "refused proposal outcome is not a final executed transaction");
+  p.require(!outcome.success, "forbidden proposal succeeded");
+  const failed = outcome.receipts.filter((r) => r.error !== undefined);
+  const own = failed.filter((r) => r.executor_id === ctx.mandate.id);
+  // A contract-level refusal: the mandate's own receipt panicked with the expected policy error, and nothing
+  // else failed (a gas, network or dependency failure is not a policy refusal).
+  p.require(own.length === 1 && failed.length === 1, `expected exactly one failed receipt, on the mandate; got ${failed.map((r) => r.executor_id).join(",") || "none"}`);
+  p.require(own[0]?.error?.includes(expectedError) === true, `mandate error does not contain "${expectedError}": ${(own[0]?.error ?? outcome.error ?? "").slice(0, 200)}`);
+  p.require(outcome.receipts.every((r) => !r.unknown), "a receipt has unknown status");
+  const grant = await ctx.mandate.grant();
+  const orders = (await ctx.mandate.allOrders()).length;
+  p.require(grant !== null && grant.status === before.status && grant.outstanding === before.outstanding && grant.turnover_used === before.turnover_used, "refused proposal changed the grant");
+  p.require(orders === ordersBefore, `order count changed from ${ordersBefore} to ${orders}`);
+  return {
+    passed: p.list.length === 0,
+    problems: p.list,
+    observed: { error: (own[0]?.error ?? outcome.error ?? "").slice(0, 300), outstanding: grant?.outstanding, turnover_used: grant?.turnover_used, orders },
+  };
+}
+
+/** How a relay of a withheld order after revocation ended. Only `rejected_revoked_key` passes. */
+export type RelayClassification = "rejected_revoked_key" | "inconclusive" | "executed";
+
+export interface RelayExpectation {
+  orderId: string;
+  /** Public key that signed the withheld order; confirmed removed before the relay. */
+  revokedKey: string;
+  deadlineNs: bigint;
+  mandateNonce: string;
+  fillerAccount: string;
+  fillerNonce: string;
+  mandateBefore: Balances;
+  fillerBefore: Balances;
+  /** Execution time of the failed verifier receipt; null when unknown. */
+  blockTimeNs: (blockHash: string) => Promise<bigint | null>;
+}
+
+export async function classifyRelay(ctx: VerifyContext, outcome: Outcome, e: RelayExpectation): Promise<Verification & { classification: RelayClassification }> {
+  const reasons: string[] = [];
+  const mandateNonceUsed = await ctx.verifier.isNonceUsed(ctx.mandate.id, e.mandateNonce);
+  const fillerNonceUsed = await ctx.verifier.isNonceUsed(e.fillerAccount, e.fillerNonce);
+  const mandateAfter = await balancesOf(ctx, ctx.mandate.id);
+  const fillerAfter = await balancesOf(ctx, e.fillerAccount);
+  const failed = outcome.receipts.filter((r) => r.error !== undefined);
+  const verifierFailure = failed.find((r) => r.executor_id === ctx.verifier.id);
+  const error = verifierFailure?.error ?? outcome.error ?? "";
+  const executedAt = verifierFailure === undefined ? null : await e.blockTimeNs(verifierFailure.block_hash);
+  const order = await ctx.mandate.order(e.orderId);
+  const observed = {
+    order_id: e.orderId,
+    tx_success: outcome.success,
+    error: error.slice(0, 300),
+    revoked_key: e.revokedKey,
+    executed_at_ns: executedAt?.toString() ?? null,
+    deadline_ns: e.deadlineNs.toString(),
+    mandate_nonce_used: mandateNonceUsed,
+    filler_nonce_used: fillerNonceUsed,
+    mandate_before: str(e.mandateBefore),
+    mandate_after: str(mandateAfter),
+    filler_before: str(e.fillerBefore),
+    filler_after: str(fillerAfter),
+    order_state: order?.state ?? null,
+  };
+  if (outcome.success || mandateNonceUsed) {
+    return { classification: "executed", passed: false, problems: ["withheld order executed after confirmed revocation"], observed: { ...observed, classification: "executed" } };
+  }
+  const expected = `public key '${e.revokedKey}' doesn't exist for account '${ctx.mandate.id}'`;
+  if (!outcome.submitted || !outcome.final) reasons.push("outcome is not a final executed transaction");
+  if (verifierFailure === undefined) reasons.push("no failed verifier receipt");
+  if (!error.includes(expected)) reasons.push(`verifier error is not the removed-key rejection (${expected})`);
+  if (executedAt === null || executedAt > e.deadlineNs) reasons.push(`not executed before the order deadline (executed ${executedAt?.toString() ?? "unknown"}, deadline ${e.deadlineNs})`);
+  if (failed.some((r) => r.executor_id !== ctx.verifier.id)) reasons.push("a receipt outside the verifier failed");
+  if (fillerNonceUsed) reasons.push("filler nonce used");
+  if (mandateAfter.usdc !== e.mandateBefore.usdc || mandateAfter.wnear !== e.mandateBefore.wnear) reasons.push("mandate balances changed");
+  if (fillerAfter.usdc !== e.fillerBefore.usdc || fillerAfter.wnear !== e.fillerBefore.wnear) reasons.push("filler balances changed");
+  const classification: RelayClassification = reasons.length === 0 ? "rejected_revoked_key" : "inconclusive";
+  return { classification, passed: reasons.length === 0, problems: reasons, observed: { ...observed, classification } };
 }

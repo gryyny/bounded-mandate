@@ -17,6 +17,7 @@ import { BENIGN_NOTES, DECIMALS, DEMO_POLICY, DEPOSITS, PRICES, SCRIPTED_WITHHEL
 import { Recorder, chainSnapshot, grantDemo, tryLoadRecording } from "./story.js";
 import { balances, fillerKey, postPrices, setupWorld, type World } from "./world.js";
 import { valueUnits } from "../agent/snapshot.js";
+import { simulationProblem } from "../live/verify.js";
 import { renderPage } from "../page/render.js";
 
 const str = (v: bigint): string => v.toString();
@@ -129,8 +130,8 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   if (withheld?.state.state !== "signed" || withheldSigned === null) throw new Error(`withheld order not signed: ${JSON.stringify(withheld?.state)}`);
   const prepared = await filler.prepare(withheldSigned);
   if ("shortfall" in prepared) throw new Error(prepared.shortfall);
-  const simBefore = await verifier.simulate(prepared.bundle);
-  rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle)", simBefore.ok, simBefore.ok ? "accepted" : simBefore.error);
+  const simProblem = simulationProblem(await verifier.simulate(prepared.bundle));
+  rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)", simProblem === null, simProblem ?? "accepted");
 
   rec.step("Malicious requests");
   const suite = await runAttackSuite(world);

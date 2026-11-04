@@ -31,7 +31,19 @@ export const Step = z.discriminatedUnion("kind", [
       expect: OrderExpectation.default("signed"),
     })
     .strict(),
+  /** A deliberately forbidden proposal: the mandate's own receipt must fail with `error` and change nothing. */
+  z.object({ kind: z.literal("refused_proposal"), proposal: Proposal, error: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("fill"), order_id: Units.optional() }).strict(),
+  /**
+   * Withholds a signed order of this run: the filler counter-signs a complete bundle without sending it,
+   * and `simulate_intents` must accept it. The exact bundle is kept in the ledger for `relay_withheld`.
+   */
+  z.object({ kind: z.literal("withhold"), order_id: Units.optional() }).strict(),
+  /**
+   * After confirmed revocation, submits the withheld bundle before its deadline. Only a rejection for the
+   * removed signing key, with both nonces unused and balances unchanged, counts as a passed revocation test.
+   */
+  z.object({ kind: z.literal("relay_withheld"), min_remaining_sec: z.number().int().min(1).max(3600).default(10) }).strict(),
   z.object({ kind: z.literal("settle"), order_id: Units.optional() }).strict(),
   z.object({ kind: z.literal("revoke") }).strict(),
   z.object({ kind: z.literal("reconcile_registration") }).strict(),
@@ -39,6 +51,28 @@ export const Step = z.discriminatedUnion("kind", [
 ]);
 export type Step = z.infer<typeof Step>;
 export type StepKind = Step["kind"];
+
+/** A withheld order may be relayed only after a revocation step, and only once per withhold. */
+export function sequenceProblems(steps: readonly Step[]): string[] {
+  const p: string[] = [];
+  let withheld = false;
+  let revokedSinceWithhold = false;
+  steps.forEach((s, i) => {
+    if (s.kind === "withhold") {
+      withheld = true;
+      revokedSinceWithhold = false;
+    } else if (s.kind === "revoke") {
+      revokedSinceWithhold = true;
+    } else if (withheld && (s.kind === "fill" || s.kind === "settle")) {
+      p.push(`step ${i + 1} ${s.kind} between withhold and relay_withheld would act on the withheld order`);
+    } else if (s.kind === "relay_withheld") {
+      if (!withheld) p.push(`step ${i + 1} relay_withheld has no earlier withhold step`);
+      else if (!revokedSinceWithhold) p.push(`step ${i + 1} relay_withheld must follow a revoke step after its withhold`);
+      withheld = false;
+    }
+  });
+  return p;
+}
 
 /** Prepaid gas per operation (TGas). Defaults cover the contract's documented minimums with margin. */
 export const DEFAULT_GAS_TGAS = {
@@ -163,6 +197,8 @@ export function loadManifest(env: NodeJS.ProcessEnv): LoadedManifest {
   }
   const result = LiveManifest.safeParse(parsed);
   if (!result.success) throw new Refusal(`live: invalid manifest: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  const sequence = sequenceProblems(result.data.steps);
+  if (sequence.length > 0) throw new Refusal(`live: invalid step sequence: ${sequence.join("; ")}`);
   const shape = networkProblems(result.data);
   if (shape.length > 0) throw new Refusal(`live: manifest inconsistent with network ${result.data.network.name}: ${shape.join("; ")}`);
   if (result.data.network.name === "mainnet" && env.MANDATE_LIVE_CONFIRM !== sha256) {

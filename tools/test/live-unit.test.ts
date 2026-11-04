@@ -1,5 +1,6 @@
 // Live orchestrator refusal paths that need no chain: manifest, confirmation, credentials, ledger,
-// budget arithmetic, receipt-tree inspection and WASM export detection.
+// budget arithmetic, receipt-tree inspection, WASM export detection, step sequencing, and the classification of
+// refused proposals and withheld-order relays against misleading failures.
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,9 +8,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { checkPlanned, totals, type Planned } from "../src/live/budget.js";
 import { Ledger } from "../src/live/ledger.js";
 import { runLive } from "../src/live/main.js";
-import { LiveManifest } from "../src/live/manifest.js";
-import { receiptTree } from "../src/live/verify.js";
-import type { Outcome } from "../src/near/client.js";
+import { LiveManifest, sequenceProblems, type Step } from "../src/live/manifest.js";
+import { worstFee } from "../src/live/preflight.js";
+import { classifyRelay, receiptTree, simulationProblem, verifyRefusedProposal, type Balances, type RelayExpectation, type VerifyContext } from "../src/live/verify.js";
+import type { Outcome, ReceiptOutcome } from "../src/near/client.js";
+import type { MandateClient, VerifierClient } from "../src/near/contracts.js";
+import type { GrantView, OrderView } from "../src/types.js";
 import { crateWasm, loadWasm } from "../src/near/sandbox.js";
 import { wasmFunctionExports } from "../src/near/wasm.js";
 import { offlineManifest, writeJson } from "./live-helpers.js";
@@ -79,6 +83,13 @@ describe("ledger", () => {
     const { dir } = make();
     const t = totals(Ledger.load(dir, sha));
     expect(t).toEqual({ transactions: 1, fee_yocto: 40n, deposit_yocto: 1n, sold: { usdc: 5n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } });
+  });
+
+  it("does not count an intent the network refused before inclusion (it cannot execute; its step is planned again)", () => {
+    const { dir, ledger } = make();
+    ledger.append("tx-intent", { tx_hash: "h3", planned: { worst_fee_yocto: "100", deposit_yocto: "0", sell: { asset: "usdc", units: "7" } } });
+    ledger.append("tx-result", { tx_hash: "h3", status: "rejected", fee_yocto: "0" });
+    expect(totals(Ledger.load(dir, sha))).toEqual({ transactions: 1, fee_yocto: 40n, deposit_yocto: 1n, sold: { usdc: 5n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } });
   });
 
   it("counts an unresolved intent at its worst-case fee", () => {
@@ -218,6 +229,181 @@ describe("mainnet manifest template", () => {
     expect(parsed.mandate_config.usdc.token).toBe("17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1");
     expect(parsed.mandate_config.wnear.token).toBe("wrap.near");
     expect(parsed.accounts.signer).toBe("v1.signer");
-    expect(parsed.budget.max_fee_yocto).toBe((10n ** 23n).toString());
+    expect(parsed.network.rpc_url).toBe("https://free.rpc.fastnear.com");
+    expect(parsed.budget.max_fee_yocto).toBe((15n * 10n ** 22n).toString());
+    expect(sequenceProblems(parsed.steps)).toEqual([]);
+    expect(parsed.steps.map((x) => x.kind)).toEqual(["check", "grant", "refused_proposal", "propose", "fill", "settle", "propose", "withhold", "revoke", "relay_withheld", "recover", "recover", "check"]);
+    // Worst case at the minimum gas price (1e8 yocto/gas): 1310 TGas = 0.131 NEAR, above the earlier 0.1 NEAR cap.
+    const worst = parsed.steps.reduce((sum, x) => sum + worstFee(parsed, x.kind, 100_000_000n), 0n);
+    expect(worst).toBe(131n * 10n ** 21n);
+    expect(worst <= BigInt(parsed.budget.max_fee_yocto)).toBe(true);
+    expect(worst > 10n ** 23n).toBe(true);
+    const grant = parsed.steps.find((x) => x.kind === "grant");
+    expect(grant?.kind === "grant" && [grant.policy.order_ttl_sec, grant.policy.oracle_max_age_sec]).toEqual([120, 120]);
+    // Transactions: every step except check and withhold.
+    expect(parsed.steps.filter((x) => x.kind !== "check" && x.kind !== "withhold").length).toBe(parsed.budget.max_transactions);
+  });
+});
+
+describe("withheld bundle simulation", () => {
+  it("counts as executable only without an error or an invariant violation", () => {
+    expect(simulationProblem({ ok: true, value: { intents_executed: [], invariant_violated: null } })).toBeNull();
+    expect(simulationProblem({ ok: true, value: { intents_executed: [] } })).toBeNull();
+    expect(simulationProblem({ ok: true, value: { invariant_violated: { unmatched_deltas: { "nep141:usdc": "-1" } } } })).toMatch(/invariant violation/);
+    expect(simulationProblem({ ok: true, value: null })).toMatch(/no simulation output/);
+    expect(simulationProblem({ ok: false, error: "deadline has expired" })).toMatch(/refused/);
+  });
+});
+
+describe("step sequencing", () => {
+  const w: Step = { kind: "withhold" };
+  const relay: Step = { kind: "relay_withheld", min_remaining_sec: 10 };
+  const revoke: Step = { kind: "revoke" };
+  it("relays a withheld order only after a revoke that follows its withhold", () => {
+    expect(sequenceProblems([w, revoke, relay])).toEqual([]);
+    expect(sequenceProblems([relay]).join()).toMatch(/no earlier withhold/);
+    expect(sequenceProblems([w, relay]).join()).toMatch(/must follow a revoke/);
+    expect(sequenceProblems([revoke, w, relay]).join()).toMatch(/must follow a revoke/);
+    expect(sequenceProblems([w, revoke, relay, relay]).join()).toMatch(/step 4 relay_withheld has no earlier withhold/);
+    expect(sequenceProblems([w, { kind: "fill" }, revoke, relay]).join()).toMatch(/step 2 fill between withhold and relay_withheld/);
+    expect(sequenceProblems([w, revoke, { kind: "settle" }, relay]).join()).toMatch(/step 3 settle between withhold/);
+  });
+  it("refuses an unsequenced manifest before any network access", async () => {
+    const d = tmp();
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: writeJson(d, "m.json", offlineManifest(d, { steps: [w, relay] })) });
+    expect(r.exitCode).toBe(2);
+    expect(r.message).toMatch(/invalid step sequence/);
+  });
+});
+
+// Chain doubles for classification: the fields read are exactly those classifyRelay/verifyRefusedProposal read.
+interface FakeChain {
+  nonces: Set<string>;
+  balances: Map<string, Balances>;
+  grant: GrantView | null;
+  orders: OrderView[];
+}
+const MANDATE = "mandate.sandbox";
+const VERIFIER = "intents.sandbox";
+const FILLER = "filler.sandbox";
+const fakeCtx = (chain: FakeChain): VerifyContext => {
+  const mandate = { id: MANDATE, grant: () => Promise.resolve(chain.grant), allOrders: () => Promise.resolve(chain.orders), order: (id: string) => Promise.resolve(chain.orders.find((o) => o.id === id) ?? null) };
+  const verifier = {
+    id: VERIFIER,
+    isNonceUsed: (account: string, nonce: string) => Promise.resolve(chain.nonces.has(`${account}/${nonce}`)),
+    balance: (account: string, token: string) => Promise.resolve((chain.balances.get(account) ?? { usdc: 0n, wnear: 0n })[token === "usdc.sandbox" ? "usdc" : "wnear"]),
+  };
+  return { mandate: mandate as unknown as MandateClient, verifier: verifier as unknown as VerifierClient, tokens: { usdc: "usdc.sandbox", wnear: "wnear.sandbox" }, timeoutMs: 0 };
+};
+const receipt = (executor: string, error?: string): ReceiptOutcome => ({ id: `r-${executor}`, executor_id: executor, block_hash: `b-${executor}`, success: error === undefined, unknown: false, ...(error === undefined ? {} : { error }), logs: [], tokens_burnt: "0" });
+const outcome = (receipts: ReceiptOutcome[], over: Partial<Outcome> = {}): Outcome => ({
+  label: "x",
+  signer_id: FILLER,
+  receiver_id: VERIFIER,
+  method: "execute_intents",
+  submitted: true,
+  ambiguous: false,
+  final: true,
+  success: receipts.every((r) => r.success),
+  any_receipt_failed: receipts.some((r) => !r.success),
+  fee_yocto: "1",
+  deposit_yocto: "0",
+  receipts,
+  logs: [],
+  events: [],
+  ...over,
+});
+
+describe("withheld-order relay classification", () => {
+  const KEY = "ed25519:2zYCBBVB8a3dwNwUnS4LkL4x6XwMrMKWe2RSfMCXfmaK";
+  const removed = `Smart contract panicked: public key '${KEY}' doesn't exist for account '${MANDATE}'`;
+  const bal = { usdc: 5_000_000n, wnear: 10n ** 24n };
+  const fbal = { usdc: 1_000_000n, wnear: 2n * 10n ** 24n };
+  const chain = (): FakeChain => ({ nonces: new Set(), balances: new Map([[MANDATE, bal], [FILLER, fbal]]), grant: null, orders: [] });
+  const expectation = (over: Partial<RelayExpectation> = {}): RelayExpectation => ({
+    orderId: "3",
+    revokedKey: KEY,
+    deadlineNs: 2_000n,
+    mandateNonce: "mn",
+    fillerAccount: FILLER,
+    fillerNonce: "fn",
+    mandateBefore: bal,
+    fillerBefore: fbal,
+    blockTimeNs: () => Promise.resolve(1_000n),
+    ...over,
+  });
+  const classify = (o: Outcome, c = chain(), e = expectation()) => classifyRelay(fakeCtx(c), o, e);
+
+  it("passes only a rejection for the removed key, before the deadline, with nothing used or moved", async () => {
+    const v = await classify(outcome([receipt(FILLER), receipt(VERIFIER, removed)]));
+    expect(v.classification).toBe("rejected_revoked_key");
+    expect(v.passed).toBe(true);
+  });
+
+  const inconclusive: [string, () => Promise<Awaited<ReturnType<typeof classifyRelay>>>][] = [
+    ["an expired deadline", () => classify(outcome([receipt(VERIFIER, "Smart contract panicked: deadline has expired")]))],
+    ["an invalid (malformed) signature", () => classify(outcome([receipt(VERIFIER, "Smart contract panicked: invalid signature")]))],
+    ["insufficient filler funds", () => classify(outcome([receipt(VERIFIER, "Smart contract panicked: insufficient balance or overflow")]))],
+    ["a removed-key error for another key", () => classify(outcome([receipt(VERIFIER, removed.replace(KEY, "ed25519:8CHpRmN5DDGgpudfmx781SZcNYHF8XxxMBd8VbEchMct"))]))],
+    ["execution after the deadline", () => classify(outcome([receipt(VERIFIER, removed)]), chain(), expectation({ blockTimeNs: () => Promise.resolve(2_001n) }))],
+    ["an unknown execution time", () => classify(outcome([receipt(VERIFIER, removed)]), chain(), expectation({ blockTimeNs: () => Promise.resolve(null) }))],
+    ["a gas failure outside the verifier", () => classify(outcome([receipt(FILLER, "Exceeded the prepaid gas"), receipt(VERIFIER, removed)]))],
+    ["no verifier receipt (RPC or transaction failure)", () => classify(outcome([receipt(FILLER, "InvalidTxError")]))],
+    ["an outcome that is not final", () => classify(outcome([receipt(VERIFIER, removed)], { final: false }))],
+    [
+      "a used filler nonce",
+      () => {
+        const c = chain();
+        c.nonces.add(`${FILLER}/fn`);
+        return classify(outcome([receipt(VERIFIER, removed)]), c);
+      },
+    ],
+    [
+      "changed balances",
+      () => {
+        const c = chain();
+        c.balances.set(MANDATE, { ...bal, usdc: bal.usdc - 1n });
+        return classify(outcome([receipt(VERIFIER, removed)]), c);
+      },
+    ],
+  ];
+  it.each(inconclusive)("is inconclusive, never a pass, for %s", async (_name, run) => {
+    const v = await run();
+    expect(v.classification).toBe("inconclusive");
+    expect(v.passed).toBe(false);
+    expect(v.problems.length).toBeGreaterThan(0);
+  });
+
+  it("reports execution as a revocation failure", async () => {
+    expect((await classify(outcome([receipt(FILLER), receipt(VERIFIER)]))).classification).toBe("executed");
+    const c = chain();
+    c.nonces.add(`${MANDATE}/mn`);
+    const v = await classify(outcome([receipt(VERIFIER, removed)]), c);
+    expect(v.classification).toBe("executed");
+    expect(v.passed).toBe(false);
+  });
+});
+
+describe("refused proposal verification", () => {
+  const grant = { status: "active", outstanding: "100", turnover_used: "200" } as GrantView;
+  const chain = (): FakeChain => ({ nonces: new Set(), balances: new Map(), grant, orders: [] });
+  const policy = "Smart contract panicked: concession above policy maximum";
+  const verify = (o: Outcome, c = chain(), error = "concession above policy maximum") => verifyRefusedProposal(fakeCtx(c), o, error, grant, 0);
+
+  it("passes only the mandate's own policy panic with nothing changed", async () => {
+    expect((await verify(outcome([receipt("agent.sandbox"), receipt(MANDATE, policy)]))).passed).toBe(true);
+  });
+  it("fails for another error, a failure elsewhere, a success or a state change", async () => {
+    expect((await verify(outcome([receipt(MANDATE, "Smart contract panicked: insufficient gas attached")]))).passed).toBe(false);
+    expect((await verify(outcome([receipt(MANDATE, policy)]), chain(), "per-order cap")).passed).toBe(false);
+    expect((await verify(outcome([receipt("agent.sandbox", "Exceeded the prepaid gas"), receipt(MANDATE, policy)]))).passed).toBe(false);
+    expect((await verify(outcome([receipt(MANDATE)]))).passed).toBe(false);
+    expect((await verify(outcome([receipt(MANDATE, policy)], { final: false }))).passed).toBe(false);
+    const moved = chain();
+    moved.grant = { ...grant, outstanding: "101" };
+    expect((await verify(outcome([receipt(MANDATE, policy)]), moved)).passed).toBe(false);
+    const created = chain();
+    created.orders = [{ id: "0" } as OrderView];
+    expect((await verify(outcome([receipt(MANDATE, policy)]), created)).passed).toBe(false);
   });
 });

@@ -1,6 +1,8 @@
 // Live orchestrator against a local sandbox (never a public network): preflight refusals, a fully
 // verified end-to-end run, mid-run budget stop, failed terminal check, unlisted pre-existing order,
-// ambiguous outcome without replacement and reconciled resume, and resume refusals.
+// ambiguous outcome without replacement and reconciled resume, and resume refusals. The mainnet template's
+// sequence (refused proposal, trade, withheld order relayed after revocation, recovery) runs on the exact
+// deployment binary from fixtures/deploy, including an ambiguous relay and an order too close to its deadline.
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,13 +11,14 @@ import { JsonRpcProvider, actions, baseEncode, type SignedTransaction, type TxEx
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DECIMALS, DEMO_POLICY, PRICE_IDS } from "../src/demo/market.js";
 import { AGENT_ALLOWANCE, balances, fillerKey, mintAndDeposit, postPrices, setupWorld, type World } from "../src/demo/world.js";
-import { Ledger } from "../src/live/ledger.js";
+import { Ledger, canonical } from "../src/live/ledger.js";
 import { runLive, type LiveDeps, type LiveResult } from "../src/live/main.js";
 import { LiveManifest } from "../src/live/manifest.js";
 import { totals } from "../src/live/budget.js";
 import { worstFee } from "../src/live/preflight.js";
 import { NearClient, NEAR } from "../src/near/client.js";
-import { LocalNetwork, requireSuccess } from "../src/near/sandbox.js";
+import { MandateClient } from "../src/near/contracts.js";
+import { LocalNetwork, REPO_ROOT, requireSuccess } from "../src/near/sandbox.js";
 import { offlineManifest, recordRpc, writeCredential, writeJson } from "./live-helpers.js";
 
 let net: LocalNetwork;
@@ -41,9 +44,13 @@ const failedChecks = (r: LiveResult) => (r.preflight ?? []).filter((c) => !c.pas
 /** Transport that broadcasts a transaction but loses the response, and cannot look it up. */
 class LossyProvider extends JsonRpcProvider {
   dropNext = false;
+  /** Drops the response of the n-th transaction sent through this provider (1-based). */
+  dropAt: number | null = null;
   blind = false;
+  private sends = 0;
   override async sendTransactionUntil(tx: SignedTransaction, waitUntil: TxExecutionStatus): ReturnType<JsonRpcProvider["sendTransactionUntil"]> {
-    if (this.dropNext) {
+    this.sends += 1;
+    if (this.dropNext || this.sends === this.dropAt) {
       this.dropNext = false;
       this.blind = true;
       await super.sendTransactionAsync(tx);
@@ -289,8 +296,8 @@ describe("verified runs", () => {
     const ledger = Ledger.load(Ledger.dirFor(join(dir, "live"), sha), sha);
     const t = totals(ledger);
     const intents = ledger.ofKind("tx-intent");
-    expect(intents.map((e) => e.data.kind)).toEqual(["grant", "propose", "fill", "settle", "revoke", "recover", "recover"]);
-    expect(t.transactions).toBe(7);
+    expect(intents.map((e) => e.data.kind)).toEqual(["grant", "refused_proposal", "propose", "fill", "settle", "propose", "revoke", "relay_withheld", "recover", "recover"]);
+    expect(t.transactions).toBe(10);
     // Every intent settled to its actual fee: the total equals the sum of recorded actual fees.
     const actual = ledger.entries
       .filter((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.status === "executed")
@@ -298,7 +305,8 @@ describe("verified runs", () => {
     expect(new Set(ledger.entries.filter((e) => e.kind === "reconciled").map((e) => e.data.tx_hash)).size).toBe(1);
     expect(t.fee_yocto).toBe(actual);
     expect(t.fee_yocto > 0n && t.fee_yocto <= cap).toBe(true);
-    expect(t.sold).toEqual({ usdc: 1_500_000n, wnear: 0n });
+    // The refused proposal and the withheld order are counted as sales: never assumed not to execute.
+    expect(t.sold).toEqual({ usdc: 2_000_000n, wnear: 0n });
     expect(await balances(world, world.mandate.id)).toEqual({ usdc: 0n, wnear: 0n });
   });
 });
@@ -377,4 +385,128 @@ describe("stops", () => {
     const order = (await world.mandate.allOrders()).at(-1);
     expect(order?.state).toEqual({ state: "released", reason: "settled" });
   });
+});
+
+describe("withheld-order revocation on the exact deployment binary (fixtures/deploy)", () => {
+  const FIXTURE = "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm";
+  const tpl = JSON.parse(readFileSync(join(import.meta.dirname, "../src/live/manifest.example.json"), "utf8")) as { budget: LiveManifest["budget"]; gas_tgas: LiveManifest["gas_tgas"]; steps: unknown[] };
+  let cand: LiveManifest;
+  const KINDS = ["check", "grant", "refused_proposal", "propose", "fill", "settle", "propose", "withhold", "revoke", "relay_withheld", "recover", "recover", "check"];
+
+  beforeAll(async () => {
+    const bytes = readFileSync(join(REPO_ROOT, FIXTURE));
+    const root = net.root.id;
+    const candidateId = `candidate.${root}`;
+    const config = { ...base.mandate_config, agent_id: `agent2.${root}` };
+    await net.createAccount("candidate", { balanceNear: 30n, wasm: bytes, init: { method: "new", args: { config } }, key: "none" });
+    const agent2 = await net.createAccount("agent2", { balanceNear: 5n, key: { receiver: candidateId, methods: ["propose_order"], allowance: AGENT_ALLOWANCE } });
+    if (agent2.key === null) throw new Error("agent2 key");
+    const steps = LiveManifest.shape.steps.parse(tpl.steps);
+    expect(steps.map((x) => x.kind)).toEqual(KINDS);
+    cand = {
+      ...base,
+      accounts: { ...base.accounts, mandate: candidateId, agent: agent2.id },
+      // Independently hashed from the fixture file, then checked against the chain by preflight.
+      code_hashes: { ...base.code_hashes, mandate: hash58(bytes) },
+      mandate_config: config,
+      keys: { ...base.keys, agent: { public_key: agent2.key.getPublicKey().toString(), max_allowance_yocto: AGENT_ALLOWANCE.toString() } },
+      credentials: { ...base.credentials, agent: writeCredential(dir, "agent2.json", agent2.id, agent2.key) },
+      gas_tgas: tpl.gas_tgas,
+      // The template's caps, except the filler's wNEAR cap: sandbox prices wNEAR at $3, not the mainnet price.
+      budget: { ...tpl.budget, filler_spend_max: { usdc: "0", wnear: (10n ** 24n).toString() } },
+      steps,
+    };
+  }, 120_000);
+
+  const fund = async (): Promise<void> => {
+    await mintAndDeposit(world, world.owner, "usdc", 5n * 10n ** 6n, cand.accounts.mandate);
+    await mintAndDeposit(world, world.owner, "wnear", 125n * 10n ** 22n, cand.accounts.mandate);
+    await postPrices(world);
+    await settleFinal();
+  };
+  const ledgerOf = (path: string): Ledger => {
+    const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+    return Ledger.load(Ledger.dirFor(join(dir, "live"), sha), sha);
+  };
+  const assertion = (r: LiveResult, kind: string) => r.evidence?.assertions.find((a) => a.id.endsWith(`-${kind}`) && a.id.startsWith("step-"));
+  const mandateOf = () => new MandateClient(world.client, cand.accounts.mandate);
+
+  it("refuses the forbidden proposal, trades, rejects the withheld order after revocation and recovers", async () => {
+    await fund();
+    const ownerBefore = await balances(world, world.owner.id);
+    const mandateBefore = await balances(world, cand.accounts.mandate);
+    const path = writeJson(dir, "candidate-e2e.json", cand);
+    const provider = new JsonRpcProvider({ url: world.client.rpcUrl });
+    const calls = recordRpc(provider);
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path }, deps({ client: new NearClient(world.client.rpcUrl, provider) }));
+    expect(r.message).toBe("completed");
+    expect(r.exitCode).toBe(0);
+    const steps = r.evidence?.assertions.filter((a) => a.id.startsWith("step-")) ?? [];
+    expect(steps.map((a) => a.id)).toEqual(KINDS.map((k, i) => `step-${i + 1}-${k}`));
+    expect(steps.every((a) => a.passed)).toBe(true);
+    expect(JSON.stringify(assertion(r, "refused_proposal")?.observed)).toMatch(/concession above policy maximum/);
+    const relay = assertion(r, "relay_withheld")?.observed as { classification: string; error: string; revoked_key: string; mandate_nonce_used: boolean; order_id: string };
+    expect(relay.classification).toBe("rejected_revoked_key");
+    expect(relay.error).toContain(`public key '${relay.revoked_key}' doesn't exist for account '${cand.accounts.mandate}'`);
+    expect(relay.mandate_nonce_used).toBe(false);
+    expect((await mandateOf().order(relay.order_id))?.state).toEqual({ state: "released", reason: "key_removed" });
+    const sends = calls.filter((c) => c.method === "send_tx");
+    expect(sends.length).toBe(10);
+    expect(sends.every((c) => (c.params as { wait_until?: string }).wait_until === "FINAL")).toBe(true);
+    // The relay submitted exactly the bundle preserved by the withhold step.
+    const ledger = ledgerOf(path);
+    const withheld = ledger.ofKind("step-done").find((e) => e.data.kind === "withhold")?.data.withheld as { bundle_sha256: string };
+    const relayIntent = ledger.ofKind("tx-intent").find((e) => e.data.kind === "relay_withheld");
+    const tx = (await world.client.provider.viewTransactionStatusWithReceipts({ txHash: String(relayIntent?.data.tx_hash), accountId: world.filler.id, waitUntil: "FINAL" })) as unknown as { transaction: { actions: { FunctionCall: { args: string } }[] } };
+    const sent = JSON.parse(Buffer.from(tx.transaction.actions[0]?.FunctionCall.args ?? "", "base64").toString("utf8")) as { signed: unknown };
+    expect(createHash("sha256").update(canonical(sent.signed)).digest("hex")).toBe(withheld.bundle_sha256);
+    const t = totals(ledger);
+    expect(t.transactions).toBe(10);
+    expect(t.sold).toEqual({ usdc: 2_000_000n, wnear: 0n });
+    expect(t.fee_yocto > 0n && t.fee_yocto <= BigInt(cand.budget.max_fee_yocto)).toBe(true);
+    expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+    const ownerAfter = await balances(world, world.owner.id);
+    expect(ownerAfter.usdc - ownerBefore.usdc).toBe(mandateBefore.usdc - 1_000_000n);
+  }, 300_000);
+
+  it("an ambiguous relay outcome stops; the resume classifies it from chain without sending it again", async () => {
+    await fund();
+    // A distinct manifest (approval reference): the ledger is keyed by the manifest's sha256.
+    const path = writeJson(dir, "candidate-ambiguous-relay.json", { ...cand, approval: { ...cand.approval, reference: "ambiguous relay" } });
+    const provider = new LossyProvider({ url: world.client.rpcUrl });
+    provider.dropAt = 8; // grant, refused, propose, fill, settle, propose, revoke, relay
+    const first = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path }, deps({ client: new NearClient(world.client.rpcUrl, provider) }));
+    expect([first.message, failedChecks(first)]).toEqual([expect.stringMatching(/step 10 relay_withheld: ambiguous outcome/), []]);
+    expect(first.exitCode).toBe(1);
+    const resumed = await resume(path);
+    expect(resumed.message).toBe("completed");
+    expect(resumed.exitCode).toBe(0);
+    const steps = resumed.evidence?.assertions.filter((a) => a.id.startsWith("step-")) ?? [];
+    expect(steps.map((a) => a.id).sort()).toEqual(KINDS.map((k, i) => `step-${i + 1}-${k}`).sort());
+    expect(steps.every((a) => a.passed)).toBe(true);
+    expect((assertion(resumed, "relay_withheld")?.observed as { classification: string }).classification).toBe("rejected_revoked_key");
+    const ledger = ledgerOf(path);
+    expect(ledger.ofKind("tx-intent").filter((e) => e.data.kind === "relay_withheld").length).toBe(1);
+    expect(ledger.ofKind("reconciled").map((e) => e.data.step)).toEqual([9]);
+    expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
+
+  it("an order too close to its deadline is not relayed: inconclusive, never a pass; recovery still runs", async () => {
+    await fund();
+    const steps = cand.steps.map((x) => (x.kind === "relay_withheld" ? { ...x, min_remaining_sec: 3_600 } : x));
+    const path = writeJson(dir, "candidate-late-relay.json", { ...cand, approval: { ...cand.approval, reference: "late relay" }, steps });
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path }, deps());
+    expect([r.message, failedChecks(r)]).toEqual([expect.stringMatching(/completed with findings: step 10 relay_withheld: inconclusive, not sent/), []]);
+    expect(r.exitCode).toBe(1);
+    const relay = assertion(r, "relay_withheld");
+    expect(relay?.passed).toBe(false);
+    expect((relay?.observed as { classification: string }).classification).toBe("inconclusive");
+    expect(r.evidence?.unknowns.join()).toMatch(/inconclusive/);
+    expect(ledgerOf(path).ofKind("tx-intent").map((e) => e.data.kind)).not.toContain("relay_withheld");
+    expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+    // A resume of the finished run keeps the finding: an inconclusive relay never turns into a pass.
+    const again = await resume(path);
+    expect(again.exitCode).toBe(1);
+    expect(again.message).toMatch(/inconclusive, not sent/);
+  }, 300_000);
 });

@@ -5,6 +5,7 @@
 // - An ambiguous outcome stops the run (exit 1). Nothing is ever resubmitted or substituted; a resume
 //   (MANDATE_LIVE_RESUME=1) first reconciles the ledger with chain state.
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { actions, type Account, type Action } from "near-api-js";
@@ -19,13 +20,28 @@ import { NearClient, TGAS, plannedDeposit, toEvidenceReceipt, type Outcome } fro
 import { MandateClient, VerifierClient, tokenId } from "../near/contracts.js";
 import { loadCredential, type Credential } from "../near/credentials.js";
 import { REPO_ROOT } from "../near/sandbox.js";
-import { Evidence, GrantView, OrderView, type Asset, type Assertion, type Proposal, type Receipt } from "../types.js";
+import { Evidence, GrantView, OrderView, SignedNep413, type Asset, type Assertion, type Proposal, type Receipt } from "../types.js";
 import { BudgetExceeded, checkActual, checkPlanned, totals, type Planned } from "./budget.js";
-import { Ledger, type LedgerEntry } from "./ledger.js";
+import { Ledger, canonical, type LedgerEntry } from "./ledger.js";
 import { Refusal, loadManifest, type LiveManifest, type Step } from "./manifest.js";
 import { credentialProblems } from "./network.js";
 import { STEP_SIGNER, preflight, worstFee, type Check } from "./preflight.js";
-import { balancesOf, verifyFill, verifyGrant, verifyPropose, verifyReconcile, verifyRecover, verifyRevoke, verifySettle, type Balances, type Verification, type VerifyContext } from "./verify.js";
+import {
+  balancesOf,
+  classifyRelay,
+  verifyFill,
+  verifyGrant,
+  verifyPropose,
+  verifyReconcile,
+  verifyRecover,
+  verifyRefusedProposal,
+  verifyRevoke,
+  verifySettle,
+  simulationProblem,
+  type Balances,
+  type Verification,
+  type VerifyContext,
+} from "./verify.js";
 
 export { LiveManifest, Refusal, loadManifest } from "./manifest.js";
 
@@ -49,10 +65,26 @@ const BalancesJson = z.object({ usdc: z.string(), wnear: z.string() }).strict();
 const toBal = (b: z.infer<typeof BalancesJson>): Balances => ({ usdc: BigInt(b.usdc), wnear: BigInt(b.wnear) });
 const fromBal = (b: Balances) => ({ usdc: b.usdc.toString(), wnear: b.wnear.toString() });
 
+const ProposalJson = z.object({ sell: z.enum(["usdc", "wnear"]), sell_amount: z.string(), max_concession_bps: z.number().int() }).strict();
+
 /** State captured before a transaction, persisted in its intent so a resume can verify it. */
 const Pre = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("grant"), previous_epoch: z.number().int().nullable() }).strict(),
-  z.object({ kind: z.literal("propose"), proposal: z.object({ sell: z.enum(["usdc", "wnear"]), sell_amount: z.string(), max_concession_bps: z.number().int() }).strict(), expect: z.enum(["signed", "rejected"]), grant: GrantView }).strict(),
+  z.object({ kind: z.literal("propose"), proposal: ProposalJson, expect: z.enum(["signed", "rejected"]), grant: GrantView }).strict(),
+  z.object({ kind: z.literal("refused_proposal"), proposal: ProposalJson, error: z.string(), grant: GrantView, orders_before: z.number().int() }).strict(),
+  z
+    .object({
+      kind: z.literal("relay_withheld"),
+      order_id: z.string(),
+      signing_key: z.string(),
+      deadline_ns: z.string(),
+      mandate_nonce: z.string(),
+      filler_nonce: z.string(),
+      bundle_sha256: z.string(),
+      mandate_before: BalancesJson,
+      filler_before: BalancesJson,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("fill"),
@@ -70,6 +102,25 @@ const Pre = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("recover"), asset: z.enum(["usdc", "wnear"]), mandate_before: BalancesJson, owner_before: BalancesJson }).strict(),
 ]);
 type Pre = z.infer<typeof Pre>;
+
+/** A withheld order as recorded by the `withhold` step: the exact bundle the relay will submit. */
+const Withheld = z
+  .object({
+    order_id: z.string(),
+    /** Key that signed the order (the grant key of its epoch). */
+    signing_key: z.string(),
+    deadline_ns: z.string(),
+    mandate_nonce: z.string(),
+    /** null when no bundle could be prepared (recorded as a finding). */
+    bundle: z.array(SignedNep413).nullable(),
+    bundle_sha256: z.string().nullable(),
+    filler_nonce: z.string().nullable(),
+    counter: z.record(z.string(), z.string()).nullable(),
+    /** simulate_intents accepted the exact bundle before revocation. */
+    executable: z.boolean(),
+  })
+  .strict();
+type Withheld = z.infer<typeof Withheld>;
 
 interface Plan {
   signer: Account;
@@ -96,6 +147,18 @@ interface Runtime {
 }
 
 class Stop extends Error {}
+
+/** Steps whose transaction is expected to fail; a failed final outcome is verified, not a stop. */
+const FAILURE_EXPECTED = new Set<string>(["refused_proposal", "relay_withheld"]);
+
+/** The latest `withhold` record of this run. */
+function latestWithheld(ledger: Ledger): Withheld | null {
+  const done = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold");
+  const last = done.at(-1);
+  return last === undefined ? null : Withheld.parse(last.data.withheld);
+}
+
+const sha256Of = (value: unknown): string => createHash("sha256").update(canonical(value)).digest("hex");
 
 /** Orders created by this run (from propose step-done entries), in order. */
 const createdOrders = (ledger: Ledger): string[] =>
@@ -127,7 +190,7 @@ function orderAllowed(rt: Runtime, orderId: string): void {
 
 const fc = (method: string, args: Record<string, unknown>, tgas: number): Action => actions.functionCall(method, args, BigInt(tgas) * TGAS, 0n);
 
-async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" }>): Promise<Plan> {
+async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" | "withhold" }>): Promise<Plan> {
   const { m, mandate } = rt;
   const g = m.gas_tgas;
   const base = (kind: Step["kind"], txActions: Action[]): Planned => ({
@@ -171,6 +234,51 @@ async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" 
         planned: { ...base("propose", a), sell: { asset: proposal.sell, units: proposal.sell_amount } },
         pre: { kind: "propose", proposal, expect: step.expect, grant },
         detail,
+      };
+    }
+    case "refused_proposal": {
+      const grant = await mandate.grant();
+      if (grant === null) throw new Stop("refused_proposal: no grant");
+      const a = [fc("propose_order", { proposal: step.proposal }, g.propose)];
+      return {
+        signer: rt.accounts.agent,
+        receiver: mandate.id,
+        method: "propose_order",
+        actions: a,
+        // Counted as if it could sell: a refusal is expected, never assumed.
+        planned: { ...base("refused_proposal", a), sell: { asset: step.proposal.sell, units: step.proposal.sell_amount } },
+        pre: { kind: "refused_proposal", proposal: step.proposal, error: step.error, grant, orders_before: (await mandate.allOrders()).length },
+        detail: { source: "manifest", expected_error: step.error },
+      };
+    }
+    case "relay_withheld": {
+      const w = latestWithheld(rt.ledger);
+      if (w?.bundle == null || w.filler_nonce === null || w.counter === null || w.bundle_sha256 === null) throw new Stop("relay_withheld: no withheld bundle");
+      if (sha256Of(w.bundle) !== w.bundle_sha256) throw new Stop("relay_withheld: stored bundle does not match its recorded sha256");
+      const tokens = { usdc: tokenId(m.mandate_config.usdc.token), wnear: tokenId(m.mandate_config.wnear.token) };
+      const paid = Object.entries(w.counter).find(([, v]) => BigInt(v) < 0n);
+      if (paid === undefined) throw new Stop("relay_withheld: withheld counter diff pays nothing");
+      const payAsset: Asset = paid[0] === tokens.usdc ? "usdc" : "wnear";
+      const a = [fc("execute_intents", { signed: w.bundle }, g.fill)];
+      return {
+        signer: rt.accounts.filler,
+        receiver: rt.verifier.id,
+        method: "execute_intents",
+        actions: a,
+        // Counted as if it could execute: a rejection is expected, never assumed.
+        planned: { ...base("relay_withheld", a), filler_pay: { asset: payAsset, units: (-BigInt(paid[1])).toString() } },
+        pre: {
+          kind: "relay_withheld",
+          order_id: w.order_id,
+          signing_key: w.signing_key,
+          deadline_ns: w.deadline_ns,
+          mandate_nonce: w.mandate_nonce,
+          filler_nonce: w.filler_nonce,
+          bundle_sha256: w.bundle_sha256,
+          mandate_before: fromBal(await balancesOf(rt.ctx, mandate.id)),
+          filler_before: fromBal(await balancesOf(rt.ctx, m.accounts.filler)),
+        },
+        detail: { order_id: w.order_id, bundle_sha256: w.bundle_sha256, withheld_relay: true },
       };
     }
     case "fill": {
@@ -247,9 +355,27 @@ async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" 
   }
 }
 
-async function verify(rt: Runtime, pre: Pre, outcome: Outcome): Promise<Verification & { data: Record<string, unknown> }> {
+/** `fatal: false` records a failed check as a finding and continues, so revocation and recovery still run. */
+async function verify(rt: Runtime, pre: Pre, outcome: Outcome): Promise<Verification & { data: Record<string, unknown>; fatal?: false }> {
   const { ctx } = rt;
   switch (pre.kind) {
+    case "refused_proposal":
+      // A finding, not a stop: if the contract misbehaves, revocation and recovery must still run.
+      return { ...(await verifyRefusedProposal(ctx, outcome, pre.error, pre.grant, pre.orders_before)), data: {}, fatal: false };
+    case "relay_withheld": {
+      const v = await classifyRelay(ctx, outcome, {
+        orderId: pre.order_id,
+        revokedKey: pre.signing_key,
+        deadlineNs: BigInt(pre.deadline_ns),
+        mandateNonce: pre.mandate_nonce,
+        fillerAccount: rt.m.accounts.filler,
+        fillerNonce: pre.filler_nonce,
+        mandateBefore: toBal(pre.mandate_before),
+        fillerBefore: toBal(pre.filler_before),
+        blockTimeNs: (hash) => rt.client.blockTimestampAt(hash).catch(() => null),
+      });
+      return { ...v, data: { classification: v.classification }, fatal: false };
+    }
     case "grant":
       return { ...(await verifyGrant(ctx, outcome, pre.previous_epoch)), data: {} };
     case "propose": {
@@ -298,8 +424,54 @@ async function finishStep(rt: Runtime, step: number, kind: string, pre: Pre, out
   if (breach !== null) throw new Stop(`budget: ${breach}`);
   const v = await verify(rt, pre, outcome);
   rt.assertions.push({ id: `step-${step + 1}-${kind}`, gate: "LIVE", description: `${kind}: terminal verification`, passed: v.passed, observed: { ...v.observed, problems: v.problems } });
-  if (!v.passed) throw new Stop(`step ${step + 1} ${kind}: terminal verification failed: ${v.problems.join("; ")}`);
-  rt.ledger.append("step-done", { step, kind, verification: v.observed, ...v.data });
+  if (!v.passed && v.fatal !== false) throw new Stop(`step ${step + 1} ${kind}: terminal verification failed: ${v.problems.join("; ")}`);
+  rt.ledger.append("step-done", { step, kind, verification: v.observed, ...v.data, ...(v.passed ? {} : { finding: `step ${step + 1} ${kind}: ${v.problems.join("; ")}` }) });
+}
+
+/** Prepares and simulates the withheld bundle; never sends it. Failures are findings, not stops. */
+async function withhold(rt: Runtime, i: number, step: Extract<Step, { kind: "withhold" }>): Promise<void> {
+  const orderId = step.order_id ?? createdOrders(rt.ledger).at(-1);
+  if (orderId === undefined || !createdOrders(rt.ledger).includes(orderId)) throw new Stop(`withhold: order ${orderId ?? "?"} was not created by this run`);
+  const order = await rt.mandate.order(orderId);
+  const grant = await rt.mandate.grant();
+  if (order?.state.state !== "signed" || order.deadline_ns === null || order.payload === null || grant?.public_key == null || grant.epoch !== order.epoch) {
+    throw new Stop(`withhold: order ${orderId} is not a signed order of the current grant (${JSON.stringify(order?.state)})`);
+  }
+  const base = { order_id: orderId, signing_key: grant.public_key, deadline_ns: order.deadline_ns, mandate_nonce: order.payload.nonce };
+  const signed = await rt.filler.signedOrder(order);
+  const prepared = await rt.filler.prepare(signed);
+  let withheld: Withheld;
+  let problem: string | null;
+  if ("shortfall" in prepared) {
+    withheld = { ...base, bundle: null, bundle_sha256: null, filler_nonce: null, counter: null, executable: false };
+    problem = `filler cannot cover the withheld order: ${prepared.shortfall}`;
+  } else {
+    problem = simulationProblem(await rt.verifier.simulate(prepared.bundle));
+    withheld = { ...base, bundle: prepared.bundle, bundle_sha256: sha256Of(prepared.bundle), filler_nonce: prepared.own.payload.nonce, counter: prepared.counter, executable: problem === null };
+  }
+  const observed = { order_id: orderId, deadline_ns: order.deadline_ns, bundle_sha256: withheld.bundle_sha256, executable: withheld.executable, ...(problem === null ? {} : { problem }) };
+  rt.assertions.push({ id: `step-${i + 1}-withhold`, gate: "LIVE", description: "withhold: the exact bundle is executable before revocation (simulate_intents)", passed: problem === null, observed });
+  rt.ledger.append("step-done", { step: i, kind: "withhold", verification: observed, withheld, ...(problem === null ? {} : { finding: `step ${i + 1} withhold: ${problem}` }) });
+}
+
+/**
+ * Preconditions of the relay. Throws unless revocation is confirmed (a withheld order is never sent while
+ * its key may be registered). Returns a reason when the relay cannot test revocation and is not sent.
+ */
+async function relayBlocked(rt: Runtime, step: Extract<Step, { kind: "relay_withheld" }>): Promise<{ reason: string; observed: Record<string, unknown> } | null> {
+  const w = latestWithheld(rt.ledger);
+  if (w === null) throw new Stop("relay_withheld: no withhold step recorded");
+  const grant = await rt.mandate.grant();
+  const keyPresent = await rt.verifier.hasPublicKey(rt.mandate.id, w.signing_key);
+  if (grant?.status !== "revoked" || grant.key_op_in_flight || keyPresent) {
+    throw new Stop(`relay_withheld: revocation not confirmed (status ${String(grant?.status)}, key registered ${String(keyPresent)}); the withheld order is not sent`);
+  }
+  const now = await rt.client.blockTimestampNs();
+  const remaining = BigInt(w.deadline_ns) - now;
+  const observed = { order_id: w.order_id, deadline_ns: w.deadline_ns, now_ns: now.toString(), executable_before_revocation: w.executable, classification: "inconclusive" };
+  if (!w.executable || w.bundle === null) return { reason: "the withheld bundle was not executable before revocation", observed };
+  if (remaining < BigInt(step.min_remaining_sec) * 1_000_000_000n) return { reason: `order deadline too close or passed (${remaining} ns left, need ${step.min_remaining_sec} s)`, observed };
+  return null;
 }
 
 /** Unresolved intents and executed-but-unverified steps are reconciled from chain before anything new. */
@@ -323,7 +495,7 @@ async function reconcile(rt: Runtime, startNonces: Record<"owner" | "agent" | "f
     else if (prior.data.success !== found.success) throw new Refusal(`cannot resume: ledger says ${hash} success=${String(prior.data.success)}, chain says ${String(found.success)}`);
     rt.receipts.push(toEvidenceReceipt(found, { reconciled: true }));
     if (!doneSteps.has(step)) {
-      if (!found.submitted || !found.success) throw new Stop(`step ${step + 1} ${kind}: reconciled transaction ${hash} did not succeed: ${found.error ?? ""}`);
+      if (!found.submitted || (!found.success && !FAILURE_EXPECTED.has(kind))) throw new Stop(`step ${step + 1} ${kind}: reconciled transaction ${hash} did not succeed: ${found.error ?? ""}`);
       await finishStep(rt, step, kind, Pre.parse(intent.data.pre), found);
       doneSteps.add(step);
     }
@@ -357,7 +529,30 @@ async function execute(rt: Runtime, from: number): Promise<void> {
       rt.ledger.append("step-done", { step: i, kind: "check", verification: observed });
       continue;
     }
+    if (step.kind === "withhold") {
+      await withhold(rt, i, step);
+      continue;
+    }
+    if (step.kind === "relay_withheld") {
+      const blocked = await relayBlocked(rt, step);
+      if (blocked !== null) {
+        rt.assertions.push({ id: `step-${i + 1}-relay_withheld`, gate: "LIVE", description: "relay_withheld: not sent", passed: false, observed: { ...blocked.observed, problems: [blocked.reason] } });
+        rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification: blocked.observed, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${blocked.reason}` });
+        continue;
+      }
+    }
     const p = await plan(rt, i, step);
+    if (step.kind === "relay_withheld") {
+      try {
+        checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
+      } catch (error) {
+        if (!(error instanceof BudgetExceeded)) throw error;
+        const observed = { order_id: (p.pre as { order_id?: string }).order_id ?? null, classification: "inconclusive" };
+        rt.assertions.push({ id: `step-${i + 1}-relay_withheld`, gate: "LIVE", description: "relay_withheld: not sent", passed: false, observed: { ...observed, problems: [error.message] } });
+        rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification: observed, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${error.message}` });
+        continue;
+      }
+    }
     checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
     const role = STEP_SIGNER[step.kind];
     const outcome = await rt.client.submit(`step ${i + 1} ${step.kind}`, p.signer, p.receiver, p.actions, p.method, (info) => {
@@ -457,6 +652,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       spentFeeYocto: ledger === null ? 0n : totals(ledger).fee_yocto,
       pending: ledger === null ? m.steps : pendingSteps(ledger, m),
       createdOrders: ledger === null ? [] : createdOrders(ledger),
+      fillerPaid: ledger === null ? { usdc: 0n, wnear: 0n } : totals(ledger).filler_paid,
     });
     checks = pf.checks;
     if (!pf.passed) throw new Refusal(`preflight refused: ${pf.checks.filter((c) => !c.passed).map((c) => c.id).join(", ")}`);
@@ -466,6 +662,11 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     }
     rt = { ...(rt ?? runtime(ledger, 0n)), gasPrice: BigInt(pf.facts.gas_price) };
     await execute(rt, nextStepIndex(ledger));
+    const findings = ledger.ofKind("step-done").flatMap((e) => (typeof e.data.finding === "string" ? [e.data.finding] : []));
+    if (findings.length > 0) {
+      exitCode = 1;
+      message = `completed with findings: ${findings.join(" | ")}`;
+    }
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     if (error instanceof BudgetExceeded || error instanceof Stop) exitCode = 1;
@@ -485,13 +686,27 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     command: resume ? "MANDATE_LIVE=1 MANDATE_LIVE_RESUME=1 make live" : "MANDATE_LIVE=1 make live",
     identifiers: { ...m.accounts, mandate_code_hash: m.code_hashes.mandate, approval: `${m.approval.approved_by}: ${m.approval.reference}` },
     receipts,
-    assertions: [...(checks ?? []).map((c) => ({ id: `preflight-${c.id}`, gate: "LIVE", description: `preflight ${c.id}`, passed: c.passed, observed: c.observed })), ...assertions],
-    unknowns: exitCode === 0 ? [] : [`run stopped: ${message}`],
+    assertions: [...(checks ?? []).map((c) => ({ id: `preflight-${c.id}`, gate: "LIVE", description: `preflight ${c.id}`, passed: c.passed, observed: c.observed })), ...earlierSteps(ledger, assertions), ...assertions],
+    unknowns: exitCode === 0 ? [] : [message.startsWith("completed with findings") ? message : `run stopped: ${message}`],
   });
   const outDir = join(deps.outRoot ?? join(REPO_ROOT, "out/live"), "..", "evidence");
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, `live-${m.network.name}.json`), `${JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`);
   return { exitCode, message, evidence, ...(checks === undefined ? {} : { preflight: checks }) };
+}
+
+/** Steps completed by an earlier session of this ledger, so a resumed run's evidence covers the whole run. */
+function earlierSteps(ledger: Ledger | null, current: Assertion[]): Assertion[] {
+  if (ledger === null) return [];
+  const seen = new Set(current.map((a) => a.id));
+  return ledger.ofKind("step-done").flatMap((e) => {
+    const step = z.number().int().parse(e.data.step);
+    const kind = z.string().parse(e.data.kind);
+    const id = `step-${step + 1}-${kind}`;
+    if (seen.has(id)) return [];
+    const observed = { ...(typeof e.data.verification === "object" && e.data.verification !== null ? e.data.verification : {}), recorded_at: e.at, from_ledger: true };
+    return [{ id, gate: "LIVE", description: `${kind}: verified in an earlier session (ledger entry ${e.seq})`, passed: typeof e.data.finding !== "string", observed }];
+  });
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {

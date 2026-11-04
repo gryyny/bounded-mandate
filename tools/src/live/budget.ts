@@ -29,7 +29,10 @@ export interface Totals {
 export function totals(ledger: Ledger): Totals {
   const t: Totals = { transactions: 0, fee_yocto: 0n, deposit_yocto: 0n, sold: { usdc: 0n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } };
   const actualFee = new Map<string, bigint>();
+  // Refused by the network before inclusion: it cannot execute later, spent nothing, and its step is planned again.
+  const rejected = new Set<string>();
   for (const e of ledger.entries) {
+    if ((e.kind === "tx-result" || e.kind === "reconciled") && e.data.status === "rejected" && typeof e.data.tx_hash === "string") rejected.add(e.data.tx_hash);
     if ((e.kind === "tx-result" || e.kind === "reconciled") && typeof e.data.tx_hash === "string" && typeof e.data.fee_yocto === "string" && e.data.status !== "ambiguous") {
       actualFee.set(e.data.tx_hash, BigInt(e.data.fee_yocto));
     }
@@ -37,6 +40,7 @@ export function totals(ledger: Ledger): Totals {
   for (const e of ledger.ofKind("tx-intent")) {
     const planned = Planned.parse(e.data.planned);
     const hash = z.string().parse(e.data.tx_hash);
+    if (rejected.has(hash)) continue;
     t.transactions += 1;
     t.fee_yocto += actualFee.get(hash) ?? BigInt(planned.worst_fee_yocto);
     t.deposit_yocto += BigInt(planned.deposit_yocto);
