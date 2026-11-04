@@ -2,11 +2,19 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/34de374",
+      "revision": "34de3745d15ed675cd66877334b3c75b1729c459",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
+      "run": "evidence/34de374/run.json"
+    },
+    {
       "path": "evidence/163ccfa",
       "revision": "163ccfa75de2db014a626de7dea4b7baad0bace4",
-      "status": "certified",
+      "status": "superseded",
       "rules": "gate-report/2 acceptance (all required cases, one clean run, hash-bound)",
-      "run": "evidence/163ccfa/run.json"
+      "run": "evidence/163ccfa/run.json",
+      "note": "certified under the rules at 163ccfa; superseded by 34de374 (binding, DEPLOY.candidate, deterministic T4 case). One CI run of e91c876 failed the then-flaky T4.open-order-limit."
     },
     {
       "path": "evidence/426914d",

@@ -1,0 +1,87 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "DEPLOY",
+  "case": "candidate",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261104T112104279Z-184d48d0a179",
+  "source": {
+    "revision": "34de3745d15ed675cd66877334b3c75b1729c459",
+    "dirty": false
+  },
+  "spec_sha256": "be8cb1ec6b74c8de3391fe869162d96967a1e8a4a9537b45c9dc5d8a301b417d",
+  "fixture_manifest_sha256": "1bf9de3a2d6a5e37d9dd1f2c5794070f09c9d510e4a4422afbdb94c54d20782d",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-clone/target/debug/deps/deploy_candidate-d35e5117ae4cf26a",
+  "generated_at_unix": 1793791500,
+  "data": {
+    "candidate_path": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "candidate_sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "manifest_sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "sha256_matches_manifest": true,
+    "deployed_code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "deployed_code_hash_is_candidate": true,
+    "loaded_from": "fixtures/ (bytes read and deployed as-is; never from target/near, never compiled)",
+    "local_build_sha256": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "exports_equal_local_build": true,
+    "export_difference": [],
+    "exports": [
+      "__contract_abi",
+      "contract_source_metadata",
+      "expire_order",
+      "get_config",
+      "get_grant",
+      "get_order",
+      "get_recovery",
+      "grant",
+      "list_orders",
+      "new",
+      "on_grant_prepared",
+      "on_key_added",
+      "on_key_presence",
+      "on_key_removed",
+      "on_order_priced",
+      "on_recovery_balance",
+      "on_recovery_transferred",
+      "on_registration_checked",
+      "on_settle_checked",
+      "on_signed",
+      "propose_order",
+      "reconcile_registration",
+      "recover",
+      "revoke",
+      "settle_order"
+    ],
+    "reconcile_registration_exported": true,
+    "steps": [
+      {
+        "step": "grant",
+        "status": "active",
+        "key_registered": true
+      },
+      {
+        "step": "trade+fill+settle",
+        "filled": true,
+        "settled": true
+      },
+      {
+        "step": "withheld+revoke+relay",
+        "removal_confirmed": true,
+        "relay_rejected": true,
+        "state": "released:key_removed"
+      },
+      {
+        "step": "recover",
+        "recovered_all_units": true,
+        "usdc": "10029850000",
+        "wnear": "2990000000000000000000000000"
+      }
+    ]
+  }
+}
