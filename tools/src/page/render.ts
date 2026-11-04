@@ -1,5 +1,6 @@
-// Renders the static evidence page. Order: one-sentence claim, the demonstration, acceptance gates per case,
-// the T5 baseline, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
+// Renders the static evidence page. Order: product position and claim, the seven-stage revocation story bound to
+// the demo evidence, three ways to check it, mainnet receipts (or the pending panel), the full demonstration,
+// acceptance gates per case, the T5 baseline, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
 // certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
 // Demo assertions are story checks and never mark a gate.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -10,9 +11,17 @@ import { REPO_ROOT } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
 import { Acceptance, type BaselineCase, type CaseResult } from "../evidence/schema.js";
 import { type Assertion, Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
+import { chip, escapeHtml, modeBadge, word } from "./html.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
+import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
+import { revocationStory, shortHash, type Stage } from "./story.js";
 import { STYLES } from "./styles.js";
+
+export { escapeHtml } from "./html.js";
+
+/** Public URL of the short video; a placeholder until it is hosted. */
+export const VIDEO_URL: string = "VIDEO_URL_PENDING";
 
 export interface RenderExtras {
   /**
@@ -26,6 +35,11 @@ export interface RenderExtras {
   policy?: Policy;
   /** Historical envelope-v1 reports, shown as "legacy, uncertified by v2 rules"; never mark a gate. */
   legacy?: { label: string; reports: readonly unknown[] };
+  /**
+   * Evidence of a `make live` run. Shown as mainnet only when its mode is "mainnet" and every receipt carries a
+   * NEAR transaction hash. `null`: none. `renderPage` loads out/evidence/live-mainnet.json when this is omitted.
+   */
+  live?: unknown;
   /** @deprecated Ignored: gate status comes only from acceptance.json. */
   gateReports?: unknown;
 }
@@ -54,9 +68,6 @@ export const GATE_LABEL: Record<string, string> = {
   DEPLOY: "proposed deployment binary exercised in sandbox",
 };
 
-export const escapeHtml = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-
 const json = (value: unknown): string => {
   const text = JSON.stringify(value === undefined ? null : value, null, 2);
   return text.length > MAX_DETAIL_CHARS ? `${text.slice(0, MAX_DETAIL_CHARS)}\n... (truncated)` : text;
@@ -72,6 +83,7 @@ interface Inputs {
   binding: DemoBinding;
   policy: Policy | null;
   legacy: { label: string; reports: LegacyGateReport[] } | null;
+  live: LiveView;
 }
 
 function parseInputs(evidence: unknown, extras: RenderExtras): Inputs {
@@ -97,7 +109,7 @@ function parseInputs(evidence: unknown, extras: RenderExtras): Inputs {
             return parsed.success ? parsed.data : fail(`legacy report #${String(i)}`, parsed.error);
           }),
         };
-  return { ev: ev.data, acc, binding: bindDemo(ev.data, acc, extras.latestRunId ?? null), policy, legacy };
+  return { ev: ev.data, acc, binding: bindDemo(ev.data, acc, extras.latestRunId ?? null), policy, legacy, live: liveView(extras.live) };
 }
 
 /** Mode of one demo step: the run's mode unless the receipt declares a weaker, valid one. */
@@ -136,16 +148,8 @@ const STATUS_TEXT: Record<GateStatus, string> = {
 };
 
 const statusBadge = (status: GateStatus): string => `<span class="status ${status}">${STATUS_TEXT[status]}</span>`;
-const word = (cls: string, text: string): string => `<span class="status ${escapeHtml(cls)}">${escapeHtml(text)}</span>`;
 const caseBadge = (c: CaseResult, certified: boolean): string =>
   c.status === "passed" && !certified ? word("uncertified", "passed, not certified for this demo") : word(c.status, c.status);
-
-const modeBadge = (mode: string): string => {
-  const known = EvidenceMode.safeParse(mode);
-  const cls = known.success ? known.data : "other";
-  return `<span class="mode ${cls}" title="execution mode">${escapeHtml(mode)}</span>`;
-};
-const chip = (cls: string, text: string): string => `<span class="mode ${cls}">${escapeHtml(text)}</span>`;
 
 const section = (num: string, tag: string, id: string, title: string, body: string): string =>
   `<section class="folio" id="${id}" aria-labelledby="${id}-h"><div class="num" aria-hidden="true">${num}<small>${tag}</small></div><div class="body"><h2 id="${id}-h">${title}</h2>${body}</div></section>`;
@@ -164,7 +168,7 @@ function runLabels(ev: Evidence): string[] {
   return labels;
 }
 
-function headerChips(ev: Evidence, binding: DemoBinding): string {
+function headerChips(ev: Evidence, binding: DemoBinding, live: LiveView): string {
   const extra = [
     ...(ev.assertions.some(isModelOutput) ? ["recorded genuine model output"] : []),
     ...(ev.assertions.some((a) => SCRIPTED_ATTACK.test(a.description)) ? ["scripted attacks"] : []),
@@ -172,7 +176,7 @@ function headerChips(ev: Evidence, binding: DemoBinding): string {
   return [
     `<span class="status ${binding.certified ? "passed" : "uncertified"}">${binding.certified ? "✓ certified for this demo" : "! not certified for this demo"}</span>`,
     modeBadge(ev.mode),
-    ...[...runLabels(ev), ...extra].map((l) => chip("label", l)),
+    ...[...runLabels(ev).filter((l) => live.kind !== "mainnet" || l !== "no mainnet"), ...extra].map((l) => chip("label", l)),
   ].join(" ");
 }
 
@@ -204,12 +208,12 @@ const receiptLine = (r: Receipt, ev: Evidence): string => {
   const meta = [r.tx_hash !== undefined ? `tx ${r.tx_hash}` : null, r.receipt_id !== undefined ? `receipt ${r.receipt_id}` : null, r.block_height !== undefined ? `block ${String(r.block_height)}` : null].filter(
     (m): m is string => m !== null,
   );
-  return `<li><strong>${escapeHtml(r.label)}</strong> ${modeBadge(stepMode(r, ev))} ${word(r.outcome, r.outcome)}<p class="step-meta">${escapeHtml(meta.length > 0 ? meta.join(" · ") : "no transaction identifiers recorded")}</p>
+  return `<li id="tx-${String(ev.receipts.indexOf(r))}"><strong>${escapeHtml(r.label)}</strong> ${modeBadge(stepMode(r, ev))} ${word(r.outcome, r.outcome)}<p class="step-meta">${escapeHtml(meta.length > 0 ? meta.join(" · ") : "no transaction identifiers recorded")}</p>
 <details><summary>Recorded detail</summary><pre>${escapeHtml(json(r.detail))}</pre></details></li>`;
 };
 
 const checkLine = (a: Assertion): string =>
-  `<li>${word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold")} <code>${escapeHtml(a.gate)}</code> ${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(json(a.observed))}</pre></details></li>`;
+  `<li id="check-${escapeHtml(a.id)}">${word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold")} <code>${escapeHtml(a.gate)}</code> ${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(json(a.observed))}</pre></details></li>`;
 
 function stepBody(step: Step, ev: Evidence): string {
   const attacks = step.checks.filter((a) => SCRIPTED_ATTACK.test(a.description));
@@ -252,6 +256,62 @@ function demonstrationSection(ev: Evidence): string {
     })
     .join("\n");
   return section("§1", "demo", "demo", "The demonstration", `${intro}<ol class="timeline">${items}</ol>`);
+}
+
+/** The three execution modes, each stated for this page, so sandbox, recorded model output and mainnet stay apart. */
+function modesKey(ev: Evidence, live: LiveView): string {
+  const demo =
+    ev.mode === "sandbox"
+      ? "Sandbox execution: a local NEAR sandbox runs our contract and the pinned Intents verifier WASM, with labelled test doubles for MPC, oracle and tokens."
+      : `Demo evidence recorded in mode ${ev.mode}.`;
+  const model = ev.assertions.some(isModelOutput)
+    ? [`<li>${chip("recorded-model", "recorded model output")}<span>The trade proposal replays a recorded genuine model response. No model is called to build this page.</span></li>`]
+    : [];
+  const mainnet =
+    live.kind === "mainnet"
+      ? `<li>${modeBadge("mainnet")}<span>Mainnet receipts: transactions of an approved <code>make live</code> run, in their own section below.</span></li>`
+      : `<li>${chip("pending", "mainnet: none")}<span>No mainnet receipt is shown on this page.</span></li>`;
+  return `<ul class="modes-key" aria-label="Execution modes on this page"><li>${modeBadge(ev.mode)}<span>${escapeHtml(demo)}</span></li>${model.join("")}${mainnet}</ul>`;
+}
+
+function stageCard(s: Stage, i: number, ev: Evidence): string {
+  const state = s.missing.length > 0 ? "missing" : s.checks.some((c) => c.held === false) ? "failure" : "held";
+  const txs = s.receipts.map(
+    ({ index, receipt }) => `<a href="#tx-${String(index)}">tx ${escapeHtml(shortHash(receipt.tx_hash ?? receipt.label))}</a>${receipt.outcome === "failure" ? " (failed)" : ""}`,
+  );
+  const checks = s.checks.map((c) =>
+    c.held === null ? `<span class="absent">${escapeHtml(c.id)}: not in this evidence</span>` : `<a href="#check-${escapeHtml(c.id)}">${escapeHtml(c.id)}</a> ${c.held ? "held" : "<strong>did not hold</strong>"}`,
+  );
+  const labels = s.labels.map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("");
+  const facts = s.facts.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
+  return `<li class="stage ${s.key} ${state}" id="stage-${s.key}"><p class="stage-head"><span class="stage-n" aria-hidden="true">${String(i + 1)}</span><span class="stage-title">${escapeHtml(s.title)}</span></p>
+<p class="stage-modes">${modeBadge(ev.mode)}${labels}</p>
+${s.headline === null ? `<p class="headline absent">Not in this evidence: ${escapeHtml(s.missing.join("; "))}</p>` : `<p class="headline">${escapeHtml(s.headline)}</p>`}
+${facts === "" ? "" : `<dl class="stage-facts">${facts}</dl>`}
+<p class="bound">Evidence: ${[...txs, ...checks].join(" · ")}</p></li>`;
+}
+
+function storySection(ev: Evidence): string {
+  const stages = revocationStory(ev);
+  return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The revocation story, from one ${escapeHtml(ev.mode)} run</h2>
+<p class="source">Every value is read from out/evidence/demo.json (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1). Story checks never mark an acceptance gate (§2).</p>
+<ol class="stages">${stages.map((s, i) => stageCard(s, i, ev)).join("\n")}</ol></section>`;
+}
+
+function pathsSection(live: LiveView): string {
+  const video =
+    VIDEO_URL === "VIDEO_URL_PENDING"
+      ? `<a href="${VIDEO_URL}">${VIDEO_URL}</a> (hosting pending; local build: out/video/bounded-mandate-short.mp4)`
+      : `<a href="${escapeHtml(VIDEO_URL)}" rel="noopener noreferrer">${escapeHtml(VIDEO_URL)}</a>`;
+  const mainnet =
+    live.kind === "mainnet"
+      ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a></p>`
+      : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a></p>`;
+  return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
+<li><p class="do">Watch the short video</p><p class="see">See: the seven stages above narrated with this run's numbers, in about a minute.</p><p>${video}</p></li>
+<li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
+<li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (about 16 minutes).</p></li>
+</ol></section>`;
 }
 
 function gatesSection(acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[]): string {
@@ -347,14 +407,14 @@ const combine = (statuses: readonly GateStatus[]): GateStatus => {
   return "passed";
 };
 
-function limitsSection(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[]): string {
+function limitsSection(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[], live: LiveView): string {
   const byGate = new Map(views.map((v) => [v.gate, v.status]));
   const parts = CLAIM_PARTS.map((part) => {
     const status = combine(part.gates.map((g) => byGate.get(g) ?? "not-run"));
     return `<tr><td>${escapeHtml(part.text)}</td><td>${part.gates.map((g) => `<code>${escapeHtml(g)}</code>`).join(" ")}</td><td>${statusBadge(status)}</td></tr>`;
   }).join("");
   const derived = [
-    ...(ev.mode !== "mainnet" ? ["No mainnet receipts: encoding, key registration, the real MPC signer, settlement and recovery on mainnet are not evidenced here."] : []),
+    ...(ev.mode !== "mainnet" && live.kind !== "mainnet" ? ["No mainnet receipts: encoding, key registration, the real MPC signer, settlement and recovery on mainnet are not evidenced here."] : []),
     ...(acc === null ? ["No acceptance run is attached: no gate is evidenced on this page."] : []),
     ...(!binding.certified && acc !== null ? [`The acceptance run is not certified for this demo: ${binding.reasons.join("; ")}.`] : []),
     ...views.filter((v) => v.status !== "passed").map((v) => `Gate ${v.gate} is ${STATUS_TEXT[v.status].replace(/^\S+ /, "")}: the claim parts it blocks are not supported.`),
@@ -452,7 +512,7 @@ function legacySection(legacy: Inputs["legacy"]): string {
 
 /** Pure renderer; throws when the evidence, acceptance, policy or legacy reports fail schema validation. */
 export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string {
-  const { ev, acc, binding, policy, legacy } = parseInputs(evidence, extras);
+  const { ev, acc, binding, policy, legacy, live } = parseInputs(evidence, extras);
   const views = gateViews(acc, binding);
   const passedCount = views.filter((v) => v.status === "passed").length;
   const anyFailed = views.some((v) => v.status === "failed");
@@ -468,21 +528,26 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <style>${STYLES}</style>
 </head>
 <body>
-<a class="skip" href="#demo">Skip to the demonstration</a>
+<a class="skip" href="#story">Skip to the revocation story</a>
 <main class="dossier">
 <header class="docket">
-<p class="kicker">Evidence dossier · NEAR Intents · USDC / wNEAR</p>
-<p class="chips" role="status">${headerChips(ev, binding)}</p>
-<h1>A bounded trading mandate whose signed authority can be withdrawn</h1>
+<p class="kicker">Bounded mandate · evidence dossier · NEAR Intents · USDC / wNEAR</p>
+<p class="chips" role="status">${headerChips(ev, binding, live)}</p>
+<h1>Delegate trading within on‑chain limits</h1>
+<p class="position">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>
+${modesKey(ev, live)}
 <p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
 <p class="facts-line">Gates passed and certified for this demo: ${String(passedCount)} / ${String(views.length)}</p>
 ${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
 ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
 </header>
+${storySection(ev)}
+${pathsSection(live)}
+${section("§M", "mainnet", "mainnet", "Mainnet receipts", mainnetBody(live))}
 ${demonstrationSection(ev)}
 ${gatesSection(acc, binding, views)}
 ${comparisonSection(acc, views)}
-${limitsSection(ev, acc, binding, views)}
+${limitsSection(ev, acc, binding, views, live)}
 ${policySection(policy)}
 ${provenanceSection(ev, acc, binding)}
 ${legacySection(legacy)}
@@ -501,11 +566,12 @@ export function loadAcceptance(root: string): Acceptance | null {
   return parsed.success ? parsed.data : fail(path, parsed.error);
 }
 
-/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json and run id unless given. */
+/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json, run id and mainnet evidence unless given. */
 export function renderPage(evidence: Evidence, outDir: string, extras: RenderExtras = {}): string {
   const acceptance = extras.acceptance === undefined ? loadAcceptance(REPO_ROOT) : extras.acceptance;
   const runId = extras.latestRunId === undefined ? latestRunId(REPO_ROOT) : extras.latestRunId;
-  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId });
+  const live = extras.live === undefined ? loadLive(REPO_ROOT) : extras.live;
+  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId, live });
   mkdirSync(outDir, { recursive: true });
   const path = join(outDir, "index.html");
   writeFileSync(path, html);
@@ -515,5 +581,5 @@ export function renderPage(evidence: Evidence, outDir: string, extras: RenderExt
 /** Renders a historical bundle (`<dir>/demo.json`, `<dir>/tests/*.json`) as legacy, uncertified by v2 rules. */
 export function renderLegacyBundle(dir: string, outDir: string): string {
   const evidence = JSON.parse(readFileSync(join(dir, "demo.json"), "utf8")) as Evidence;
-  return renderPage(evidence, outDir, { acceptance: null, latestRunId: null, legacy: { label: dir, reports: loadGateReports(join(dir, "tests")) } });
+  return renderPage(evidence, outDir, { acceptance: null, latestRunId: null, live: null, legacy: { label: dir, reports: loadGateReports(join(dir, "tests")) } });
 }

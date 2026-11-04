@@ -1,14 +1,16 @@
 // SYNTHETIC specimens only: every evidence and acceptance object below is built here for testing
 // the renderer and is labelled as such; none is a recorded run.
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { ACCEPTANCE_SCHEMA, type Acceptance, type BaselineOutcome, type CaseResult, type T5Data } from "../src/evidence/schema.js";
+import { LIVE_MAINNET_PATH, isTxHash, loadLive } from "../src/page/mainnet.js";
 import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/page/render.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
+import { STORY, storyEvidence, txHash } from "./video-story-specimen.js";
 
 const REV = "a".repeat(40);
 const FIXTURES = { "verifier/defuse-0.4.5.wasm": "e".repeat(64) };
@@ -254,7 +256,7 @@ describe("evidence page: escaping and self-containment", () => {
   it("writes a single self-contained index.html, and renders without acceptance.json", () => {
     const dir = mkdtempSync(join(tmpdir(), "bm-page-"));
     dirs.push(dir);
-    const path = renderPage(specimen(), dir, { acceptance: null, latestRunId: null, gateReports: ["ignored"] });
+    const path = renderPage(specimen(), dir, { acceptance: null, latestRunId: null, live: null, gateReports: ["ignored"] });
     const html = readFileSync(path, "utf8");
     expect(path).toBe(join(dir, "index.html"));
     expect(html).not.toMatch(/<(script|link|img|iframe)\b/i);
@@ -303,5 +305,168 @@ describe("evidence page: historical v1 bundle", () => {
     expect(html).not.toContain('class="status passed"');
     expect(html).toContain("Not certified for this demo: no acceptance run");
     expect(digest(bundle)).toBe(before);
+  });
+});
+
+describe("evidence page: revocation story", () => {
+  const stages = (html: string): string[] => [...html.matchAll(/<li class="stage ([a-z]+) ([a-z]+)"/g)].map((m) => `${m[1] ?? ""} ${m[2] ?? ""}`);
+
+  it("shows the seven stages in order with values bound to the evidence", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    expect(stages(html)).toEqual(["balances held", "limits held", "trade held", "withheld held", "revoked held", "rejected held", "recovered held"]);
+    // Expected text derived from the SYNTHETIC raw inputs (6 USDC decimals, 24 wNEAR decimals, 12 value decimals).
+    const s = STORY;
+    expect(s.before.usdc).toBe(2_000n * 10n ** 6n);
+    for (const text of [
+      "2,000.00 USDC + 100.0000 wNEAR",
+      "$2,300.00",
+      "20% of initial value ($460.00)",
+      "sold 12.34 USDC → bought 4.0000 wNEAR",
+      `recorded output of ${s.model}`,
+      "order id 7: 5.0000 wNEAR → 14.99 USDC",
+      "grant revoked · key registered: no",
+      "rejected 37 s before its deadline",
+      "1,987.66 USDC + 104.0000 wNEAR to the owner",
+    ]) expect(html).toContain(escapeHtml(text));
+    const at = (needle: string) => html.indexOf(needle);
+    expect(at('id="stage-balances"')).toBeLessThan(at('id="stage-recovered"'));
+    expect(at('id="story"')).toBeLessThan(at('id="paths"'));
+    expect(at('id="paths"')).toBeLessThan(at('id="mainnet"'));
+    expect(at('id="mainnet"')).toBeLessThan(at('id="demo"'));
+  });
+
+  it("labels each stage's mode and links every receipt to the transaction it shows", () => {
+    const ev = storyEvidence();
+    const html = renderHtml(ev, { acceptance: null, live: null });
+    expect(html).toContain('<span class="mode recorded-model">recorded genuine model output</span>');
+    expect(html).toContain('<span class="mode label">scripted proposal</span>');
+    expect(html.match(/<p class="stage-modes"><span class="mode sandbox"/g)).toHaveLength(7);
+    ev.receipts.forEach((_, i) => {
+      expect(html).toContain(`href="#tx-${String(i)}"`);
+      expect(html).toContain(`id="tx-${String(i)}"`);
+    });
+  });
+
+  it("shows no numbers for a stage whose evidence is missing, and a failed check as not held", () => {
+    const bare = renderHtml(specimen(), { acceptance: null, live: null });
+    expect(stages(bare).every((s) => s.endsWith(" missing"))).toBe(true);
+    expect(bare).toContain("Not in this evidence: assertion trade-executed");
+    const ev = storyEvidence();
+    const failed = { ...ev, assertions: ev.assertions.map((a) => (a.id === "withheld-rejected" ? { ...a, passed: false } : a)) };
+    const html = renderHtml(failed, { acceptance: null, live: null });
+    expect(stages(html)).toContain("rejected failure");
+    expect(html).toContain("withheld-rejected</a> <strong>did not hold</strong>");
+  });
+
+  it("never marks a gate from the story", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    for (const gate of Object.keys(REQUIRED_CASES)) expect(gateStatus(html, gate)).toBe("not-run");
+  });
+
+  it("offers the three paths, with the video placeholder until hosted", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    expect(html).toContain('<a href="VIDEO_URL_PENDING">VIDEO_URL_PENDING</a>');
+    expect(html).toContain("<code>make demo</code>, then <code>make test</code>");
+  });
+});
+
+describe("evidence page: mainnet section", () => {
+  const PENDING = "Mainnet run: pending approval — no mainnet transaction has been executed";
+  const live = (over: Partial<Evidence> = {}): Evidence =>
+    Evidence.parse({
+      ...specimen(),
+      mode: "mainnet",
+      command: "MANDATE_LIVE=1 make live (SYNTHETIC)",
+      environment: { chain_id: "mainnet", label: "SYNTHETIC" },
+      identifiers: { mandate: "mandate.synthetic.near", owner: "owner.synthetic.near" },
+      receipts: [
+        { label: "owner grant (SYNTHETIC)", tx_hash: txHash("grant"), block_height: 1, outcome: "success", detail: { step: 2, signer_id: "owner.synthetic.near", fee_yocto: "1000000000000000000000" } },
+        { label: "owner revoke (SYNTHETIC)", tx_hash: txHash("revoke"), block_height: 2, outcome: "success", detail: { step: 6, signer_id: "owner.synthetic.near" } },
+      ],
+      assertions: [check("step-2-grant", "LIVE", "grant: terminal verification"), check("step-6-revoke", "LIVE", "revoke: terminal verification")],
+      unknowns: [],
+      ...over,
+    });
+  const relay = (classification: string, passed: boolean): Assertion => ({ id: "step-7-relay_withheld", gate: "LIVE", description: "relay_withheld (SYNTHETIC)", passed, observed: { classification } });
+  const withRelay = (classification: string, passed: boolean): Evidence => live({ assertions: [...live().assertions, relay(classification, passed)] });
+  const noMainnet = (html: string) => {
+    expect(html).not.toContain('class="mode mainnet"');
+    expect(html).not.toContain("nearblocks.io");
+  };
+
+  it("renders the pending panel when no live evidence exists", () => {
+    const html = renderHtml(specimen(), { acceptance: null, live: null });
+    expect(html).toContain(PENDING);
+    expect(html).toContain('<span class="mode pending">mainnet: none</span>');
+    noMainnet(html);
+  });
+
+  it("loads out/evidence/live-mainnet.json only when present", () => {
+    const root = mkdtempSync(join(tmpdir(), "bm-live-"));
+    dirs.push(root);
+    expect(loadLive(root)).toBeNull();
+    mkdirSync(join(root, "out/evidence"), { recursive: true });
+    writeFileSync(join(root, LIVE_MAINNET_PATH), JSON.stringify(live()));
+    expect(Evidence.parse(loadLive(root))).toEqual(live());
+  });
+
+  it("never shows sandbox-mode or unhashed live evidence as mainnet", () => {
+    const cases: [string, unknown, string][] = [
+      ["sandbox mode", live({ mode: "sandbox" }), 'its mode is &quot;sandbox&quot;, not &quot;mainnet&quot;'],
+      ["testnet chain", live({ environment: { chain_id: "testnet" } }), "its chain id is &quot;testnet&quot;"],
+      ["fake hash", live({ receipts: [{ label: "trade (SYNTHETIC)", tx_hash: "HASH1", outcome: "success", detail: {} }] }), "has no NEAR transaction hash"],
+      ["no hash", live({ receipts: [{ label: "trade (SYNTHETIC)", outcome: "success", detail: {} }] }), "has no NEAR transaction hash"],
+      ["no receipts", live({ receipts: [] }), "it has no receipts"],
+    ];
+    for (const [, ev, reason] of cases) {
+      const html = renderHtml(specimen(), { acceptance: null, live: ev });
+      expect(html).toContain("is not mainnet evidence");
+      expect(html).toContain(reason);
+      noMainnet(html);
+    }
+    expect(() => renderHtml(specimen(), { live: { mode: "mainnet" } })).toThrow(/live evidence failed schema validation/);
+  });
+
+  it("never shows an inconclusive or executed relay as a successful revocation test", () => {
+    for (const passed of [true, false]) {
+      const html = renderHtml(specimen(), { acceptance: null, live: withRelay("inconclusive", passed) });
+      expect(html).toContain('<span class="status inconclusive">revocation test inconclusive</span>');
+      expect(html).toContain('<span class="status inconclusive">inconclusive: not evidence that revocation stopped the withheld order</span>');
+      expect(html).not.toContain("revocation test passed");
+      expect(html).not.toContain("withheld order rejected after confirmed revocation");
+    }
+    const executed = renderHtml(specimen(), { acceptance: null, live: withRelay("executed", true) });
+    expect(executed).toContain("revocation test failed");
+    expect(executed).not.toContain("revocation test passed");
+    const unverified = renderHtml(specimen(), { acceptance: null, live: withRelay("rejected_revoked_key", false) });
+    expect(unverified).toContain("revocation test failed");
+    expect(unverified).not.toContain("revocation test passed");
+    const unknown = renderHtml(specimen(), { acceptance: null, live: withRelay("rejected", true) });
+    expect(unknown).toContain("revocation test inconclusive");
+    expect(renderHtml(specimen(), { acceptance: null, live: live() })).toContain("revocation test not run");
+  });
+
+  it("renders mainnet receipts with explorer links and read-only commands", () => {
+    const ev = withRelay("rejected_revoked_key", true);
+    const html = renderHtml(specimen(), { acceptance: null, live: ev });
+    expect(html).toContain('<span class="status success">revocation test passed</span>');
+    expect(html).toContain("withheld order rejected after confirmed revocation (rejected_revoked_key)");
+    expect(html).toContain('class="mode mainnet"');
+    expect(html).not.toContain(PENDING);
+    for (const r of ev.receipts) {
+      expect(isTxHash(r.tx_hash ?? "")).toBe(true);
+      expect(html).toContain(`href="https://nearblocks.io/txns/${r.tx_hash ?? ""}"`);
+      expect(html).toContain(escapeHtml(`"tx_hash":"${r.tx_hash ?? ""}","sender_account_id":"owner.synthetic.near"`));
+    }
+    expect(html).toContain("0.001000 NEAR");
+    expect(html).toContain(escapeHtml('"method_name":"get_grant"'));
+    // The only external links are explorer links; nothing is loaded from the network.
+    expect(html).not.toMatch(/\bsrc=["']?(https?:)?\/\//i);
+    for (const m of html.matchAll(/href="(https?:[^"]*)"/g)) expect(m[1]).toMatch(/^https:\/\/nearblocks\.io\/txns\/[1-9A-HJ-NP-Za-km-z]+$/);
+  });
+
+  it("shows a stopped mainnet run as stopped", () => {
+    const html = renderHtml(specimen(), { acceptance: null, live: live({ unknowns: ["run stopped: SYNTHETIC ambiguous outcome"] }) });
+    expect(html).toContain("Run stopped: run stopped: SYNTHETIC ambiguous outcome");
   });
 });

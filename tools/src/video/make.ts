@@ -1,4 +1,5 @@
-// Builds a captioned demo video from the files of one actual run. Not part of make test, make demo or CI.
+// Builds two captioned videos from the files of one actual run: a short cut (45-75 s) telling the revocation story
+// in seven stages, and the longer technical walkthrough. Not part of make test, make demo or CI.
 //
 // Usage (from the repository root):
 //   make demo 2>&1 | tee out/video/demo.log        # the demo log must come from the run that wrote demo.json
@@ -6,8 +7,9 @@
 //   cd tools && npx --no-install tsx src/video/make.ts [--log ../out/video/demo.log]
 //
 // Inputs: out/evidence/demo.json, out/evidence/acceptance.json (optional), out/page/index.html, the demo log,
-// fixtures/model/normal.json. Outputs in out/video/: bounded-mandate-demo.mp4, captions.srt, video.json
-// (source hashes, revision, frame list) and frames/*.png.
+// fixtures/model/normal.json. Outputs in out/video/: bounded-mandate-short.mp4 with captions-short.srt and
+// frames-short/*.png; bounded-mandate-demo.mp4 (walkthrough) with captions.srt and frames/*.png; video.json
+// (source hashes, revision, certification, and per cut its output hashes, duration and frame list).
 //
 // Extra prerequisites (not npm dependencies of this package):
 //   - ffmpeg and ffprobe on PATH (FFMPEG / FFPROBE override), e.g. Homebrew ffmpeg.
@@ -25,12 +27,15 @@ import { REPO_ROOT, treeState } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
 import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
 import type { Acceptance } from "../evidence/schema.js";
+import { liveView, loadLive } from "../page/mainnet.js";
 import { GATE_LABEL, escapeHtml as esc, loadAcceptance } from "../page/render.js";
+import { revocationStory, shortHash, unboundReceipts, units, usdc, wnear, type Stage } from "../page/story.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
 const W = 1920;
 const H = 1080;
+const FPS = 30;
 
 // ---- inputs --------------------------------------------------------------------------------------
 
@@ -61,22 +66,6 @@ function parseLog(text: string, ev: Evidence): { steps: LogStep[]; setupMs: numb
   }
   return { steps, setupMs, storyMs };
 }
-
-// ---- formatting ----------------------------------------------------------------------------------
-
-/** Decimal string of integer units with `decimals`, rounded down to `places`. */
-function units(raw: string, decimals: number, places: number): string {
-  const v = BigInt(raw);
-  const neg = v < 0n;
-  const abs = neg ? -v : v;
-  const scale = 10n ** BigInt(decimals);
-  const frac = ((abs % scale) * 10n ** BigInt(places)) / scale;
-  const whole = (abs / scale).toLocaleString("en-US");
-  return `${neg ? "-" : ""}${whole}${places > 0 ? `.${frac.toString().padStart(places, "0")}` : ""}`;
-}
-const usdc = (raw: string): string => `${units(raw, 6, 2)} USDC`;
-const wnear = (raw: string): string => `${units(raw, 24, 4)} wNEAR`;
-const short = (h: string): string => (h.length > 16 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h);
 
 // ---- scenes --------------------------------------------------------------------------------------
 
@@ -109,7 +98,7 @@ function certification(binding: DemoBinding): { chip: string; sentence: string }
     : { chip: "Not certified for this demo", sentence: `Not certified for this demo: ${binding.reasons.join("; ")}. No gate counts as passed.` };
 }
 
-function scenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
+function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
   const A = new Map(ev.assertions.map((a) => [a.id, a]));
   const obs = (id: string): unknown => {
     const a = A.get(id);
@@ -123,7 +112,7 @@ function scenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, step
       ev.receipts.flatMap((r, i) => {
         if (!pattern.test(r.label) || shown.has(i)) return [];
         shown.add(i);
-        return [`<code>${esc(r.label)}</code> · ${esc(r.outcome)} · tx <code>${esc(short(r.tx_hash ?? "none"))}</code>`];
+        return [`<code>${esc(r.label)}</code> · ${esc(r.outcome)} · tx <code>${esc(shortHash(r.tx_hash ?? "none"))}</code>`];
       }),
     );
   const stepOf = (prefix: string): LogStep => {
@@ -287,6 +276,53 @@ function scenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, step
   return out;
 }
 
+const sentenceCase = (t: string): string => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
+
+function rail(stages: readonly Stage[], current: number): string {
+  return `<ol class="rail">${stages.map((s, i) => `<li class="${i < current ? "past" : i === current ? "now" : ""}"><b>${String(i + 1)}</b> ${esc(s.title)}</li>`).join("")}</ol>`;
+}
+
+/** The short cut: position, the seven bound stages, and how to check. Throws when any stage lacks its evidence. */
+export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: boolean): Scene[] {
+  const stages = revocationStory(ev);
+  const missing = stages.flatMap((s) => s.missing.map((m) => `${s.title}: ${m}`));
+  if (missing.length > 0) throw new Error(`demo.json lacks evidence for the short cut: ${missing.join("; ")}`);
+  const unbound = unboundReceipts(ev, stages);
+  if (unbound.length > 0) throw new Error(`receipts not bound to any story stage: ${unbound.join(", ")}`);
+  const status = certification(binding);
+  const mainnet = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run: pending approval — no mainnet transaction has been executed.";
+  const mainnetCaption = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run pending approval; no mainnet transaction executed.";
+  return [
+    {
+      kind: "summary",
+      labels: DEMO_LABELS,
+      title: "Delegate trading within on\u2011chain limits",
+      body: `<p class="claim">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>${rail(stages, -1)}<p class="note">One sandbox run. Every number shown comes from out/evidence/demo.json.</p>`,
+      captions: ["Delegate trading within on-chain limits. Revoke the entire grant, including outstanding signed orders, and recover the remaining assets."],
+    },
+    ...stages.map((s, i): Scene => ({
+      kind: "demo",
+      labels: s.labels.map(sentenceCase),
+      title: `${String(i + 1)} · ${s.title}`,
+      body: `${rail(stages, i)}<p class="headline">${esc(s.headline ?? "")}</p>${kv(s.facts)}<p class="bound">Evidence: ${[
+        ...s.receipts.map(({ receipt }) => `tx ${esc(shortHash(receipt.tx_hash ?? receipt.label))}${receipt.outcome === "failure" ? " (failed)" : ""}`),
+        ...s.checks.map((c) => `${esc(c.id)} ${c.held === true ? "held" : "did not hold"}`),
+      ].join(" · ")}</p>`,
+      captions: [s.caption ?? ""],
+    })),
+    {
+      kind: "summary",
+      title: "Check it yourself",
+      body: `${list([
+        "<b>Watch</b> this video, or read the evidence page: each stage links to its transactions and checks.",
+        `<b>Inspect mainnet receipts:</b> ${esc(mainnet)}`,
+        "<b>Run</b> <code>make demo</code> and <code>make test</code>: no funds or model key needed.",
+      ])}<p class="note">${esc(status.sentence)}</p>`,
+      captions: [`Sandbox run with labelled test doubles. ${mainnetCaption} Reproduce it with make demo and make test.`],
+    },
+  ];
+}
+
 // ---- rendering -----------------------------------------------------------------------------------
 
 const CSS = `
@@ -310,6 +346,9 @@ table.cases th { text-align: left; padding: 3px 20px 3px 0; font: 700 22px "SF M
 .claim { font-size: 40px; line-height: 1.35; max-width: 1600px; }
 .note { font-size: 22px; color: #e6b450; margin: 4px 0 8px; } table.cases small { font: 500 15px -apple-system, sans-serif; color: #a39d8f; }
 img.shot { width: 100%; height: 690px; object-fit: contain; object-position: top center; border: 1px solid #2a3039; }
+ol.rail { list-style: none; display: flex; gap: 10px; padding: 0; margin: 0 0 26px; } ol.rail li { flex: 1; font: 600 18px/1.25 -apple-system, "Helvetica Neue", sans-serif; color: #6d6a62; border-top: 6px solid #2a3039; padding-top: 8px; }
+ol.rail li b { font-family: "SF Mono", Menlo, monospace; } ol.rail li.past { color: #a39d8f; border-color: #6fcf9f; } ol.rail li.now { color: #ece6d8; border-color: #e0866f; }
+.headline { font-size: 64px; line-height: 1.12; font-weight: 600; margin: 0 0 22px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin-top: 12px; }
 .caption { position: absolute; left: 0; right: 0; bottom: 0; min-height: 150px; padding: 24px 80px; background: rgba(0,0,0,.82); color: #fff;
   font: 500 36px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; text-align: center; display: flex; align-items: center; justify-content: center; }
 `;
@@ -359,7 +398,7 @@ async function pageShots(browser: PwBrowser, pagePath: string): Promise<Record<s
 }
 
 /** Packs whole sentences into frames of at most 24 words, so each burned-in caption stays readable. */
-const chunks = (caption: string): string[] => {
+export const chunks = (caption: string): string[] => {
   const out: string[] = [];
   for (const sentence of caption.split(/(?<=[.!?:;])\s+(?=[A-Z0-9])/)) {
     const last = out.at(-1);
@@ -369,13 +408,84 @@ const chunks = (caption: string): string[] => {
   }
   return out;
 };
-const secondsFor = (text: string): number => Math.min(9, Math.max(6, text.split(" ").length / 2.6 + 1.5));
+/** Seconds on screen for a caption, in whole video frames; the short cut reads at about 3 words per second. */
+const wholeFrames = (s: number): number => Math.round(s * FPS) / FPS;
+const walkthroughPace = (text: string): number => wholeFrames(Math.min(9, Math.max(6, text.split(" ").length / 2.6 + 1.5)));
+export const shortPace = (text: string): number => wholeFrames(Math.min(7.5, Math.max(5, text.split(" ").length / 3 + 0.8)));
+export const SHORT_RANGE_S: readonly [number, number] = [45, 75];
 
 const srtTime = (s: number): string => {
   const ms = Math.round(s * 1000);
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
   return `${p(Math.floor(ms / 3_600_000))}:${p(Math.floor(ms / 60_000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
 };
+
+interface Frame {
+  file: string;
+  seconds: number;
+  caption: string;
+  title: string;
+  kind: Kind;
+}
+
+interface Cut {
+  name: "short" | "walkthrough";
+  mp4: string;
+  srt: string;
+  framesDir: string;
+  scenes: Scene[];
+  pace: (caption: string) => number;
+  /** Allowed duration in seconds; the build fails outside it. */
+  range: readonly [number, number] | null;
+}
+
+async function renderFrames(slide: PwPage, cut: Cut, binding: DemoBinding): Promise<Frame[]> {
+  rmSync(cut.framesDir, { recursive: true, force: true });
+  mkdirSync(cut.framesDir, { recursive: true });
+  const frames: Frame[] = [];
+  for (const scene of cut.scenes) {
+    for (const caption of scene.captions.flatMap(chunks)) {
+      const file = join(cut.framesDir, `${String(frames.length + 1).padStart(3, "0")}.png`);
+      await slide.setContent(slideHtml(scene, caption, binding));
+      await slide.screenshot({ path: file });
+      frames.push({ file, seconds: cut.pace(caption), caption, title: scene.title, kind: scene.kind });
+    }
+  }
+  return frames;
+}
+
+const hashOf = (p: string): string | null => (existsSync(p) ? sha256(readFileSync(p)) : null);
+
+interface CutOutput {
+  mp4: { path: string; sha256: string | null; bytes: number; duration_s: number };
+  srt: { path: string; sha256: string | null };
+  frames: { file: string; seconds: number; kind: Kind; title: string; caption: string }[];
+}
+
+function encode(cut: Cut, frames: readonly Frame[]): CutOutput {
+  if (frames.length === 0) throw new Error(`${cut.name}: no frames`);
+  // One looped input per frame, each exactly its caption's length, so the SRT timings match the video.
+  const inputs = frames.flatMap((f) => ["-loop", "1", "-framerate", String(FPS), "-t", f.seconds.toFixed(4), "-i", f.file]);
+  const filter = `${frames.map((_, i) => `[${String(i)}:v]`).join("")}concat=n=${String(frames.length)}:v=1:a=0,format=yuv420p[v]`;
+  execFileSync(process.env.FFMPEG ?? "ffmpeg", ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filter, "-map", "[v]",
+    "-r", String(FPS), "-c:v", "libx264", "-crf", "20", "-movflags", "+faststart", cut.mp4]);
+  const duration = Number(execFileSync(process.env.FFPROBE ?? "ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", cut.mp4], { encoding: "utf8" }).trim());
+  if (cut.range !== null && (duration < cut.range[0] || duration > cut.range[1])) {
+    throw new Error(`${cut.name} cut is ${duration.toFixed(1)} s, outside ${String(cut.range[0])}-${String(cut.range[1])} s`);
+  }
+  let t = 0;
+  const srt = frames.map((f, i) => {
+    const line = `${String(i + 1)}\n${srtTime(t)} --> ${srtTime(t + f.seconds)}\n${f.caption}\n`;
+    t += f.seconds;
+    return line;
+  });
+  writeFileSync(cut.srt, srt.join("\n"));
+  return {
+    mp4: { path: rel(cut.mp4), sha256: hashOf(cut.mp4), bytes: readFileSync(cut.mp4).length, duration_s: duration },
+    srt: { path: rel(cut.srt), sha256: hashOf(cut.srt) },
+    frames: frames.map((f) => ({ file: rel(f.file), seconds: f.seconds, kind: f.kind, title: f.title, caption: f.caption })),
+  };
+}
 
 async function main(): Promise<void> {
   const logArg = process.argv.indexOf("--log");
@@ -395,47 +505,25 @@ async function main(): Promise<void> {
   const modelFixture = readFileSync(files.model);
   if (sha256(modelFixture) !== ev.source.fixtures["model/normal.json"]) throw new Error("fixtures/model/normal.json differs from the hash recorded in demo.json");
   const modelName = (JSON.parse(modelFixture.toString("utf8")) as { model: string }).model;
+  const mainnetShown = liveView(loadLive(REPO_ROOT)).kind === "mainnet";
 
-  rmSync(join(OUT, "frames"), { recursive: true, force: true });
-  mkdirSync(join(OUT, "frames"), { recursive: true });
   const browser = await loadPlaywright().chromium.launch({ channel: process.env.PW_CHANNEL ?? "chrome", headless: true });
-  const frames: { file: string; seconds: number; caption: string; title: string; kind: Kind }[] = [];
+  const outputs: Partial<Record<Cut["name"], CutOutput>> = {};
   try {
     const shots = await pageShots(browser, files.page);
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
-    for (const scene of scenes(ev, acc, binding, steps, shots, modelName)) {
-      for (const caption of scene.captions.flatMap(chunks)) {
-        const file = join(OUT, "frames", `${String(frames.length + 1).padStart(3, "0")}.png`);
-        await slide.setContent(slideHtml(scene, caption, binding));
-        await slide.screenshot({ path: file });
-        frames.push({ file, seconds: secondsFor(caption), caption, title: scene.title, kind: scene.kind });
-      }
-    }
+    const cuts: Cut[] = [
+      { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown), pace: shortPace, range: SHORT_RANGE_S },
+      { name: "walkthrough", mp4: join(OUT, "bounded-mandate-demo.mp4"), srt: join(OUT, "captions.srt"), framesDir: join(OUT, "frames"), scenes: walkthroughScenes(ev, acc, binding, steps, shots, modelName), pace: walkthroughPace, range: null },
+    ];
+    for (const cut of cuts) outputs[cut.name] = encode(cut, await renderFrames(slide, cut, binding));
   } finally {
     await browser.close();
   }
 
-  const last = frames.at(-1);
-  if (last === undefined) throw new Error("no frames");
-  const concat = [...frames.flatMap((f) => [`file '${f.file}'`, `duration ${f.seconds.toFixed(2)}`]), `file '${last.file}'`].join("\n");
-  writeFileSync(join(OUT, "frames.txt"), concat);
-  const mp4 = join(OUT, "bounded-mandate-demo.mp4");
-  execFileSync(process.env.FFMPEG ?? "ffmpeg", ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", join(OUT, "frames.txt"),
-    "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-crf", "20", "-movflags", "+faststart", mp4]);
-  const duration = Number(execFileSync(process.env.FFPROBE ?? "ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp4], { encoding: "utf8" }).trim());
-
-  let t = 0;
-  const srt = frames.map((f, i) => {
-    const line = `${String(i + 1)}\n${srtTime(t)} --> ${srtTime(t + f.seconds)}\n${f.caption}\n`;
-    t += f.seconds;
-    return line;
-  });
-  writeFileSync(join(OUT, "captions.srt"), srt.join("\n"));
-
   const tree = treeState(REPO_ROOT);
-  const hashOf = (p: string): string | null => (existsSync(p) ? sha256(readFileSync(p)) : null);
   const manifest = {
-    schema: "bounded-mandate/video/1",
+    schema: "bounded-mandate/video/2",
     generated_at: new Date().toISOString(),
     revision: tree.revision,
     dirty: tree.dirty,
@@ -443,14 +531,15 @@ async function main(): Promise<void> {
     demo_dirty: ev.source.dirty,
     acceptance: acc === null ? null : { run_id: acc.run_id, revision: acc.revision, certified: acc.certified, complete: acc.complete },
     certification: { certified_for_this_demo: binding.certified, reasons: binding.reasons, inputs: binding.inputs },
+    mainnet_receipts_shown: mainnetShown,
     sources: Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),
     demo_timing_ms: { setup: setupMs, story: storyMs },
-    output: { mp4: { path: rel(mp4), sha256: hashOf(mp4), bytes: readFileSync(mp4).length, duration_s: duration }, srt: { path: "out/video/captions.srt", sha256: hashOf(join(OUT, "captions.srt")) } },
     tools: { ffmpeg: execFileSync(process.env.FFMPEG ?? "ffmpeg", ["-version"], { encoding: "utf8" }).split("\n")[0] ?? "unknown" },
-    frames: frames.map((f) => ({ file: rel(f.file), seconds: f.seconds, kind: f.kind, title: f.title, caption: f.caption })),
+    cuts: outputs,
   };
   writeFileSync(join(OUT, "video.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`${rel(mp4)}: ${duration.toFixed(1)} s, ${String(manifest.output.mp4.bytes)} bytes, ${String(frames.length)} frames; ${certification(binding).chip}${binding.certified ? "" : `: ${binding.reasons.join("; ")}`}`);
+  for (const [name, o] of Object.entries(outputs)) console.log(`${name}: ${o.mp4.path} ${o.mp4.duration_s.toFixed(1)} s, ${String(o.mp4.bytes)} bytes, sha256 ${o.mp4.sha256 ?? "?"}`);
+  console.log(`${certification(binding).chip}${binding.certified ? "" : `: ${binding.reasons.join("; ")}`}`);
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) await main();
