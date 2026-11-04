@@ -2,7 +2,7 @@
 // Applies the mandate's threat model to our re-implementation of the Claw Guard design, adapted to
 // the pinned Intents verifier WASM, in a local sandbox. Outcomes describe that re-implementation, not
 // the deployed Claw Guard product. Every outcome is classified from executed chain state (balances,
-// nonce use, receipts), never asserted in advance; the report is out/evidence/tests/T5.baseline.json.
+// nonce use, receipts), never asserted in advance; the report is out/evidence/tests/T5.baseline.json (never overwritten).
 #![allow(
     clippy::arithmetic_side_effects,
     clippy::as_conversions,
@@ -636,10 +636,8 @@ fn git(args: &[&str]) -> Option<String> {
 #[tokio::test]
 async fn t5_baseline_threat_model() -> Result<()> {
     // gate: T5
-    let out = evidence_path();
-    std::fs::create_dir_all(out.parent().context("evidence dir")?)?;
-    // A failed run must not leave an older report behind.
-    let _ = std::fs::remove_file(&out);
+    // `run.ts start` clears earlier runs' reports; nothing is removed here, so a second emission
+    // in one run stays visible to acceptance as a duplicate.
     let mut env = setup().await?;
     let (u, w) = (env.token(&env.usdc), env.token(&env.wnear));
     let mut rep = Report {
@@ -1072,7 +1070,12 @@ async fn t5_baseline_threat_model() -> Result<()> {
         "generated_at_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default(),
         "data": data,
     });
-    std::fs::write(evidence_path(), serde_json::to_string_pretty(&report)?)?;
+    write_report(
+        &evidence_dir(),
+        "T5",
+        "baseline",
+        &serde_json::to_vec_pretty(&report)?,
+    )?;
 
     let failed: Vec<&Value> = report["data"]["assertions"]
         .as_array()
@@ -1084,6 +1087,81 @@ async fn t5_baseline_threat_model() -> Result<()> {
     Ok(())
 }
 
-fn evidence_path() -> PathBuf {
-    root_dir().join("out/evidence/tests/T5.baseline.json")
+fn evidence_dir() -> PathBuf {
+    root_dir().join("out/evidence/tests")
+}
+
+/// Same naming rule as contract/tests/common/evidence.rs: creates `<gate>.<case>.json` atomically
+/// (`create_new`), falling back to `<gate>.<case>.duplicate-N.json` (N = 2, 3, ...). Never overwrites.
+fn write_report(dir: &Path, gate: &str, case: &str, bytes: &[u8]) -> Result<PathBuf> {
+    use std::io::Write;
+    std::fs::create_dir_all(dir).context("create evidence dir")?;
+    for n in 1u32.. {
+        let name = if n == 1 {
+            format!("{gate}.{case}.json")
+        } else {
+            format!("{gate}.{case}.duplicate-{n}.json")
+        };
+        let path = dir.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                f.write_all(bytes)?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e).with_context(|| format!("create {}", path.display())),
+        }
+    }
+    unreachable!("report name space exhausted")
+}
+
+#[test]
+fn t5_report_writer_never_overwrites() -> Result<()> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("bm-t5-evidence-{}-{nanos}", std::process::id()));
+    let a = write_report(&dir, "T5", "baseline", br#"{"n":1}"#)?;
+    let b = write_report(&dir, "T5", "baseline", br#"{"n":2}"#)?;
+    ensure!(
+        a.file_name() == Some("T5.baseline.json".as_ref()),
+        "first name {a:?}"
+    );
+    ensure!(
+        b.file_name() == Some("T5.baseline.duplicate-2.json".as_ref()),
+        "second name {b:?}"
+    );
+    ensure!(
+        std::fs::read(&a)? == br#"{"n":1}"#,
+        "first report was overwritten"
+    );
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let dir = dir.clone();
+            std::thread::spawn(move || {
+                write_report(&dir, "T5", "baseline", format!("{{\"t\":{i}}}").as_bytes())
+            })
+        })
+        .collect();
+    let mut paths = vec![a, b];
+    for h in handles {
+        paths.push(h.join().map_err(|_| anyhow!("writer thread panicked"))??);
+    }
+    paths.sort();
+    paths.dedup();
+    ensure!(
+        paths.len() == 10,
+        "concurrent writers collided: {} distinct files",
+        paths.len()
+    );
+    ensure!(
+        std::fs::read_dir(&dir)?.count() == 10,
+        "every emission is kept"
+    );
+    std::fs::remove_dir_all(&dir)?;
+    Ok(())
 }
