@@ -2,11 +2,19 @@
   "schema_version": 1,
   "bundles": [
     {
-      "path": "evidence/34de374",
-      "revision": "34de3745d15ed675cd66877334b3c75b1729c459",
+      "path": "evidence/9493549",
+      "revision": "94935495f4664b75db17b1651c242ab6f8d0c772",
       "status": "certified",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
-      "run": "evidence/34de374/run.json"
+      "run": "evidence/9493549/run.json"
+    },
+    {
+      "path": "evidence/34de374",
+      "revision": "34de3745d15ed675cd66877334b3c75b1729c459",
+      "status": "superseded",
+      "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
+      "run": "evidence/34de374/run.json",
+      "note": "certified; superseded by 9493549 (live revocation sequence, seven-stage page, short video). Contract source identical."
     },
     {
       "path": "evidence/163ccfa",

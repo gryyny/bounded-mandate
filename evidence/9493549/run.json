@@ -1,0 +1,89 @@
+{
+  "schema_version": 2,
+  "kind": "fresh-clone-run",
+  "source_revision": "94935495f4664b75db17b1651c242ab6f8d0c772",
+  "dirty": false,
+  "clone": "git clone https://github.com/gryyny/bounded-mandate.git into an empty directory outside the meta workspace; own target/ directory; no meta-repo access, funds or model credentials",
+  "results": {
+    "make test": {
+      "exit": 0,
+      "real_seconds": 1225,
+      "verdict": "CERTIFIED: run 20261104T213516340Z-7a6d7c2cfb86"
+    },
+    "make demo": {
+      "exit": 0,
+      "real_seconds": 60,
+      "summary": "setup 20530 ms | story 16524 ms | 56/56 assertions passed"
+    }
+  },
+  "acceptance": {
+    "run_id": "20261104T213516340Z-7a6d7c2cfb86",
+    "certified": true,
+    "required_cases": 20,
+    "passed": 20,
+    "separate": [
+      [
+        "RESCUE.owner-key",
+        "passed"
+      ]
+    ]
+  },
+  "other_certified_runs_of_this_revision": [
+    {
+      "where": "GitHub Actions ubuntu-24.04 run 41917424677",
+      "run_id": "20261104T213643144Z-91c00e5ac70b",
+      "note": "make demo 56/56"
+    }
+  ],
+  "deployment_candidate": {
+    "fixture": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "exercised_by": "DEPLOY.candidate in this run, and the live runner's template sequence in tools/test/live-sandbox.test.ts",
+    "note": "Contract source and Cargo.lock are unchanged since 163ccfa."
+  },
+  "video": {
+    "cuts": {
+      "short": {
+        "sha256": "d6ef31d8bba872817b8569ee4ae1c5902f0d6b7371185de7fddc603a6d7a9b1d",
+        "duration_s": 65.4
+      },
+      "walkthrough": {
+        "sha256": "77e8f01732c87432d031d5a2c80713c7a0db7b48e0a173c4bd1efe70c6aab101",
+        "duration_s": 138.033333
+      }
+    },
+    "certified_for_this_demo": true,
+    "note": "built in the fresh clone from this run's demo with tools/src/video/make.ts; mp4 files not committed"
+  },
+  "modes": "sandbox: our contract (and the exact deployment candidate) with the pinned mainnet verifier WASM and labelled MPC/oracle/token test doubles; T2.unit-interleavings in the near-sdk unit VM; recorded genuine model output; scripted attacks; no mainnet execution",
+  "files_sha256": {
+    "acceptance.json": "d77f9ef4919f2d0057ba368ff56a73609e459e15c8f36e929f31cfa2cbb67e6a",
+    "demo.json": "9941df3b5191bd166936f00e63887be654ba28dfc653927c3804fb6ce7247a89",
+    "video-captions-short.srt": "623f750d6efaf48bf57baf6671145008283a43352636b1001c710d2693ccdb4f",
+    "video-captions.srt": "64185a3dc27f9255463b69bfef47ce6c6d9633555a8d16af67afd3f9ee0e55b2",
+    "video.json": "a3d3114f9b39a9e6503b0ffbb03b97b5d6aa641d86894ef67ab0d512439d0c4d",
+    "page/index.html": "b87dcd04bedeaf5755a28d35a31f1fb92870d5c3bf6b46b7d9e80f7e99ac582a",
+    "tests/BOUNDARY.attacks.json": "c1ccbf42fc6170e308ef13491e70352e69136607df2cc182ae4fe9263436899b",
+    "tests/BOUNDARY.contract.json": "83b5a92134590492d83a1271e22ad898d1bd00094968befc34bfc04ffa71e65e",
+    "tests/DEPLOY.candidate.json": "df37ab4bbb1876fa8e0a2f9c075a43a4aa4ccbadcb9185cf91e4fcd6eb7ee7ac",
+    "tests/MODEL.recorded-proposal.json": "1b9f0987d8fbe450303ce685d03bd5b8fe7c9265a459b17709e61ed93a3ce228",
+    "tests/RESCUE.owner-key.json": "1ab637e26367481983a572746d25d76d1886ac6f1243c34f6b6df97999693e39",
+    "tests/T1.failed-removal-retry.json": "8358fdf449228e9511eb3ef315831f56bcfaabe1bb055f97dd35ca0765491e6e",
+    "tests/T1.pending-sign.json": "866e7d4eeba9f0e2438811a2f6d5c91a0376e8387f7261f376011cf48db60c66",
+    "tests/T1.revoke-during-activation.json": "a8282b7989040966439c677f3092ee8429a42ace1170e253f1916413d572a9ef",
+    "tests/T1.withheld-regrant.json": "b87ee7570826918637df641647c8d54e4a14eb5c05a6cc1ca7b55951c7d06e39",
+    "tests/T2.sandbox-interleavings.json": "6cba55acd3ea9fb97105bb6217606fdeee3be325facf0b5f53b23574a84b3853",
+    "tests/T2.unit-interleavings.json": "2d40c3bd439a92ad25ff91ab9dbcfbd4ec62b9451853ad191e6695a72538286a",
+    "tests/T2b.callback-failed-after-disclosure.json": "95a326de9d35c7e2359fd686aab0a98b25ad82eb1fdd49faf7a835e80df4de21",
+    "tests/T2b.disclosed-relay.json": "ede32bc298792fc7f34c0eaa2bdc44a8ed0c90f8afe8430220db4603dc05be3d",
+    "tests/T3.breaker.json": "56908f47d55a954f0bd0a26b80eaecd05c2305b43f3a9a332d80391a1f9e4c05",
+    "tests/T3.concession.json": "d3092110031fb7d35a267a8cdd54cd90fa4d6b831d5266b59632f6a44d7bad33",
+    "tests/T3.feeds-timing.json": "501e3f2d59ce79198a62b8e274a41aec9a9f96c733ca67e7ca4da3aaba4e8cb0",
+    "tests/T4.dependency-failure.json": "61ad5be09f005cbfdc367042a4796eb0719a728f71db87a06fdafba3ffec414f",
+    "tests/T4.open-order-limit.json": "f375a1574deb43c9fec13656ed0fc4bae3b5e229403ba0fe595781f7cb6aeea8",
+    "tests/T4.record-bound.json": "c8d697cfe9a68c01699f2e9f45dc83fa403981080fe4b8161b8a4083b0b6e566",
+    "tests/T4.registration-reconcile.json": "7efd28ddf456f3fb087d94b52117b48080d385b9e5b6a097d9a4c00ace7f3760",
+    "tests/T5.baseline.json": "7b624d2ffff9978ba389a06f4e91377fca78425231e5ff50a1a660d41198ec25"
+  }
+}
