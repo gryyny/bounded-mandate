@@ -148,6 +148,31 @@ interface Runtime {
 
 class Stop extends Error {}
 
+/** A relay the runner decided not to broadcast: recorded as inconclusive, and the run continues to recovery. */
+class RelaySkipped extends Error {
+  constructor(
+    message: string,
+    readonly observed: Record<string, unknown>,
+  ) {
+    super(message);
+  }
+}
+
+/** One timing sample of a deadline-sensitive phase. chain_ns is the final block's timestamp; null when not read. */
+interface Probe {
+  phase: string;
+  at: string;
+  chain_ns: string | null;
+  remaining_ms: number | null;
+}
+
+async function probe(rt: Runtime, phase: string, deadlineNs: bigint, chain: boolean): Promise<Probe> {
+  const at = new Date().toISOString();
+  if (!chain) return { phase, at, chain_ns: null, remaining_ms: null };
+  const now = await rt.client.blockTimestampNs();
+  return { phase, at, chain_ns: now.toString(), remaining_ms: Number((deadlineNs - now) / 1_000_000n) };
+}
+
 /** Steps whose transaction is expected to fail; a failed final outcome is verified, not a stop. */
 const FAILURE_EXPECTED = new Set<string>(["refused_proposal", "relay_withheld"]);
 
@@ -423,9 +448,10 @@ async function finishStep(rt: Runtime, step: number, kind: string, pre: Pre, out
   const breach = checkActual(rt.m.budget, totals(rt.ledger));
   if (breach !== null) throw new Stop(`budget: ${breach}`);
   const v = await verify(rt, pre, outcome);
-  rt.assertions.push({ id: `step-${step + 1}-${kind}`, gate: "LIVE", description: `${kind}: terminal verification`, passed: v.passed, observed: { ...v.observed, problems: v.problems } });
+  const observed = kind === "relay_withheld" ? { ...v.observed, timing: deadlineTimeline(rt.ledger, []) } : v.observed;
+  rt.assertions.push({ id: `step-${step + 1}-${kind}`, gate: "LIVE", description: `${kind}: terminal verification`, passed: v.passed, observed: { ...observed, problems: v.problems } });
   if (!v.passed && v.fatal !== false) throw new Stop(`step ${step + 1} ${kind}: terminal verification failed: ${v.problems.join("; ")}`);
-  rt.ledger.append("step-done", { step, kind, verification: v.observed, ...v.data, ...(v.passed ? {} : { finding: `step ${step + 1} ${kind}: ${v.problems.join("; ")}` }) });
+  rt.ledger.append("step-done", { step, kind, verification: observed, ...v.data, ...(v.passed ? {} : { finding: `step ${step + 1} ${kind}: ${v.problems.join("; ")}` }) });
 }
 
 /** Prepares and simulates the withheld bundle; never sends it. Failures are findings, not stops. */
@@ -449,29 +475,78 @@ async function withhold(rt: Runtime, i: number, step: Extract<Step, { kind: "wit
     problem = simulationProblem(await rt.verifier.simulate(prepared.bundle));
     withheld = { ...base, bundle: prepared.bundle, bundle_sha256: sha256Of(prepared.bundle), filler_nonce: prepared.own.payload.nonce, counter: prepared.counter, executable: problem === null };
   }
-  const observed = { order_id: orderId, deadline_ns: order.deadline_ns, bundle_sha256: withheld.bundle_sha256, executable: withheld.executable, ...(problem === null ? {} : { problem }) };
+  const timing = await probe(rt, "withheld bundle prepared and simulated", BigInt(order.deadline_ns), true);
+  const observed = { order_id: orderId, deadline_ns: order.deadline_ns, bundle_sha256: withheld.bundle_sha256, executable: withheld.executable, timing, ...(problem === null ? {} : { problem }) };
   rt.assertions.push({ id: `step-${i + 1}-withhold`, gate: "LIVE", description: "withhold: the exact bundle is executable before revocation (simulate_intents)", passed: problem === null, observed });
   rt.ledger.append("step-done", { step: i, kind: "withhold", verification: observed, withheld, ...(problem === null ? {} : { finding: `step ${i + 1} withhold: ${problem}` }) });
 }
 
 /**
- * Preconditions of the relay. Throws unless revocation is confirmed (a withheld order is never sent while
- * its key may be registered). Returns a reason when the relay cannot test revocation and is not sent.
+ * Gate of the relay, run before preparation and again immediately before broadcast. Throws unless revocation
+ * is confirmed (status revoked, no key operation in flight, signing key absent): a withheld order is never sent
+ * while its key may be registered. Returns a skip reason when the relay cannot test revocation: the bundle was
+ * not executable, or the order's remaining lifetime by the final block's time is below min_remaining_sec.
  */
-async function relayBlocked(rt: Runtime, step: Extract<Step, { kind: "relay_withheld" }>): Promise<{ reason: string; observed: Record<string, unknown> } | null> {
+async function relayGate(rt: Runtime, step: Extract<Step, { kind: "relay_withheld" }>, phase: string): Promise<{ probe: Probe; skip: string | null; observed: Record<string, unknown> }> {
   const w = latestWithheld(rt.ledger);
   if (w === null) throw new Stop("relay_withheld: no withhold step recorded");
   const grant = await rt.mandate.grant();
   const keyPresent = await rt.verifier.hasPublicKey(rt.mandate.id, w.signing_key);
   if (grant?.status !== "revoked" || grant.key_op_in_flight || keyPresent) {
-    throw new Stop(`relay_withheld: revocation not confirmed (status ${String(grant?.status)}, key registered ${String(keyPresent)}); the withheld order is not sent`);
+    throw new Stop(
+      `relay_withheld: revocation not confirmed at ${phase} (status ${String(grant?.status)}, key operation in flight ${String(grant?.key_op_in_flight)}, key registered ${String(keyPresent)}); the withheld order is not sent`,
+    );
   }
-  const now = await rt.client.blockTimestampNs();
-  const remaining = BigInt(w.deadline_ns) - now;
-  const observed = { order_id: w.order_id, deadline_ns: w.deadline_ns, now_ns: now.toString(), executable_before_revocation: w.executable, classification: "inconclusive" };
-  if (!w.executable || w.bundle === null) return { reason: "the withheld bundle was not executable before revocation", observed };
-  if (remaining < BigInt(step.min_remaining_sec) * 1_000_000_000n) return { reason: `order deadline too close or passed (${remaining} ns left, need ${step.min_remaining_sec} s)`, observed };
-  return null;
+  // Read last, so the lifetime is measured as close to the broadcast as possible.
+  const p = await probe(rt, phase, BigInt(w.deadline_ns), true);
+  const observed = { order_id: w.order_id, deadline_ns: w.deadline_ns, now_ns: p.chain_ns, executable_before_revocation: w.executable, classification: "inconclusive" };
+  if (!w.executable || w.bundle === null) return { probe: p, skip: "the withheld bundle was not executable before revocation", observed };
+  const remaining = BigInt(w.deadline_ns) - BigInt(p.chain_ns ?? "0");
+  if (remaining < BigInt(step.min_remaining_sec) * 1_000_000_000n) {
+    return { probe: p, skip: `order deadline too close or passed at ${phase} (${remaining} ns left by the final block's time, need ${step.min_remaining_sec} s)`, observed };
+  }
+  return { probe: p, skip: null, observed };
+}
+
+/**
+ * Times of the deadline-sensitive phases of the withheld order, from the ledger: runner wall clock for every
+ * phase, and the final block's time where it was read. Instrumentation only; it decides nothing.
+ */
+function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknown> {
+  const w = latestWithheld(ledger);
+  if (w === null) return { deadline_ns: null, phases: extra };
+  const deadlineMs = Number(BigInt(w.deadline_ns) / 1_000_000n);
+  const withholdDone = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold").at(-1);
+  const intents = ledger.ofKind("tx-intent");
+  const resultOf = (intent: LedgerEntry | undefined): LedgerEntry | undefined =>
+    intent === undefined ? undefined : ledger.entries.find((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.tx_hash === intent.data.tx_hash);
+  const propose = intents.filter((e) => e.data.kind === "propose" && e.seq < (withholdDone?.seq ?? Number.POSITIVE_INFINITY)).at(-1);
+  const revoke = intents.filter((e) => e.data.kind === "revoke").at(-1);
+  const relay = intents.filter((e) => e.data.kind === "relay_withheld").at(-1);
+  const wall = (phase: string, e: LedgerEntry | undefined): Probe[] => (e === undefined ? [] : [{ phase, at: e.at, chain_ns: null, remaining_ms: null }]);
+  const recorded = (v: unknown): Probe[] => z.array(z.object({ phase: z.string(), at: z.string(), chain_ns: z.string().nullable(), remaining_ms: z.number().nullable() })).catch([]).parse(Array.isArray(v) ? v : v === undefined ? [] : [v]);
+  const withholdTiming = (withholdDone?.data.verification as { timing?: unknown } | undefined)?.timing;
+  const phases = [
+    ...wall("withheld order proposed (sent)", propose),
+    ...wall("withheld order signed (propose final)", resultOf(propose)),
+    ...(withholdTiming === undefined ? wall("withheld bundle prepared and simulated", withholdDone) : recorded(withholdTiming)),
+    ...wall("revoke sent", revoke),
+    ...wall("revoke final", resultOf(revoke)),
+    ...recorded(relay?.data.timing),
+    ...extra,
+  ].map((ph) => ({ ...ph, wall_remaining_ms: deadlineMs - Date.parse(ph.at) }));
+  return {
+    deadline_ns: w.deadline_ns,
+    note: "at and wall_remaining_ms use the runner's clock; chain_ns and remaining_ms use the final block's timestamp, which the verifier's deadline check follows",
+    phases,
+  };
+}
+
+/** Records a relay that was not broadcast as inconclusive. */
+function skipRelay(rt: Runtime, i: number, skipped: RelaySkipped, probes: Probe[]): void {
+  const verification = { ...skipped.observed, timing: deadlineTimeline(rt.ledger, probes) };
+  rt.assertions.push({ id: `step-${i + 1}-relay_withheld`, gate: "LIVE", description: "relay_withheld: not sent", passed: false, observed: { ...verification, problems: [skipped.message] } });
+  rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${skipped.message}` });
 }
 
 /** Unresolved intents and executed-but-unverified steps are reconciled from chain before anything new. */
@@ -534,37 +609,60 @@ async function execute(rt: Runtime, from: number): Promise<void> {
       continue;
     }
     if (step.kind === "relay_withheld") {
-      const blocked = await relayBlocked(rt, step);
-      if (blocked !== null) {
-        rt.assertions.push({ id: `step-${i + 1}-relay_withheld`, gate: "LIVE", description: "relay_withheld: not sent", passed: false, observed: { ...blocked.observed, problems: [blocked.reason] } });
-        rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification: blocked.observed, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${blocked.reason}` });
-        continue;
-      }
+      await relayWithheld(rt, i, step);
+      continue;
     }
     const p = await plan(rt, i, step);
-    if (step.kind === "relay_withheld") {
-      try {
-        checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
-      } catch (error) {
-        if (!(error instanceof BudgetExceeded)) throw error;
-        const observed = { order_id: (p.pre as { order_id?: string }).order_id ?? null, classification: "inconclusive" };
-        rt.assertions.push({ id: `step-${i + 1}-relay_withheld`, gate: "LIVE", description: "relay_withheld: not sent", passed: false, observed: { ...observed, problems: [error.message] } });
-        rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification: observed, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${error.message}` });
-        continue;
-      }
-    }
     checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
-    const role = STEP_SIGNER[step.kind];
-    const outcome = await rt.client.submit(`step ${i + 1} ${step.kind}`, p.signer, p.receiver, p.actions, p.method, (info) => {
-      rt.ledger.append("tx-intent", { step: i, kind: step.kind, role, method: p.method, ...info, planned: p.planned, pre: p.pre, detail: p.detail });
-    });
-    rt.ledger.append("tx-result", { step: i, ...outcomeData(outcome) });
-    rt.receipts.push(toEvidenceReceipt(outcome, { step: i + 1, ...p.detail }));
-    if (outcome.ambiguous) {
-      throw new Stop(`step ${i + 1} ${step.kind}: ambiguous outcome for ${outcome.tx_hash ?? "?"} (${outcome.error ?? ""}). Not resubmitted; rerun with MANDATE_LIVE_RESUME=1 to reconcile from chain state.`);
+    await send(rt, i, step, p);
+  }
+}
+
+/** Signs, records the intent and broadcasts once; `gate` runs after signing, immediately before the broadcast. */
+async function send(rt: Runtime, i: number, step: Step, p: Plan, gate?: () => Promise<Record<string, unknown>>): Promise<void> {
+  const role = STEP_SIGNER[step.kind];
+  const outcome = await rt.client.submit(`step ${i + 1} ${step.kind}`, p.signer, p.receiver, p.actions, p.method, async (info) => {
+    const extra = gate === undefined ? {} : await gate();
+    rt.ledger.append("tx-intent", { step: i, kind: step.kind, role, method: p.method, ...info, planned: p.planned, pre: p.pre, detail: p.detail, ...extra });
+  });
+  rt.ledger.append("tx-result", { step: i, ...outcomeData(outcome) });
+  rt.receipts.push(toEvidenceReceipt(outcome, { step: i + 1, ...p.detail }));
+  if (outcome.ambiguous) {
+    throw new Stop(`step ${i + 1} ${step.kind}: ambiguous outcome for ${outcome.tx_hash ?? "?"} (${outcome.error ?? ""}). Not resubmitted; rerun with MANDATE_LIVE_RESUME=1 to reconcile from chain state.`);
+  }
+  if (!outcome.submitted) throw new Stop(`step ${i + 1} ${step.kind}: transaction refused by the network: ${outcome.error ?? ""}`);
+  await finishStep(rt, i, step.kind, p.pre, outcome);
+}
+
+/**
+ * The relay of the withheld bundle. Revocation and the remaining lifetime are checked before preparation and
+ * again after signing, immediately before the broadcast: preparation and RPC delays can consume the margin.
+ * A skipped relay is inconclusive and the run continues to recovery; unconfirmed revocation stops the run.
+ */
+async function relayWithheld(rt: Runtime, i: number, step: Extract<Step, { kind: "relay_withheld" }>): Promise<void> {
+  const probes: Probe[] = [];
+  try {
+    const pre = await relayGate(rt, step, "relay pre-check");
+    probes.push(pre.probe);
+    if (pre.skip !== null) throw new RelaySkipped(pre.skip, pre.observed);
+    const p = await plan(rt, i, step);
+    const w = latestWithheld(rt.ledger);
+    probes.push(await probe(rt, "relay prepared", BigInt(w?.deadline_ns ?? "0"), false));
+    try {
+      checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
+    } catch (error) {
+      if (!(error instanceof BudgetExceeded)) throw error;
+      throw new RelaySkipped(error.message, { order_id: (p.pre as { order_id?: string }).order_id ?? null, classification: "inconclusive" });
     }
-    if (!outcome.submitted) throw new Stop(`step ${i + 1} ${step.kind}: transaction refused by the network: ${outcome.error ?? ""}`);
-    await finishStep(rt, i, step.kind, p.pre, outcome);
+    await send(rt, i, step, p, async () => {
+      const last = await relayGate(rt, step, "relay broadcast");
+      probes.push(last.probe);
+      if (last.skip !== null) throw new RelaySkipped(last.skip, last.observed);
+      return { timing: probes };
+    });
+  } catch (error) {
+    if (!(error instanceof RelaySkipped)) throw error;
+    skipRelay(rt, i, error, probes);
   }
 }
 

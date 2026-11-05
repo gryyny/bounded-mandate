@@ -2,7 +2,8 @@
 // verified end-to-end run, mid-run budget stop, failed terminal check, unlisted pre-existing order,
 // ambiguous outcome without replacement and reconciled resume, and resume refusals. The mainnet template's
 // sequence (refused proposal, trade, withheld order relayed after revocation, recovery) runs on the exact
-// deployment binary from fixtures/deploy, including an ambiguous relay and an order too close to its deadline.
+// deployment binary from fixtures/deploy, including an ambiguous relay, an order too close to its deadline, an RPC
+// delay that consumes the margin after preparation, and RPC views that misreport revocation (zero relay broadcasts).
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -61,6 +62,43 @@ class LossyProvider extends JsonRpcProvider {
   override async viewTransactionStatusWithReceipts(params: Parameters<JsonRpcProvider["viewTransactionStatusWithReceipts"]>[0]): ReturnType<JsonRpcProvider["viewTransactionStatusWithReceipts"]> {
     if (this.blind) throw new Error("request timed out (simulated)");
     return super.viewTransactionStatusWithReceipts(params);
+  }
+}
+
+type Lie = "not_revoked" | "key_op_in_flight" | "key_present";
+
+/**
+ * Transport rigged at the relay's preparation: after `armAfter` sends, the first balance read of `trigger` (the
+ * relay plan reads the filler's balances, after the pre-check) arms it. Armed, it misreports revocation state in
+ * get_grant / has_public_key views, and runs `delay` once before that read returns.
+ */
+class RigProvider extends JsonRpcProvider {
+  armAfter = Number.POSITIVE_INFINITY;
+  trigger: string | null = null;
+  lie: Lie | null = null;
+  delay: (() => Promise<void>) | null = null;
+  armed = false;
+  private sends = 0;
+  override async sendTransactionUntil(tx: SignedTransaction, waitUntil: TxExecutionStatus): ReturnType<JsonRpcProvider["sendTransactionUntil"]> {
+    const r = await super.sendTransactionUntil(tx, waitUntil);
+    this.sends += 1;
+    return r;
+  }
+  override async callFunctionRaw(params: Parameters<JsonRpcProvider["callFunctionRaw"]>[0]): ReturnType<JsonRpcProvider["callFunctionRaw"]> {
+    const p = params as { method?: string; args?: { account_id?: string } };
+    if (!this.armed && this.sends >= this.armAfter && p.method === "mt_balance_of" && p.args?.account_id === this.trigger) {
+      this.armed = true;
+      await this.delay?.();
+    }
+    const raw = await super.callFunctionRaw(params);
+    if (!this.armed || this.lie === null) return raw;
+    const json = (v: unknown) => ({ ...raw, result: [...Buffer.from(JSON.stringify(v))] });
+    if (p.method === "has_public_key" && this.lie === "key_present") return json(true);
+    if (p.method === "get_grant" && this.lie !== "key_present") {
+      const grant = JSON.parse(Buffer.from(raw.result).toString("utf8")) as Record<string, unknown>;
+      return json(this.lie === "not_revoked" ? { ...grant, status: "revoking" } : { ...grant, key_op_in_flight: true });
+    }
+    return raw;
   }
 }
 
@@ -508,5 +546,79 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     const again = await resume(path);
     expect(again.exitCode).toBe(1);
     expect(again.message).toMatch(/inconclusive, not sent/);
+  }, 300_000);
+
+  // grant, propose, withhold, revoke, relay_withheld, recover usdc, recover wnear: three sends before the relay.
+  const GUARD_KINDS = ["grant", "propose", "withhold", "revoke", "relay_withheld", "recover", "recover"];
+  const guardSteps = (): LiveManifest["steps"] => cand.steps.filter((_, k) => [1, 6, 7, 8, 9, 10, 11].includes(k));
+  const sendsOf = (calls: { method: string }[]) => calls.filter((c) => c.method === "send_tx").length;
+
+  it("never broadcasts the relay while revocation is unconfirmed, a key operation is pending or the key is present; a confirmed resume relays once", async () => {
+    expect(guardSteps().map((x) => x.kind)).toEqual(GUARD_KINDS);
+    const expected: Record<Lie, string> = { not_revoked: "status revoking", key_op_in_flight: "key operation in flight true", key_present: "key registered true" };
+    for (const lie of ["not_revoked", "key_op_in_flight", "key_present"] as const) {
+      await fund();
+      const path = writeJson(dir, `candidate-guard-${lie}.json`, { ...cand, approval: { ...cand.approval, reference: `guard ${lie}` }, steps: guardSteps() });
+      const provider = new RigProvider({ url: world.client.rpcUrl });
+      provider.armAfter = 3;
+      provider.trigger = cand.accounts.filler;
+      provider.lie = lie;
+      const calls = recordRpc(provider);
+      const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path }, deps({ client: new NearClient(world.client.rpcUrl, provider) }));
+      expect(provider.armed).toBe(true);
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toContain("relay_withheld: revocation not confirmed at relay broadcast");
+      expect(r.message).toContain(expected[lie]);
+      // Signed after preparation, refused by the gate before the broadcast: no relay transaction exists.
+      expect(sendsOf(calls)).toBe(3);
+      expect(ledgerOf(path).ofKind("tx-intent").map((e) => e.data.kind)).toEqual(["grant", "propose", "revoke"]);
+      // Once the views report confirmed revocation, the resume relays the bundle exactly once and recovers.
+      const resumed = await resume(path);
+      expect(resumed.message).toBe("completed");
+      expect((assertion(resumed, "relay_withheld")?.observed as { classification: string }).classification).toBe("rejected_revoked_key");
+      expect(ledgerOf(path).ofKind("tx-intent").filter((e) => e.data.kind === "relay_withheld").length).toBe(1);
+      expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+    }
+  }, 900_000);
+
+  it("an RPC delay after preparation that consumes the lifetime margin skips the relay at broadcast: inconclusive, recovery runs", async () => {
+    await fund();
+    const MIN_S = 90; // of the template's 120 s order lifetime
+    const steps = guardSteps().map((x) => (x.kind === "relay_withheld" ? { ...x, min_remaining_sec: MIN_S } : x));
+    const path = writeJson(dir, "candidate-relay-delay.json", { ...cand, approval: { ...cand.approval, reference: "relay delay" }, steps });
+    const provider = new RigProvider({ url: world.client.rpcUrl });
+    provider.armAfter = 3;
+    provider.trigger = cand.accounts.filler;
+    // Holds the relay plan's balance read until the final block is 2 s past (deadline - MIN_S).
+    provider.delay = async () => {
+      const deadline = (await mandateOf().allOrders()).reduce((d, o) => (o.deadline_ns !== null && BigInt(o.deadline_ns) > d ? BigInt(o.deadline_ns) : d), 0n);
+      while ((await world.client.blockTimestampNs()) < deadline - BigInt(MIN_S - 2) * 1_000_000_000n) await new Promise((res) => setTimeout(res, 500));
+    };
+    const calls = recordRpc(provider);
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path }, deps({ client: new NearClient(world.client.rpcUrl, provider) }));
+    expect(provider.armed).toBe(true);
+    expect(r.message).toMatch(/completed with findings: step 5 relay_withheld: inconclusive, not sent: order deadline too close or passed at relay broadcast/);
+    expect(r.exitCode).toBe(1);
+    const relay = assertion(r, "relay_withheld");
+    expect(relay?.passed).toBe(false);
+    const observed = relay?.observed as { classification: string; timing: { phases: { phase: string; remaining_ms: number | null }[] } };
+    expect(observed.classification).toBe("inconclusive");
+    const phase = (name: string) => observed.timing.phases.find((x) => x.phase === name);
+    expect(phase("relay pre-check")?.remaining_ms ?? 0).toBeGreaterThanOrEqual(MIN_S * 1000);
+    expect(phase("relay broadcast")?.remaining_ms ?? Number.POSITIVE_INFINITY).toBeLessThan(MIN_S * 1000);
+    expect(observed.timing.phases.map((x) => x.phase)).toEqual([
+      "withheld order proposed (sent)",
+      "withheld order signed (propose final)",
+      "withheld bundle prepared and simulated",
+      "revoke sent",
+      "revoke final",
+      "relay pre-check",
+      "relay prepared",
+      "relay broadcast",
+    ]);
+    // grant, propose, revoke, recover, recover: the relay was never broadcast.
+    expect(sendsOf(calls)).toBe(5);
+    expect(ledgerOf(path).ofKind("tx-intent").map((e) => e.data.kind)).not.toContain("relay_withheld");
+    expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
   }, 300_000);
 });
