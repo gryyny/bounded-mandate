@@ -2,11 +2,19 @@
   "schema_version": 1,
   "bundles": [
     {
-      "path": "evidence/7fc3f90",
-      "revision": "7fc3f9014248cac8a9098f21b1a5c8ca6f9e3afa",
+      "path": "evidence/f60f999",
+      "revision": "f60f9990ae51f6b8b8d75d553071f85b19ec6ae3",
       "status": "certified",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
-      "run": "evidence/7fc3f90/run.json"
+      "run": "evidence/f60f999/run.json"
+    },
+    {
+      "path": "evidence/7fc3f90",
+      "revision": "7fc3f9014248cac8a9098f21b1a5c8ca6f9e3afa",
+      "status": "superseded",
+      "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
+      "run": "evidence/7fc3f90/run.json",
+      "note": "certified; superseded by f60f999 (evidence page outcome, verification panel, optional live agent, positioning). Contract source identical."
     },
     {
       "path": "evidence/7f280ca",

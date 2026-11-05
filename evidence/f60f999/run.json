@@ -1,0 +1,103 @@
+{
+  "schema_version": 2,
+  "kind": "fresh-clone-run",
+  "source_revision": "f60f9990ae51f6b8b8d75d553071f85b19ec6ae3",
+  "dirty": false,
+  "clone": "git clone https://github.com/gryyny/bounded-mandate.git into an empty directory outside the meta workspace; own target/ directory; no meta-repo access, funds or model credentials",
+  "results": {
+    "make test": {
+      "exit": 0,
+      "real_seconds": 1395,
+      "verdict": "CERTIFIED: run 20261105T220427593Z-7b9c4817831c",
+      "tests": "TypeScript 17 files, 382 tests passed; Rust 195 passed, 0 failed"
+    },
+    "make demo": {
+      "exit": 0,
+      "real_seconds": 55,
+      "summary": "setup 15088 ms | story 16450 ms | 56/56 assertions passed"
+    }
+  },
+  "acceptance": {
+    "run_id": "20261105T220427593Z-7b9c4817831c",
+    "certified": true,
+    "required_cases": 20,
+    "passed": 20,
+    "separate": [
+      [
+        "RESCUE.owner-key",
+        "passed"
+      ]
+    ]
+  },
+  "other_certified_runs_of_this_revision": [
+    {
+      "where": "GitHub Actions ubuntu-24.04 run 42118269333",
+      "run_id": "20261105T220651404Z-e974f0e8fcc4",
+      "note": "make demo 56/56"
+    }
+  ],
+  "deployment_candidate": {
+    "fixture": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "exercised_by": "DEPLOY.candidate in this run, and the live runner's template sequence in tools/test/live-sandbox.test.ts",
+    "note": "Contract source and Cargo.lock are unchanged since 163ccfa."
+  },
+  "video": {
+    "cuts": {
+      "short": {
+        "sha256": "d45f7a8a331c930cd967fd1aea4b725514686cc93c34a5f818e3f52355aa20c6",
+        "duration_s": 66.1
+      },
+      "walkthrough": {
+        "sha256": "782f9409247f2fe911a77bd16dde188253fc32048e26bc031ed3f7a1cd863cbe",
+        "duration_s": 138.8
+      }
+    },
+    "certified_for_this_demo": true,
+    "note": "built in the fresh clone from this run's demo with tools/src/video/make.ts; mp4 files not committed"
+  },
+  "modes": "sandbox: our contract (and the exact deployment candidate) with the pinned mainnet verifier WASM and labelled MPC/oracle/token test doubles; T2.unit-interleavings in the near-sdk unit VM; recorded genuine model output; scripted attacks; no mainnet execution",
+  "files_sha256": {
+    "acceptance.json": "35ab9d97898c3ec5cbbda1a9d91190e8a1e648f9cd6b326fc9972f3516657fcc",
+    "demo.json": "d468c56b51c9b2d21f2a465b8a4fef089c59ef76cdfd510fc06808dd220590c0",
+    "page/index.html": "8d2f0c91b073551556d7ad29a5d92c9cab56156c58bea779c00833c9624f1936",
+    "tests/BOUNDARY.attacks.json": "86c34f7f368aeb0756d60ef705bef0c58553be01ea522261cb4f58715fce1232",
+    "tests/BOUNDARY.contract.json": "b7b56bc5abafe5ff73e9c86c3f7e9138f64f5e6f4350b8f7ad1c9bd83c043faf",
+    "tests/DEPLOY.candidate.json": "8e76958df047ae66df3dee5269f60f8cf5046f7cbcdf4fb6d0c458a64d603e08",
+    "tests/MODEL.recorded-proposal.json": "8d7848e9a345e69a750551ccb9e22c454ad95300ec78b8766fd85a9110c791f7",
+    "tests/RESCUE.owner-key.json": "e0ee773c4085c7b82430ba6815dc669638942eb1faeb15c18c20d58f0eb3cb3f",
+    "tests/T1.failed-removal-retry.json": "7c710c9e59936e87fa9f16f713a5a7be6b445550f4d30000c725024779212603",
+    "tests/T1.pending-sign.json": "d97866dcc6112a3d9570868d07a32a1979cf0898ec170392ac8520ca0083f1a6",
+    "tests/T1.revoke-during-activation.json": "b57831e47b91a7dbce0a9eec6640ee0c650974e4afb2c7ff51516dd26f2d2efd",
+    "tests/T1.withheld-regrant.json": "34a2e09768764cbf4ee58de53c6c44c1dc843b160567eda1572075b7c2740e01",
+    "tests/T2.sandbox-interleavings.json": "ad8dc8b89aa33ad62b8b6deb84f2bfaee1db504174d67f185c633061c42d2815",
+    "tests/T2.unit-interleavings.json": "d8cdd1cc4dba7918c05ec461e6f9b9447829df7fdcdcc61ea8ea4b7de8e43d06",
+    "tests/T2b.callback-failed-after-disclosure.json": "36d396acd93194c8d7a9d3efbbb9d91d7fa94df19d1d937d1077c2164f092b34",
+    "tests/T2b.disclosed-relay.json": "01f13f380711ce8e7f9d6e8e5c2afc6875dee83d8a5b44673cf0fb43897a35dd",
+    "tests/T3.breaker.json": "f4ce086db1c9659daf4075e5f000f13eae04a2131000ee5a489c9f26ab0261c3",
+    "tests/T3.concession.json": "31151dccf0cba494ce872cf1dd1131f3afdcf2e1ae54d031b66d789d0f68bcea",
+    "tests/T3.feeds-timing.json": "513344dced2f0ea7e47df22ebcd3fa6f08f6c3cb0af54bb9ee5252a4dc5476f7",
+    "tests/T4.dependency-failure.json": "8e0f4f8b844f03ba4734c1bf0fc54d245933d79caa38e517a9bb54e3b7e2b14b",
+    "tests/T4.open-order-limit.json": "c99f54917f4da3a4c20efeb00f987afd8e670640a6c3f432302f01d085ddfd67",
+    "tests/T4.record-bound.json": "ea51baa23a537540e2522d4c6f8a6c697c7e99e2c9395d1cc66694d56757e86c",
+    "tests/T4.registration-reconcile.json": "28f75b85fc21b955705a4a389343120fca13c2a59eca06d4bea0ef80b4ba9ac8",
+    "tests/T5.baseline.json": "d99ca309fa4ebc8d3ab0f3f159cdb905350f5e4b733bd218537913dfd8df6c4a",
+    "video-captions-short.srt": "0502f05c3159492323a565944bcbb24fe420d0428d6578c42a489963840d4255",
+    "video-captions.srt": "bd00fc9bf4d95aa5966d7eb6bec5da1f774a0f189044694f47097193b06e11cd",
+    "video.json": "63e60a9d6a4e3e2ada6ce129ecd59732f4a1d606746773cf58b619fe2e2749e5"
+  },
+  "changes_since_previous_certified": {
+    "previous": "7fc3f90",
+    "commits": [
+      "90a7f68 feat(page,video)",
+      "aab8cb6 feat(live)",
+      "438c8a9 docs",
+      "c7b7e3c fix(page)",
+      "fad3d4e fix(live)",
+      "f60f999 docs"
+    ],
+    "summary": "evidence page and videos show the agent's 50/50 objective with allocation before and after the trade, the withheld order's identity and simulation, the rejection with its block time, the T1 regrant and T2b disclosed-signature sandbox cases, and an opt-in read-only mainnet verification panel; optional live-agent rebalance step (NEAR AI Cloud provider, fresh prices, objective guard, no-action handling, resume-safe decisions), implemented and tested locally only; README positioning against the NEAR Intents Agent API, Veto, Allowance and existing comparisons. Contract source unchanged.",
+    "focused_regressions": "integrated TypeScript 382/382 at f60f999 before the gate; live sandbox 46/46; page and video 84/84; independent review of 438c8a9 findings fixed in c7b7e3c, fad3d4e, f60f999"
+  }
+}

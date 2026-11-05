@@ -1,0 +1,67 @@
+1
+00:00:00,000 --> 00:00:09,000
+Claim: the contract builds and signs every trade; after confirmed key removal, withheld orders fail and the owner recovers without agent, oracle or signer.
+
+2
+00:00:09,000 --> 00:00:18,000
+Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM.
+
+3
+00:00:18,000 --> 00:00:25,667
+The owner grants the mandate. Initial reference value: $1,899.80. The agent's only key can call propose_order.
+
+4
+00:00:25,667 --> 00:00:34,467
+Recorded genuine model output, claude-haiku-5-5: sell 49.90 USDC for wNEAR, at most 50 bps concession. The contract signs it.
+
+5
+00:00:34,467 --> 00:00:43,467
+Our filler fills it on the pinned mainnet verifier WASM: the mandate pays 49.90 USDC and receives 16.5468 wNEAR, exactly as signed.
+
+6
+00:00:43,467 --> 00:00:51,900
+A scripted second order, 1, is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.
+
+7
+00:00:51,900 --> 00:01:00,700
+Scripted attacks: 39 of 39 injected or direct malicious requests stopped at their expected boundary, with no state change.
+
+8
+00:01:00,700 --> 00:01:09,500
+The owner revokes. The verifier confirms the grant key is removed; only then is the withheld order's reservation released.
+
+9
+00:01:09,500 --> 00:01:18,500
+Another account relays the withheld order 49 s before its deadline. The verifier rejects it: the key no longer exists.
+
+10
+00:01:18,500 --> 00:01:27,500
+With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR through ordinary recovery.
+
+11
+00:01:27,500 --> 00:01:33,500
+20 of 20 required cases passed, certified for this demo.
+
+12
+00:01:33,500 --> 00:01:40,000
+The emergency owner-key rescue is reported separately; it never counts as ordinary recovery.
+
+13
+00:01:40,000 --> 00:01:48,800
+T5 runs the same threats against our own re-implementation of the pinned Claw Guard design, not the deployed product:
+
+14
+00:01:48,800 --> 00:01:54,800
+3 of 11 cases executed as successful attacks.
+
+15
+00:01:54,800 --> 00:02:03,800
+Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; the model step is a replay.
+
+16
+00:02:03,800 --> 00:02:09,800
+No guarantee of profit or a maximum loss.
+
+17
+00:02:09,800 --> 00:02:18,800
+Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM.
