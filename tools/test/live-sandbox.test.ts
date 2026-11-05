@@ -3,7 +3,8 @@
 // ambiguous outcome without replacement and reconciled resume, and resume refusals. The mainnet template's
 // sequence (refused proposal, trade, withheld order relayed after revocation, recovery) runs on the exact
 // deployment binary from fixtures/deploy, including an ambiguous relay, an order too close to its deadline, an RPC
-// delay that consumes the margin after preparation, and RPC views that misreport revocation (zero relay broadcasts).
+// delay that consumes the margin after preparation, RPC views that misreport revocation (zero relay broadcasts),
+// and lost propose/revoke responses whose deadline timeline uses the runner's confirmation after reconciliation.
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -608,10 +609,10 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     expect(phase("relay broadcast")?.remaining_ms ?? Number.POSITIVE_INFINITY).toBeLessThan(MIN_S * 1000);
     expect(observed.timing.phases.map((x) => x.phase)).toEqual([
       "withheld order proposed (sent)",
-      "withheld order signed (propose final)",
+      "withheld order signed (propose confirmed by runner)",
       "withheld bundle prepared and simulated",
       "revoke sent",
-      "revoke final",
+      "revoke confirmed by runner",
       "relay pre-check",
       "relay prepared",
       "relay broadcast",
@@ -621,4 +622,46 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     expect(ledgerOf(path).ofKind("tx-intent").map((e) => e.data.kind)).not.toContain("relay_withheld");
     expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
   }, 300_000);
+
+  it("a lost propose or revoke response is timed by the runner's confirmation after reconciliation, never by the ambiguous response", async () => {
+    const cases = [
+      { drop: 2, step: 1, kind: "propose", phase: "withheld order signed (propose confirmed by runner)" },
+      { drop: 3, step: 3, kind: "revoke", phase: "revoke confirmed by runner" },
+    ];
+    for (const c of cases) {
+      await fund();
+      const path = writeJson(dir, `candidate-lost-${c.kind}.json`, { ...cand, approval: { ...cand.approval, reference: `lost ${c.kind}` }, steps: guardSteps() });
+      const provider = new LossyProvider({ url: world.client.rpcUrl });
+      provider.dropAt = c.drop;
+      const first = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path }, deps({ client: new NearClient(world.client.rpcUrl, provider) }));
+      expect(first.message).toMatch(new RegExp(`step ${c.step + 1} ${c.kind}: ambiguous outcome`));
+      const resumed = await resume(path);
+      expect(resumed.message).toBe("completed");
+      expect(resumed.exitCode).toBe(0);
+      const relay = assertion(resumed, "relay_withheld")?.observed as { classification: string; timing: { phases: { phase: string; at: string }[] } };
+      expect(relay.classification).toBe("rejected_revoked_key");
+      const ledger = ledgerOf(path);
+      const lost = ledger.ofKind("tx-result").filter((e) => e.data.step === c.step);
+      expect(lost.map((e) => e.data.status)).toEqual(["ambiguous"]);
+      const reconciled = ledger.ofKind("reconciled").filter((e) => e.data.step === c.step);
+      expect(reconciled.map((e) => e.data.status)).toEqual(["executed"]);
+      const done = ledger.ofKind("step-done").find((e) => e.data.step === c.step);
+      const confirmed = relay.timing.phases.find((x) => x.phase === c.phase);
+      // The phase is the verified step completion, recorded on the resume after reconciliation.
+      expect(confirmed?.at).toBe(done?.at);
+      expect(Date.parse(confirmed?.at ?? "")).toBeGreaterThanOrEqual(Date.parse(reconciled[0]?.at ?? ""));
+      expect(relay.timing.phases.map((x) => x.at)).not.toContain(lost[0]?.at);
+      expect(relay.timing.phases.map((x) => x.phase)).toEqual([
+        "withheld order proposed (sent)",
+        "withheld order signed (propose confirmed by runner)",
+        "withheld bundle prepared and simulated",
+        "revoke sent",
+        "revoke confirmed by runner",
+        "relay pre-check",
+        "relay prepared",
+        "relay broadcast",
+      ]);
+      expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+    }
+  }, 600_000);
 });

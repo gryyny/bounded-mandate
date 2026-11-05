@@ -510,7 +510,9 @@ async function relayGate(rt: Runtime, step: Extract<Step, { kind: "relay_withhel
 
 /**
  * Times of the deadline-sensitive phases of the withheld order, from the ledger: runner wall clock for every
- * phase, and the final block's time where it was read. Instrumentation only; it decides nothing.
+ * phase, and the final block's time where it was read. Instrumentation only; it decides nothing. Completion of
+ * propose and revoke is the runner's verified step-done, not a transaction response: a lost response is first
+ * recorded as ambiguous and confirmed only by a later reconciliation.
  */
 function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknown> {
   const w = latestWithheld(ledger);
@@ -518,8 +520,8 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknow
   const deadlineMs = Number(BigInt(w.deadline_ns) / 1_000_000n);
   const withholdDone = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold").at(-1);
   const intents = ledger.ofKind("tx-intent");
-  const resultOf = (intent: LedgerEntry | undefined): LedgerEntry | undefined =>
-    intent === undefined ? undefined : ledger.entries.find((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.tx_hash === intent.data.tx_hash);
+  const doneOf = (intent: LedgerEntry | undefined): LedgerEntry | undefined =>
+    intent === undefined ? undefined : ledger.ofKind("step-done").find((e) => e.data.step === intent.data.step && e.data.kind === intent.data.kind);
   const propose = intents.filter((e) => e.data.kind === "propose" && e.seq < (withholdDone?.seq ?? Number.POSITIVE_INFINITY)).at(-1);
   const revoke = intents.filter((e) => e.data.kind === "revoke").at(-1);
   const relay = intents.filter((e) => e.data.kind === "relay_withheld").at(-1);
@@ -528,16 +530,16 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknow
   const withholdTiming = (withholdDone?.data.verification as { timing?: unknown } | undefined)?.timing;
   const phases = [
     ...wall("withheld order proposed (sent)", propose),
-    ...wall("withheld order signed (propose final)", resultOf(propose)),
+    ...wall("withheld order signed (propose confirmed by runner)", doneOf(propose)),
     ...(withholdTiming === undefined ? wall("withheld bundle prepared and simulated", withholdDone) : recorded(withholdTiming)),
     ...wall("revoke sent", revoke),
-    ...wall("revoke final", resultOf(revoke)),
+    ...wall("revoke confirmed by runner", doneOf(revoke)),
     ...recorded(relay?.data.timing),
     ...extra,
   ].map((ph) => ({ ...ph, wall_remaining_ms: deadlineMs - Date.parse(ph.at) }));
   return {
     deadline_ns: w.deadline_ns,
-    note: "at and wall_remaining_ms use the runner's clock; chain_ns and remaining_ms use the final block's timestamp, which the verifier's deadline check follows",
+    note: "at and wall_remaining_ms use the runner's clock; chain_ns and remaining_ms use the final block's timestamp, which the verifier's deadline check follows. A phase confirmed by runner is the time its step's terminal verification was recorded (after a reconciling resume, if the response was lost), not the block time of finality",
     phases,
   };
 }
