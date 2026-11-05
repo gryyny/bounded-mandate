@@ -1,0 +1,100 @@
+{
+  "schema_version": 2,
+  "kind": "fresh-clone-run",
+  "source_revision": "7fc3f9014248cac8a9098f21b1a5c8ca6f9e3afa",
+  "dirty": false,
+  "clone": "git clone https://github.com/gryyny/bounded-mandate.git into an empty directory outside the meta workspace; own target/ directory; no meta-repo access, funds or model credentials",
+  "results": {
+    "make test": {
+      "exit": 0,
+      "real_seconds": 1313,
+      "verdict": "CERTIFIED: run 20261105T162010995Z-72a7bb8387cb",
+      "tests": "TypeScript 15 files, 296 tests passed; Rust 195 passed, 0 failed"
+    },
+    "make demo": {
+      "exit": 0,
+      "real_seconds": 55,
+      "summary": "setup 15267 ms | story 17014 ms | 56/56 assertions passed"
+    }
+  },
+  "acceptance": {
+    "run_id": "20261105T162010995Z-72a7bb8387cb",
+    "certified": true,
+    "required_cases": 20,
+    "passed": 20,
+    "separate": [
+      [
+        "RESCUE.owner-key",
+        "passed"
+      ]
+    ]
+  },
+  "other_certified_runs_of_this_revision": [
+    {
+      "where": "GitHub Actions ubuntu-24.04 run 42063320372",
+      "run_id": "20261105T162149300Z-df364961011b",
+      "note": "make demo 56/56"
+    }
+  ],
+  "deployment_candidate": {
+    "fixture": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "exercised_by": "DEPLOY.candidate in this run, and the live runner's template sequence in tools/test/live-sandbox.test.ts",
+    "note": "Contract source and Cargo.lock are unchanged since 163ccfa."
+  },
+  "video": {
+    "cuts": {
+      "short": {
+        "sha256": "b9611fc2333f3da16f676df203dbd6833537574838ea88ea2a7ce837939606dd",
+        "duration_s": 65.4
+      },
+      "walkthrough": {
+        "sha256": "c748d373510815a91edefab70b99f0762a4d83f7f5ea34b0803d4a811d5dc716",
+        "duration_s": 138.033333
+      }
+    },
+    "certified_for_this_demo": true,
+    "note": "built in the fresh clone from this run's demo with tools/src/video/make.ts; mp4 files not committed"
+  },
+  "modes": "sandbox: our contract (and the exact deployment candidate) with the pinned mainnet verifier WASM and labelled MPC/oracle/token test doubles; T2.unit-interleavings in the near-sdk unit VM; recorded genuine model output; scripted attacks; no mainnet execution",
+  "files_sha256": {
+    "acceptance.json": "3902db8fdb111a316e0cac76bca7272a1316eb573cdcfeda1387cfaed371bb78",
+    "demo.json": "15b038e8f98d9d2f57b95fc7060d35e057d65c96e399340e5a87b8fbbc4394ef",
+    "page/index.html": "917c6f0561cc70528c46460ac09e0ff27a113693ba8444b7f1112c2b8ce40d9e",
+    "tests/BOUNDARY.attacks.json": "e786d62c62fe3e5d2464b0d8ea20a61543ceeae2e435bc4d51d03dca59c66a8a",
+    "tests/BOUNDARY.contract.json": "e38a26400cbb8cc8ba89d14c89a6bb2101e977612f3b052d93e6a928cb47a38c",
+    "tests/DEPLOY.candidate.json": "8ea2b31c07b929f55dd265979740275cc66eca99cef4c48263d5e37ff3315b08",
+    "tests/MODEL.recorded-proposal.json": "a7107f1b8f5bd29eb0dbad1d288d3afe2f44846759581bc525291ea233c33388",
+    "tests/RESCUE.owner-key.json": "6af4089ed2d4d4fb384e45a3a4a03b92bc57570c63380920e54f1386ff691c75",
+    "tests/T1.failed-removal-retry.json": "b1479d8cf9642542f067edcf83284480ed66ec0ca9e3a3aabf38769acd440460",
+    "tests/T1.pending-sign.json": "41bf03c67fa8934d34875fa780641220d1c1a45a3ab25603d0b41b6522d62699",
+    "tests/T1.revoke-during-activation.json": "7c6df665f41d0e5c5f76b048093d221dd0aa4bddd2e2a33f2da6fe854ccf045c",
+    "tests/T1.withheld-regrant.json": "268fb246d7628d41055ec60e9c123b159fc14b806a4f3ff23f7afd878d76c768",
+    "tests/T2.sandbox-interleavings.json": "b35bea248819bfa45560bea5e20e8ec0e650908c20a8129934d4a5bfaeb6e67c",
+    "tests/T2.unit-interleavings.json": "7dd06afae9125cf6e143079147a4b29e8e44a7893727cffad1ada0fe5132c70c",
+    "tests/T2b.callback-failed-after-disclosure.json": "e6c70a6482cbd59de08d13cb02fc751fa191c19726b3d8b4b563a5e66ab58c90",
+    "tests/T2b.disclosed-relay.json": "6afaaaa440ee21e726ca41428e0c2fd5510950d1242f7ed0ed355d6de8cafaea",
+    "tests/T3.breaker.json": "d4aec738cf40ee8309a4bed4eee1ac61e7bb6cbdb10b63ec25499b61c7ad0235",
+    "tests/T3.concession.json": "2d60d872a1ce3e575daae5660bdd4d2443364070667dcf3d953f5c1e2fc9c810",
+    "tests/T3.feeds-timing.json": "81961657365b2cc561f14bd0fc4585a7f24a296e926a42c5f6c48cdd42c3dd7a",
+    "tests/T4.dependency-failure.json": "9ac578bd21e144117e9086b6325b1e98dcfc41315e3b8c6b23f18386acc7ca8b",
+    "tests/T4.open-order-limit.json": "1ea3cfdd8b19b67aacb4af85f589eda9ad72f10ee73a30dc7094c327222553f2",
+    "tests/T4.record-bound.json": "3ea565897dd96cfcb9158d75c4f65af3bd147335f9e322d66da9de68fea95ba9",
+    "tests/T4.registration-reconcile.json": "bb431bada9f7583dd258e4192be2b8707e10359310cf8877e727617f84392521",
+    "tests/T5.baseline.json": "38b83e4b666d40bff56c087980a3e57cb9c2fcc4bf89b559f7f498f8a2923469",
+    "video-captions-short.srt": "096def553e7ddb2b407ad631a2a937c299c08881f9ff69bd1d4130dc03c312fe",
+    "video-captions.srt": "280a01642310d384be9e8401adeb11dec008dff4c6a906c3b05f144325ec29b1",
+    "video.json": "d85dc586187ed585d850313bfaa6f680a01fd034ed9d9edd186f8095538c8221"
+  },
+  "changes_since_previous_certified": {
+    "previous": "7f280ca",
+    "commits": [
+      "766df6f fix(live)",
+      "7fc3f90 test(live)"
+    ],
+    "summary": "the relay's deadline timeline times propose and revoke completion by the runner's verified step-done ('confirmed by runner'), never by an ambiguous first response; regression with a lost propose and a lost revoke response reconciled on resume. Contract source unchanged.",
+    "focused_regressions": "live sandbox 37/37 and live unit 42/42 at 766df6f; reverting to the first-response lookup fails the new test",
+    "not_certified_in_between": "766df6f: fresh-clone make test exited 2 (295/296). The new test's assertion that no timeline phase shares the lost response's millisecond failed because the same transaction's sent phase can; corrected in 7fc3f90 to require the confirmed phase strictly after the lost response. CI run 42059837065 of 766df6f passed."
+  }
+}
