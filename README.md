@@ -144,7 +144,9 @@ The mainnet template ([tools/src/live/manifest.example.json](tools/src/live/mani
 4. Revoke, then relay that bundle before its deadline.
 5. Recover both assets to the owner's Intents account.
 
-The relay is sent only after confirmed removal of the grant key. It passes only if the verifier rejects it for that removed key, before the order's deadline, with both nonces unused and balances unchanged. An expired order, missing filler funds, a different signature error or an RPC failure is recorded as inconclusive, never as a pass. Execution counts as a revocation failure. Either way, recovery still runs and the run exits nonzero.
+The relay is checked twice: before the bundle is prepared, and again after signing, immediately before the broadcast. Each check requires confirmed revocation (grant revoked, no key operation in flight, signing key absent) and at least `min_remaining_sec` (10 s) left before the order's deadline by the final block's time. Unconfirmed revocation stops the run; nothing is sent. Too little remaining time skips the relay and records it as inconclusive. A relay that is sent passes only if the verifier rejects it for the removed key, before the order's deadline, with both nonces unused and balances unchanged. An expired order, missing filler funds, a different signature error or an unreadable execution time is inconclusive, never a pass; execution counts as a revocation failure.
+
+Classified terminal outcomes, whether passed, inconclusive, failed or skipped, are recorded and the run proceeds to recovery, exiting nonzero unless every step passed. Unresolved outcomes stop the run without resubmitting anything: a lost response, an outcome that is not final, or an RPC interruption. `MANDATE_LIVE_RESUME=1` reconciles the stopped run from chain state, then continues. The relay's evidence records the deadline-sensitive phases (withheld order sent and signed, bundle simulated, revoke sent and final, relay pre-check, prepared, broadcast) with runner wall-clock times and, where read, the final block's time remaining before the deadline.
 
 Regrant resistance and broken-oracle or broken-MPC scenarios stay in the sandbox gates. On mainnet, recovery only shows that its receipts call no agent, oracle or MPC; it cannot show those shared services disabled. The template's RPC is `https://free.rpc.fastnear.com`, because `rpc.mainnet.near.org` is deprecated and heavily rate-limited. For lookups of older receipts, such as the verification commands above, use the archival endpoint `https://archival-rpc.mainnet.fastnear.com`.
 
@@ -163,7 +165,8 @@ Regrant resistance and broken-oracle or broken-MPC scenarios stay in the sandbox
 
 **AI tools** (rule Q-005):
 <!-- AUTHOR: confirm whether any other AI tools were used -->
-- The product code, tests and documentation were generated with Claude Code (Anthropic Claude models) under the author's direction and review.
+- The product code, tests and documentation were implemented with Claude Code (Anthropic Claude models) under the author's direction and review.
+- OpenAI Codex was used for independent review of the design, code and evidence.
 - The two model fixtures in [fixtures/model/](fixtures/model/) are genuine `claude-haiku-5-5` interactions, recorded through the headless Claude Code CLI by `tools/src/agent/record.ts`. The MODEL gate and `make demo` replay them. No gate or demo makes a live model call or needs a model key.
 
 **Major libraries.** Exact resolved versions from [Cargo.lock](Cargo.lock) and [tools/package-lock.json](tools/package-lock.json), which hold the full dependency set. Licenses are taken from the resolved crate and package metadata.
