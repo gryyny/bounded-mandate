@@ -4,7 +4,7 @@
 import { z } from "zod";
 import type { NearClient } from "../near/client.js";
 import { tokenId } from "../near/contracts.js";
-import { GrantView, Proposal, type Asset, type PriceObservation } from "../types.js";
+import { GrantView, Proposal, type Asset, type Policy, type PriceObservation } from "../types.js";
 import { judge } from "./adapter.js";
 import type { AdapterVerdict } from "./decision.js";
 import { buildPrompt, type BuiltPrompt } from "./prompt.js";
@@ -15,6 +15,12 @@ import { VALUE_DECIMALS, buildSnapshot, formatUnits, valueUnits, type MarketSnap
 export const BAND_BPS = 200n;
 /** A proposal may sell up to 1% more than the amount needed to reach 50/50 (plus one unit), for rounding. */
 export const NEEDED_TOLERANCE_BPS = 100n;
+/**
+ * Immediately before signing, each price must have at least the grant's min_remaining_sec plus this margin left
+ * of its oracle_max_age_sec: the order's deadline is at most the oldest publish time plus that age, and the
+ * mandate refuses an order with less than min_remaining_sec left after pricing.
+ */
+export const PRICE_MARGIN_EXTRA_SEC = 15;
 
 const Units = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const ASSETS = ["usdc", "wnear"] as const;
@@ -125,6 +131,17 @@ export function inputsFrom(obs: FreshObservations, decimals: Record<Asset, numbe
   return { ok: true, inputs: { grant: g, prices: { usdc, wnear }, decimals, balances: { usdc: BigInt(obs.balances.usdc), wnear: BigInt(obs.balances.wnear) } } };
 }
 
+/** Prices too close to their maximum age to survive submission and the mandate's own read. */
+export function priceMarginProblems(obs: FreshObservations, policy: Policy): string[] {
+  const need = policy.min_remaining_sec + PRICE_MARGIN_EXTRA_SEC;
+  return ASSETS.flatMap((a) => {
+    const p = obs.prices[a];
+    if (p === null) return [];
+    const left = p.max_age_sec - p.age_sec;
+    return left < need ? [`${a}: price has ${left} s of its ${p.max_age_sec} s maximum age left, below the ${need} s margin (min_remaining_sec + ${PRICE_MARGIN_EXTRA_SEC})`] : [];
+  });
+}
+
 export interface Allocation {
   value_usd: Record<Asset, string>;
   usdc_share_bps: string;
@@ -174,8 +191,10 @@ export function allocation(inputs: RebalanceInputs): Allocation {
 
 /**
  * Why a proposal does not serve the objective: wrong direction, more than needed to reach 50/50, more than the
- * mandate holds, a concession above the grant's, or a value above the per-order cap or remaining outstanding
- * capacity. Values use the larger of the grant's reference and the current price, rounded up.
+ * mandate holds, a concession above the grant's, a value above the per-order cap, the remaining outstanding
+ * capacity or the remaining turnover (charged at least the proposal charge), or holdings at or below the loss
+ * breaker's threshold. Values use the larger of the grant's reference and the current price, rounded up. These are
+ * the agent's estimates; the mandate decides.
  */
 export function objectiveProblems(inputs: RebalanceInputs, alloc: Allocation, proposal: Proposal): string[] {
   const p: string[] = [];
@@ -199,6 +218,14 @@ export function objectiveProblems(inputs: RebalanceInputs, alloc: Allocation, pr
   const remaining = outstandingCap > used ? outstandingCap - used : 0n;
   if (value > perOrder) p.push(`order value ${formatUnits(value, VALUE_DECIMALS)} USD above the per-order cap ${formatUnits(perOrder, VALUE_DECIMALS)} USD`);
   if (value > remaining) p.push(`order value ${formatUnits(value, VALUE_DECIMALS)} USD above the remaining outstanding capacity ${formatUnits(remaining, VALUE_DECIMALS)} USD`);
+  const ceilBps = (bps: number) => (initial * BigInt(bps) + 9_999n) / 10_000n;
+  const charged = [value, ceilBps(grant.policy.proposal_charge_bps)].reduce((a, b) => (a > b ? a : b));
+  const turnoverCap = (initial * BigInt(grant.policy.turnover_cap_bps)) / 10_000n;
+  const turnover = BigInt(grant.turnover_used) + charged;
+  if (turnover > turnoverCap) p.push(`turnover would reach ${formatUnits(turnover, VALUE_DECIMALS)} USD, above the cap ${formatUnits(turnoverCap, VALUE_DECIMALS)} USD`);
+  const holdings = ASSETS.reduce((sum, a) => sum + valueUnits(inputs.balances[a], inputs.decimals[a], inputs.prices[a]), 0n);
+  const threshold = ceilBps(10_000 - grant.policy.breaker_drawdown_bps);
+  if (holdings <= threshold) p.push(`holdings ${formatUnits(holdings, VALUE_DECIMALS)} USD at or below the loss-breaker threshold ${formatUnits(threshold, VALUE_DECIMALS)} USD`);
   return p;
 }
 

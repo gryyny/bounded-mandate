@@ -243,8 +243,11 @@ const NearAiResponse = z
   })
   .loose();
 
-/** Extracts the decision text from a chat-completions response. Anything but one complete, plain answer is an error. */
-export function parseNearAiResponse(status: number, text: string): { decision_text: string | null; model: string; error?: string } {
+/**
+ * Extracts the decision text from a chat-completions response. Anything but one complete, plain answer from the
+ * requested model is an error: a different reported model id is a fallback, never accepted silently.
+ */
+export function parseNearAiResponse(status: number, text: string, requestedModel: string): { decision_text: string | null; model: string; error?: string } {
   if (status !== 200) return { decision_text: null, model: "unknown", error: `HTTP ${status}: ${text.slice(0, 300)}` };
   let parsed: z.infer<typeof NearAiResponse>;
   try {
@@ -253,6 +256,7 @@ export function parseNearAiResponse(status: number, text: string): { decision_te
     return { decision_text: null, model: "unknown", error: `unparseable response: ${error instanceof Error ? error.message.slice(0, 300) : String(error)}` };
   }
   const fail = (error: string) => ({ decision_text: null, model: parsed.model, error });
+  if (parsed.model !== requestedModel) return fail(`response reports model ${parsed.model}, requested ${requestedModel}`);
   const [choice, ...rest] = parsed.choices;
   if (choice === undefined || rest.length > 0) return fail(`expected exactly one choice, got ${parsed.choices.length}`);
   if (choice.finish_reason !== "stop") return fail(`finish_reason ${String(choice.finish_reason)}: not a complete answer (truncated or interrupted)`);
@@ -313,7 +317,7 @@ export class NearAiProvider implements LiveModelProvider {
       clearTimeout(timer);
     }
     const finished = new Date().toISOString();
-    const parsed = parseNearAiResponse(status, text);
+    const parsed = parseNearAiResponse(status, text, this.opts.model);
     return {
       provider: this.name,
       requested_model: this.opts.model,

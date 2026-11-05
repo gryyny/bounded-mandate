@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DECISION_JSON_SCHEMA } from "../src/agent/decision.js";
 import { loadRecording, replayRecording, toRecording, writeRecording } from "../src/agent/live-recording.js";
 import { NEAR_AI_API_KEY_ENV, NearAiProvider, parseNearAiResponse } from "../src/agent/providers.js";
-import { allocation, assess, decideRebalance, inputsFrom, type FreshObservations, type RebalanceInputs } from "../src/agent/rebalance.js";
+import { allocation, assess, decideRebalance, inputsFrom, priceMarginProblems, type FreshObservations, type RebalanceInputs } from "../src/agent/rebalance.js";
 import { valueUnits } from "../src/agent/snapshot.js";
 import { DEMO_POLICY, PRICE_IDS } from "../src/demo/market.js";
 import { ModelSource } from "../src/live/manifest.js";
@@ -90,6 +90,12 @@ describe("objective guard at current prices (synthetic provider answers)", () =>
     ["a zero amount", () => usdcHeavy(), proposeJson("usdc", 0n), /sell_amount is zero/],
     ["a concession above the grant's", () => usdcHeavy(), proposeJson("usdc", 100n * USDC, 51), /concession 51 bps above the grant's 50/],
     ["more than the remaining outstanding capacity", () => ({ ...usdcHeavy(), grant: { ...usdcHeavy().grant, outstanding: usd(250n).toString() } }), proposeJson("usdc", 100n * USDC), /remaining outstanding capacity 70 USD/],
+    // Turnover cap 100% of $1600; $1590 used + 50 USDC = $1640.
+    ["more than the remaining turnover", () => ({ ...usdcHeavy(), grant: { ...usdcHeavy().grant, turnover_used: usd(1_590n).toString() } }), proposeJson("usdc", 50n * USDC), /turnover would reach 1640 USD, above the cap 1600 USD/],
+    // A 1 USDC order is still charged the proposal floor, 0.5% of $1600 = $8: $1595 + $8 > $1600.
+    ["a tiny order charged the proposal floor beyond the turnover cap", () => ({ ...usdcHeavy(), grant: { ...usdcHeavy().grant, turnover_used: usd(1_595n).toString() } }), proposeJson("usdc", USDC), /turnover would reach 1603 USD/],
+    // Breaker at 2% drawdown of $1600: $1568. Holdings now 1000 USDC + 200 wNEAR at $2.84 = $1568.
+    ["holdings at the loss-breaker threshold", () => inputs({ usdc: 1_000n * USDC, wnear: 200n * WNEAR }, prices(ONE, 284_000_000n), prices(ONE, 3n * ONE)), proposeJson("usdc", 100n * USDC), /holdings 1568 USD at or below the loss-breaker threshold 1568 USD/],
   ])("sends nothing for %s", async (_name, make, answer, re) => {
     const d = await decide(new SyntheticProvider(answer), make());
     expect(d.verdict.kind).toBe("rejected");
@@ -142,6 +148,14 @@ describe("fresh inputs", () => {
     ...over,
   });
 
+  it("requires each price to keep min_remaining_sec + 15 s of its maximum age before signing", () => {
+    // DEMO_POLICY: oracle_max_age_sec 60, min_remaining_sec 15, so a price may be at most 30 s old.
+    const at = (age: number) => obs({ prices: { usdc: reading("usdc", { age_sec: age }), wnear: reading("wnear") } });
+    expect(priceMarginProblems(at(30), DEMO_POLICY)).toEqual([]);
+    expect(priceMarginProblems(at(31), DEMO_POLICY)).toEqual(["usdc: price has 29 s of its 60 s maximum age left, below the 30 s margin (min_remaining_sec + 15)"]);
+    expect(inputsFrom(at(31), DECIMALS).ok).toBe(true);
+  });
+
   it("builds inputs from the read observations (current prices)", () => {
     const r = inputsFrom(obs(), DECIMALS);
     expect(r.ok && r.inputs.prices.wnear).toEqual({ price_id: PRICE_IDS.wnear, price: "300000000", conf: "1000", expo: -8, publish_time_sec: "1000" });
@@ -163,8 +177,10 @@ describe("fresh inputs", () => {
 });
 
 describe("manifest model source", () => {
-  it("requires an explicit model and bounds for near-ai and keeps the existing shape valid", () => {
-    expect(ModelSource.safeParse({ from: "model", provider: "claude-cli", notes: [] }).success).toBe(true);
+  it("live steps accept only near-ai, with an explicit model and bounds", () => {
+    // anthropic and claude-cli serve fixture recording (tools/src/agent/record.ts) only.
+    expect(ModelSource.safeParse({ from: "model", provider: "claude-cli", notes: [] }).success).toBe(false);
+    expect(ModelSource.safeParse({ from: "model", provider: "anthropic", model: "m", timeout_ms: 30_000, max_tokens: 1_000, notes: [] }).success).toBe(false);
     expect(ModelSource.safeParse({ from: "model", provider: "near-ai", notes: [] }).success).toBe(false);
     expect(ModelSource.safeParse({ from: "model", provider: "near-ai", model: "m", timeout_ms: 30_000, notes: [] }).success).toBe(false);
     expect(ModelSource.safeParse({ from: "model", provider: "near-ai", model: "m", timeout_ms: 30_000, max_tokens: 1_000, notes: [] }).success).toBe(true);
@@ -178,7 +194,7 @@ describe("NEAR AI Cloud provider (mocked fetch, synthetic responses)", () => {
   const KEY = "sk-synthetic-test-key-0123456789";
   const OPTS = { model: "synthetic/model-id", timeoutMs: 5_000, maxTokens: 777 };
   const completion = (content: string | null, finish = "stop", over: Record<string, unknown> = {}) =>
-    JSON.stringify({ id: "chatcmpl-synthetic", object: "chat.completion", model: "synthetic/model-id-reported", choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: finish }], ...over });
+    JSON.stringify({ id: "chatcmpl-synthetic", object: "chat.completion", model: "synthetic/model-id", choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: finish }], ...over });
   interface Sent {
     url: string;
     init: RequestInit;
@@ -225,7 +241,7 @@ describe("NEAR AI Cloud provider (mocked fetch, synthetic responses)", () => {
     });
     expect(call.request_body).toBe(sent?.init.body);
     expect(p.requestBody(prompt)).toBe(sent?.init.body);
-    expect(call).toMatchObject({ provider: "near-ai", requested_model: "synthetic/model-id", model: "synthetic/model-id-reported", decision_text: proposeJson("usdc", 150n * USDC) });
+    expect(call).toMatchObject({ provider: "near-ai", requested_model: "synthetic/model-id", model: "synthetic/model-id", decision_text: proposeJson("usdc", 150n * USDC) });
     expect(call.error).toBeUndefined();
     expect(JSON.stringify(call)).not.toContain(KEY);
     expect(JSON.stringify(p)).not.toContain(KEY);
@@ -238,13 +254,14 @@ describe("NEAR AI Cloud provider (mocked fetch, synthetic responses)", () => {
   it.each([
     ["truncation (finish_reason length)", 200, completion('{"action":"propose","proposal":{"sell":"usdc"', "length"), /finish_reason length/],
     ["a content-filter stop", 200, completion(null, "content_filter"), /finish_reason content_filter/],
-    ["tool calls", 200, JSON.stringify({ model: "m", choices: [{ message: { content: null, tool_calls: [{ id: "t" }] }, finish_reason: "stop" }] }), /tool calls/],
-    ["two choices", 200, JSON.stringify({ model: "m", choices: [{ message: { content: "{}" }, finish_reason: "stop" }, { message: { content: "{}" }, finish_reason: "stop" }] }), /exactly one choice/],
+    ["tool calls", 200, JSON.stringify({ model: "synthetic/model-id", choices: [{ message: { content: null, tool_calls: [{ id: "t" }] }, finish_reason: "stop" }] }), /tool calls/],
+    ["two choices", 200, JSON.stringify({ model: "synthetic/model-id", choices: [{ message: { content: "{}" }, finish_reason: "stop" }, { message: { content: "{}" }, finish_reason: "stop" }] }), /exactly one choice/],
     ["empty content", 200, completion("   "), /no content/],
+    ["a different model than requested (fallback)", 200, completion(proposeJson("usdc", 150n * USDC), "stop", { model: "synthetic/other-model" }), /response reports model synthetic\/other-model, requested synthetic\/model-id/],
     ["an HTTP error", 402, JSON.stringify({ error: { message: "insufficient credits", type: "payment_required" } }), /HTTP 402: .*insufficient credits/],
     ["a non-JSON body", 200, "<html>gateway</html>", /unparseable response/],
   ])("produces no decision for %s; the guard sends nothing", async (_name, status, body, re) => {
-    expect(parseNearAiResponse(status, body).decision_text).toBeNull();
+    expect(parseNearAiResponse(status, body, OPTS.model).decision_text).toBeNull();
     const p = new NearAiProvider(OPTS, KEY, mock(status, body).fetch);
     const d = await decideRebalance(p, usdcHeavy(), NOTES);
     expect(d.verdict).toMatchObject({ kind: "rejected", boundary: "provider" });
@@ -301,10 +318,10 @@ describe("recorded live decisions replay without credentials or funds", () => {
   };
 
   it("replays an accepted proposal and a truncated answer to the same verdicts, and refuses a tampered file", async () => {
-    const answer = JSON.stringify({ model: "m", choices: [{ message: { content: proposeJson("usdc", 150n * USDC) }, finish_reason: "stop" }] });
+    const answer = JSON.stringify({ model: "synthetic/model-id", choices: [{ message: { content: proposeJson("usdc", 150n * USDC) }, finish_reason: "stop" }] });
     for (const [status, body] of [
       [200, answer],
-      [200, JSON.stringify({ model: "m", choices: [{ message: { content: "{" }, finish_reason: "length" }] })],
+      [200, JSON.stringify({ model: "synthetic/model-id", choices: [{ message: { content: "{" }, finish_reason: "length" }] })],
     ] as const) {
       const { dir, d, written } = await record(status, body);
       const text = readFileSync(join(dir, written.file), "utf8");
@@ -313,6 +330,7 @@ describe("recorded live decisions replay without credentials or funds", () => {
       expect(rec.request_body).toBe(d.result?.call?.request_body);
       expect(rec.raw_output).toBe(body);
       const replayed = await replayRecording(rec);
+      expect(d.verdict.kind).toBe(body === answer ? "proposal" : "rejected");
       expect(replayed.verdict).toEqual(d.verdict);
       expect(replayed.result?.call?.provider).toBe("recorded");
       writeFileSync(join(dir, written.file), text.replace('"height": 42', '"height": 43'));

@@ -26,6 +26,8 @@ import { mkdirSync } from "node:fs";
 import { loadRecording, recordingName, replayRecording } from "../src/agent/live-recording.js";
 import { RebalanceVerdict } from "../src/agent/rebalance.js";
 import { SyntheticProvider, proposeJson } from "./agent-live-helpers.js";
+import { PRICES } from "../src/demo/market.js";
+import type { Asset } from "../src/types.js";
 
 let net: LocalNetwork;
 let world: World;
@@ -893,5 +895,102 @@ describe("live agent decisions (synthetic provider answers)", () => {
     expect(orders.length).toBe(ordersBefore + 1);
     expect(orders.at(-1)?.state).toEqual({ state: "released", reason: "settled" });
     expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
+  /** SYNTHETIC oracle-stub write: the asset's price with an explicit publish time. */
+  const setPrice = async (asset: Asset, ageSec: bigint): Promise<void> => {
+    const p = PRICES[asset];
+    const now = (await world.client.blockTimestampNs()) / 1_000_000_000n;
+    requireSuccess(
+      await world.client.call(`oracle set_price ${asset} (synthetic, ${ageSec} s old)`, world.operator.account, world.oracleId, "set_price", {
+        price_id: PRICE_IDS[asset],
+        price: p.price.toString(),
+        conf: p.conf.toString(),
+        expo: p.expo,
+        publish_time: Number(now - ageSec),
+      }),
+    );
+  };
+
+  /** Makes the wNEAR price stale once armed, at the runner's last finalized get_grant read before signing. */
+  class StaleAtSigning extends JsonRpcProvider {
+    armed = false;
+    override async callFunctionRaw(params: Parameters<JsonRpcProvider["callFunctionRaw"]>[0]): ReturnType<JsonRpcProvider["callFunctionRaw"]> {
+      const p = params as { method?: string; blockQuery?: { finality?: string } };
+      if (this.armed && p.method === "get_grant" && p.blockQuery?.finality !== undefined) {
+        this.armed = false;
+        await setPrice("wnear", 3_600n);
+      }
+      return super.callFunctionRaw(params);
+    }
+  }
+
+  it("prices too close to their maximum age at the pre-signing check: a finding, nothing proposed", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    // Between the decision and the pre-signing read, USDC becomes 45 s old: 15 s left of 60, below the 30 s margin.
+    provider.onDecide = async () => {
+      await setPrice("usdc", 45n);
+      await settleFinal();
+    };
+    const path = manifestFor("price margin");
+    const r = await live(path, { modelProvider: provider });
+    expect(r.exitCode).toBe(1);
+    expect(r.message).toMatch(/step 2 propose: recorded proposal not acceptable immediately before signing: usdc: price has \d+ s of its 60 s maximum age left, below the 30 s margin/);
+    const l = ledgerOf(path);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "revoke", "recover", "recover"]);
+    expect(doneOf(l, 2)).toMatchObject({ skipped: true });
+    expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
+
+  it("the mandate refuses a guard-accepted proposal (price made stale before its read): a finding, not a stop; revoke and recover run", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const rpc = new StaleAtSigning({ url: world.client.rpcUrl });
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    provider.onDecide = () => {
+      rpc.armed = true;
+    };
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    const path = manifestFor("contract refusal");
+    const r = await live(path, { client: new NearClient(world.client.rpcUrl, rpc), modelProvider: provider });
+    expect(r.exitCode).toBe(1);
+    expect(r.message).toMatch(/completed with findings: step 2 propose: the mandate refused the agent's proposal: order \d+ rejected while pricing/);
+    const l = ledgerOf(path);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "propose", "revoke", "recover", "recover"]);
+    const done = doneOf(l, 1);
+    expect(done).toMatchObject({ kind: "propose", refused: true });
+    expect(done?.order_id).toBeUndefined();
+    for (const step of [2, 3]) expect(doneOf(l, step)).toMatchObject({ skipped: true, reason: expect.stringMatching(/the mandate refused the proposal/) as unknown });
+    const orders = await mandateOf().allOrders();
+    expect(orders.length).toBe(ordersBefore + 1);
+    expect(orders.at(-1)?.state.state).toBe("rejected");
+    expect(r.evidence?.assertions.find((a) => a.id === "step-5-revoke")?.passed).toBe(true);
+    expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
+
+  it("a lost response to a proposal the mandate refused (insufficient gas attached) resumes to the same finding and completes", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    const lossy = new LossyProvider({ url: world.client.rpcUrl });
+    lossy.dropAt = 2; // grant, propose
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    // SYNTHETIC misconfiguration: the manifest attaches less gas than propose_order requires, so the mandate panics.
+    const path = writeJson(dir, "agent-refused-lost.json", { ...agentM, approval: { ...agentM.approval, reference: "refused lost" }, gas_tgas: { ...agentM.gas_tgas, propose: 20 } });
+    const first = await live(path, { client: new NearClient(world.client.rpcUrl, lossy), modelProvider: provider });
+    expect(first.message).toMatch(/step 2 propose: ambiguous outcome/);
+    const resumed = await live(path, { modelProvider: provider }, { MANDATE_LIVE_RESUME: "1" });
+    expect(resumed.exitCode).toBe(1);
+    expect(resumed.message).toMatch(/completed with findings: step 2 propose: the mandate refused the agent's proposal: propose_order panicked on the mandate/);
+    expect(provider.calls).toBe(1);
+    const l = ledgerOf(path);
+    expect(l.ofKind("reconciled").map((e) => [e.data.step, e.data.success])).toEqual([[1, false]]);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "propose", "revoke", "recover", "recover"]);
+    expect(JSON.stringify(doneOf(l, 1)?.verification)).toMatch(/insufficient gas attached/);
+    expect(doneOf(l, 2)).toMatchObject({ skipped: true });
+    expect((await mandateOf().allOrders()).length).toBe(ordersBefore);
+    expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+    // A further resume of the finished run keeps the finding and sends nothing.
+    const again = await live(path, { modelProvider: provider }, { MANDATE_LIVE_RESUME: "1" });
+    expect(again.exitCode).toBe(1);
+    expect(kinds(ledgerOf(path), "tx-intent").length).toBe(5);
   }, 300_000);
 });

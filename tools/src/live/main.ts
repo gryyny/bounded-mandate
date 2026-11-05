@@ -6,7 +6,9 @@
 //   (MANDATE_LIVE_RESUME=1) first reconciles the ledger with chain state.
 // - A model-sourced propose step is a recorded agent decision (decision-request before the model call, decision
 //   after it). A recorded decision is never re-asked; a request without a result stops unless
-//   MANDATE_LIVE_ALLOW_NEW_DECISION=1. A no-action sends nothing, and fill/settle/withhold of that step are skipped.
+//   MANDATE_LIVE_ALLOW_NEW_DECISION=1. Inputs are re-read and re-checked immediately before signing. A no-action
+//   sends nothing; the mandate refusing a model proposal is a finding, not a stop. Either way the step makes no
+//   order, and fill/settle/withhold of that step are skipped.
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -14,8 +16,20 @@ import { join, resolve } from "node:path";
 import { actions, type Account, type Action } from "near-api-js";
 import { z } from "zod";
 import { toRecording, writeRecording } from "../agent/live-recording.js";
-import { AnthropicProvider, ClaudeCliProvider, NearAiProvider, type LiveModelProvider } from "../agent/providers.js";
-import { RebalanceVerdict, allocation, assess, callModel, inputsFrom, judgeCall, objectiveProblems, readObservations, type FreshObservations } from "../agent/rebalance.js";
+import { NearAiProvider, type LiveModelProvider } from "../agent/providers.js";
+import {
+  PRICE_MARGIN_EXTRA_SEC,
+  RebalanceVerdict,
+  allocation,
+  assess,
+  callModel,
+  inputsFrom,
+  judgeCall,
+  objectiveProblems,
+  priceMarginProblems,
+  readObservations,
+  type FreshObservations,
+} from "../agent/rebalance.js";
 import { environment, sourceBinding } from "../evidence/source.js";
 import { payableFor } from "../filler/arithmetic.js";
 import { Filler, mandateLeg } from "../filler/filler.js";
@@ -75,7 +89,17 @@ const ProposalJson = z.object({ sell: z.enum(["usdc", "wnear"]), sell_amount: z.
 /** State captured before a transaction, persisted in its intent so a resume can verify it. */
 const Pre = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("grant"), previous_epoch: z.number().int().nullable() }).strict(),
-  z.object({ kind: z.literal("propose"), proposal: ProposalJson, expect: z.enum(["signed", "rejected"]), grant: GrantView }).strict(),
+  z
+    .object({
+      kind: z.literal("propose"),
+      proposal: ProposalJson,
+      expect: z.enum(["signed", "rejected"]),
+      grant: GrantView,
+      /** Present for a live agent proposal: the mandate refusing it is a finding, not a stop. */
+      source: z.literal("model").optional(),
+      orders_before: z.number().int().optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal("refused_proposal"), proposal: ProposalJson, error: z.string(), grant: GrantView, orders_before: z.number().int() }).strict(),
   z
     .object({
@@ -253,9 +277,10 @@ function orderAllowed(rt: Runtime, orderId: string): void {
 
 const fc = (method: string, args: Record<string, unknown>, tgas: number): Action => actions.functionCall(method, args, BigInt(tgas) * TGAS, 0n);
 
-async function proposePlan(rt: Runtime, expect: "signed" | "rejected", proposal: Proposal, detail: Record<string, unknown>): Promise<Plan> {
+async function proposePlan(rt: Runtime, expect: "signed" | "rejected", proposal: Proposal, detail: Record<string, unknown>, model = false): Promise<Plan> {
   const grant = await rt.mandate.grant();
   if (grant === null) throw new Stop("propose: no grant");
+  const fromModel = model ? { source: "model" as const, orders_before: (await rt.mandate.allOrders()).length } : {};
   const a = [fc("propose_order", { proposal }, rt.m.gas_tgas.propose)];
   return {
     signer: rt.accounts.agent,
@@ -263,7 +288,7 @@ async function proposePlan(rt: Runtime, expect: "signed" | "rejected", proposal:
     method: "propose_order",
     actions: a,
     planned: { worst_fee_yocto: worstFee(rt.m, "propose", rt.gasPrice).toString(), deposit_yocto: plannedDeposit(a).toString(), sell: { asset: proposal.sell, units: proposal.sell_amount } },
-    pre: { kind: "propose", proposal, expect, grant },
+    pre: { kind: "propose", proposal, expect, grant, ...fromModel },
     detail,
   };
 }
@@ -282,18 +307,7 @@ function observe(rt: Runtime): Promise<FreshObservations> {
 }
 
 function providerFor(rt: Runtime, source: ModelSource): LiveModelProvider {
-  if (rt.agent.provider !== undefined) return rt.agent.provider;
-  switch (source.provider) {
-    case "anthropic":
-      return new AnthropicProvider(source.model);
-    case "claude-cli":
-      return new ClaudeCliProvider(source.model);
-    case "near-ai": {
-      const { model, timeout_ms, max_tokens } = source;
-      if (model === undefined || timeout_ms === undefined || max_tokens === undefined) throw new Error("near-ai needs model, timeout_ms and max_tokens");
-      return NearAiProvider.fromEnv(rt.agent.env, { model, timeoutMs: timeout_ms, maxTokens: max_tokens });
-    }
-  }
+  return rt.agent.provider ?? NearAiProvider.fromEnv(rt.agent.env, { model: source.model, timeoutMs: source.timeout_ms, maxTokens: source.max_tokens });
 }
 
 /**
@@ -319,7 +333,7 @@ async function newDecision(rt: Runtime, i: number, source: ModelSource, supersed
     step: i,
     supersedes,
     provider: provider.name,
-    requested_model: source.model ?? null,
+    requested_model: source.model,
     prompt_version: a.prompt.version,
     prompt_sha256: a.prompt.sha256,
     request_body: requestBody,
@@ -329,7 +343,7 @@ async function newDecision(rt: Runtime, i: number, source: ModelSource, supersed
   const result = await callModel(provider, a.prompt);
   const judged = judgeCall(usable.inputs, a.allocation, result);
   const rec = toRecording(
-    { step: i, requestSeq: request.seq, provider: provider.name, requestedModel: source.model ?? null, observations, decimals, notes: source.notes, requestBody },
+    { step: i, requestSeq: request.seq, provider: provider.name, requestedModel: source.model, observations, decimals, notes: source.notes, requestBody },
     { assessment: a, result, ...judged },
   );
   const recording = writeRecording(rt.ledger.dir, rec);
@@ -369,8 +383,9 @@ function noAction(rt: Runtime, i: number, reason: string, evidence: Record<strin
 
 /**
  * Plans a model-sourced proposal from this step's recorded decision, making one only if none exists. A recorded
- * decision is never re-asked: on resume its proposal is re-checked against fresh state and submitted unchanged,
- * or the step becomes a no-action. Returns null when nothing is to be sent.
+ * decision is never re-asked. Immediately before signing, inputs are read again: the proposal is submitted
+ * unchanged only if it still passes the objective guard and every price keeps its age margin; otherwise the step
+ * is a no-action finding. Returns null when nothing is to be sent.
  */
 async function modelPlan(rt: Runtime, i: number, expect: "signed" | "rejected", source: ModelSource): Promise<Plan | null> {
   const ofStep = (kind: "decision" | "decision-request") => rt.ledger.ofKind(kind).filter((e) => e.data.step === i);
@@ -401,23 +416,21 @@ async function modelPlan(rt: Runtime, i: number, expect: "signed" | "rejected", 
     noAction(rt, i, `rejected at ${verdict.boundary}`, evidence, `agent decision rejected at ${verdict.boundary}: ${verdict.problems.join("; ")}`);
     return null;
   }
-  if (resumed) {
-    const observations = await observe(rt);
-    const usable = inputsFrom(observations, decimalsOf(rt.m));
-    const problems = usable.ok ? objectiveProblems(usable.inputs, allocation(usable.inputs), verdict.proposal) : usable.problems;
-    evidence.recheck = { observations, problems };
-    if (problems.length > 0) {
-      const reason = `recorded proposal not acceptable at fresh state: ${problems.join("; ")}`;
-      noAction(rt, i, reason, evidence, usable.ok ? null : reason);
-      return null;
-    }
+  const observations = await observe(rt);
+  const usable = inputsFrom(observations, decimalsOf(rt.m));
+  const problems = usable.ok ? [...priceMarginProblems(observations, usable.inputs.grant.policy), ...objectiveProblems(usable.inputs, allocation(usable.inputs), verdict.proposal)] : usable.problems;
+  evidence.recheck = { observations, problems, price_margin_extra_sec: PRICE_MARGIN_EXTRA_SEC };
+  if (problems.length > 0) {
+    const reason = `recorded proposal not acceptable immediately before signing: ${problems.join("; ")}`;
+    noAction(rt, i, "pre-signing check failed", evidence, reason);
+    return null;
   }
   const overBudget = sellProblem(rt.m.budget, totals(rt.ledger), { asset: verdict.proposal.sell, units: verdict.proposal.sell_amount });
   if (overBudget !== null) {
     noAction(rt, i, "proposal exceeds the run budget", evidence, `budget: ${overBudget}`);
     return null;
   }
-  return proposePlan(rt, expect, verdict.proposal, { source: "live-model", ...evidence });
+  return proposePlan(rt, expect, verdict.proposal, { source: "live-model", ...evidence }, true);
 }
 
 async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" | "withhold" }>): Promise<Plan> {
@@ -553,6 +566,29 @@ async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" 
   }
 }
 
+/**
+ * A model proposal the mandate itself refused: propose_order panicked on the mandate (the only failed receipt) with
+ * nothing changed, or the order was rejected while pricing and holds no reservation. Null for anything else (a
+ * pending or signed order, other failures), which stays fatal. The refused order is never a fill target.
+ */
+async function modelRefusal(rt: Runtime, outcome: Outcome, pre: Extract<Pre, { kind: "propose" }>): Promise<{ refusal: string; error?: string; rejected_order_id?: string } | null> {
+  if (!outcome.final || outcome.receipts.some((r) => r.unknown)) return null;
+  const failed = outcome.receipts.filter((r) => r.error !== undefined);
+  const own = failed.filter((r) => r.executor_id === rt.mandate.id);
+  const grant = await rt.mandate.grant();
+  if (grant === null || grant.epoch !== pre.grant.epoch || grant.outstanding !== pre.grant.outstanding) return null;
+  if (!outcome.success) {
+    const orders = (await rt.mandate.allOrders()).length;
+    if (own.length !== 1 || failed.length !== 1 || orders !== pre.orders_before || grant.turnover_used !== pre.grant.turnover_used) return null;
+    return { refusal: "propose_order panicked on the mandate; nothing changed", error: (own[0]?.error ?? "").slice(0, 300) };
+  }
+  if (own.length > 0) return null;
+  const id = typeof outcome.return_value === "string" || typeof outcome.return_value === "number" ? String(outcome.return_value) : null;
+  const order = id === null ? null : await rt.mandate.order(id);
+  if (id === null || order?.state.state !== "rejected" || order.epoch !== pre.grant.epoch) return null;
+  return { refusal: `order ${id} rejected while pricing (${order.state.reason}); no reservation remains`, rejected_order_id: id };
+}
+
 /** `fatal: false` records a failed check as a finding and continues, so revocation and recovery still run. */
 async function verify(rt: Runtime, pre: Pre, outcome: Outcome): Promise<Verification & { data: Record<string, unknown>; fatal?: false }> {
   const { ctx } = rt;
@@ -578,6 +614,12 @@ async function verify(rt: Runtime, pre: Pre, outcome: Outcome): Promise<Verifica
       return { ...(await verifyGrant(ctx, outcome, pre.previous_epoch)), data: {} };
     case "propose": {
       const v = await verifyPropose(ctx, outcome, pre.expect, pre.proposal, pre.grant);
+      if (!v.passed && pre.source === "model" && pre.expect === "signed") {
+        const refused = await modelRefusal(rt, outcome, pre);
+        if (refused !== null) {
+          return { passed: false, problems: [`the mandate refused the agent's proposal: ${refused.refusal}`, ...v.problems], observed: { ...v.observed, ...refused }, data: { refused: true, reason: `the mandate refused the proposal: ${refused.refusal}` }, fatal: false };
+        }
+      }
       return { ...v, data: v.orderId === null ? {} : { order_id: v.orderId } };
     }
     case "fill":
@@ -750,8 +792,11 @@ async function reconcile(rt: Runtime, startNonces: Record<"owner" | "agent" | "f
     else if (prior.data.success !== found.success) throw new Refusal(`cannot resume: ledger says ${hash} success=${String(prior.data.success)}, chain says ${String(found.success)}`);
     rt.receipts.push(toEvidenceReceipt(found, { reconciled: true }));
     if (!doneSteps.has(step)) {
-      if (!found.submitted || (!found.success && !FAILURE_EXPECTED.has(kind))) throw new Stop(`step ${step + 1} ${kind}: reconciled transaction ${hash} did not succeed: ${found.error ?? ""}`);
-      await finishStep(rt, step, kind, Pre.parse(intent.data.pre), found);
+      const pre = Pre.parse(intent.data.pre);
+      // A failed model proposal goes through its non-fatal verification (a mandate refusal is a finding).
+      const failureExpected = FAILURE_EXPECTED.has(kind) || (pre.kind === "propose" && pre.source === "model");
+      if (!found.submitted || (!found.success && !failureExpected)) throw new Stop(`step ${step + 1} ${kind}: reconciled transaction ${hash} did not succeed: ${found.error ?? ""}`);
+      await finishStep(rt, step, kind, pre, found);
       doneSteps.add(step);
     }
   }

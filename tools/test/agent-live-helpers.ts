@@ -10,18 +10,18 @@ export class SyntheticProvider implements LiveModelProvider {
   calls = 0;
   prompts: BuiltPrompt[] = [];
   /** Runs after the call is counted, before the answer is returned (fault injection). */
-  onDecide: (() => void) | null = null;
+  onDecide: (() => void | Promise<void>) | null = null;
 
   constructor(private readonly answer: SyntheticAnswer) {}
 
-  decide(prompt: BuiltPrompt): Promise<LiveModelCall> {
+  async decide(prompt: BuiltPrompt): Promise<LiveModelCall> {
     this.calls += 1;
     this.prompts.push(prompt);
-    this.onDecide?.();
+    await this.onDecide?.();
     const a = typeof this.answer === "function" ? this.answer(prompt) : this.answer;
-    if (a instanceof Error) return Promise.reject(a);
+    if (a instanceof Error) throw a;
     const at = new Date().toISOString();
-    return Promise.resolve({
+    return {
       provider: "synthetic",
       requested_model: "synthetic",
       model: "synthetic",
@@ -30,7 +30,7 @@ export class SyntheticProvider implements LiveModelProvider {
       raw_output: a,
       decision_text: a,
       harness_note: "SYNTHETIC test double; not model output",
-    });
+    };
   }
 }
 

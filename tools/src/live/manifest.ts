@@ -20,25 +20,19 @@ export const OrderExpectation = z.enum(["signed", "rejected"]);
 
 /**
  * A live agent decision: fresh oracle prices, a deterministic 50/50 objective guard, and at most one model call.
- * near-ai needs an explicit model id and bounds; there is no default model and no fallback.
+ * Live steps use NEAR AI Cloud only, with an explicit model id and bounds: no default model, no fallback, one
+ * attempt. (The anthropic and claude-cli providers serve tools/src/agent/record.ts fixture recording only.)
  */
 export const ModelSource = z
   .object({
     from: z.literal("model"),
-    provider: z.enum(["anthropic", "claude-cli", "near-ai"]),
-    model: z.string().min(1).optional(),
-    timeout_ms: z.number().int().min(1_000).max(600_000).optional(),
-    max_tokens: z.number().int().min(1).max(32_768).optional(),
+    provider: z.literal("near-ai"),
+    model: z.string().min(1),
+    timeout_ms: z.number().int().min(1_000).max(600_000),
+    max_tokens: z.number().int().min(1).max(32_768),
     notes: z.array(z.string()),
   })
-  .strict()
-  .superRefine((s, ctx) => {
-    if (s.provider === "near-ai") {
-      for (const k of ["model", "timeout_ms", "max_tokens"] as const) if (s[k] === undefined) ctx.addIssue({ code: "custom", path: [k], message: "required for provider near-ai" });
-    } else {
-      for (const k of ["timeout_ms", "max_tokens"] as const) if (s[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: `not supported for provider ${s.provider}` });
-    }
-  });
+  .strict();
 export type ModelSource = z.infer<typeof ModelSource>;
 
 export const Step = z.discriminatedUnion("kind", [
