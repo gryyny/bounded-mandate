@@ -650,7 +650,9 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
       // The phase is the verified step completion, recorded on the resume after reconciliation.
       expect(confirmed?.at).toBe(done?.at);
       expect(Date.parse(confirmed?.at ?? "")).toBeGreaterThanOrEqual(Date.parse(reconciled[0]?.at ?? ""));
-      expect(relay.timing.phases.map((x) => x.at)).not.toContain(lost[0]?.at);
+      // Strictly after the lost response. (Timestamps are not identities: the same transaction's "sent" phase can
+      // share the lost response's millisecond on a local sandbox.)
+      expect(Date.parse(confirmed?.at ?? "")).toBeGreaterThan(Date.parse(lost[0]?.at ?? ""));
       expect(relay.timing.phases.map((x) => x.phase)).toEqual([
         "withheld order proposed (sent)",
         "withheld order signed (propose confirmed by runner)",
