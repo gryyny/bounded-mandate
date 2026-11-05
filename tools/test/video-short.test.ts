@@ -1,8 +1,10 @@
 // The short video cut, from SYNTHETIC story evidence (see video-story-specimen.ts); no frames are rendered here.
 import { describe, expect, it } from "vitest";
 import { bindDemo } from "../src/evidence/binding.js";
-import { SHORT_RANGE_S, chunks, shortPace, shortScenes } from "../src/video/make.js";
-import { STORY, storyEvidence } from "./video-story-specimen.js";
+import { revocationStory } from "../src/page/story.js";
+import { type Evidence } from "../src/types.js";
+import { SHORT_RANGE_S, chunks, type LogStep, shortPace, shortScenes, walkthroughScenes } from "../src/video/make.js";
+import { STORY, expiredStoryEvidence, storyEvidence } from "./video-story-specimen.js";
 
 const captions = (mainnet = false) => shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), mainnet).flatMap((s) => s.captions.flatMap(chunks));
 
@@ -50,5 +52,50 @@ describe("short video cut", () => {
     const closing = scenes.at(-1)?.body ?? "";
     expect(closing).toContain("Not certified for this demo");
     expect(closing).not.toMatch(/Certified for this demo:/);
+  });
+
+  it("narrates an expired withheld order marked passed:false as inconclusive, not as rejected by revocation", () => {
+    const ev = expiredStoryEvidence();
+    const rejected = revocationStory(ev).find((st) => st.key === "rejected");
+    expect(rejected?.outcome).toBe("inconclusive");
+    const text = shortScenes(ev, bindDemo(ev, null), false).flatMap((sc) => sc.captions.flatMap(chunks)).join("\n");
+    expect(text).not.toContain("before its deadline");
+    expect(text).not.toContain("the signing key no longer exists");
+    expect(text).toContain("Rejected execution is inconclusive in this run: the withheld order was relayed 4.5 s after its deadline");
+    expect(text).toContain("did not hold");
+    expect(text).toContain("In this run 1 of 7 story stages are not shown as evidence: Rejected execution (inconclusive).");
+  });
+
+  it("keeps acceptance certification and the demo's story outcome apart", () => {
+    const ev = expiredStoryEvidence();
+    const certified = { ...bindDemo(ev, null), certified: true, reasons: [] };
+    const closing = shortScenes(ev, certified, false).at(-1);
+    // Certification comes from the binding alone; it does not turn the failed stage into a pass.
+    expect(closing?.body).toContain("Certified for this demo:");
+    expect(closing?.captions.join(" ")).toContain("Rejected execution (inconclusive)");
+    const clean = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false).at(-1);
+    // And a fully held story does not make an uncertified run certified.
+    expect(clean?.body).toContain("Not certified for this demo");
+    expect(clean?.captions.join(" ")).not.toContain("not shown as evidence");
+  });
+
+  it("walkthrough narrates the expired relay's outcome instead of its rejection", () => {
+    const withDecision = (ev: Evidence): Evidence => ({
+      ...ev,
+      assertions: ev.assertions.map((a) =>
+        a.id === "model-proposal-on-chain"
+          ? { ...a, observed: { ...(a.observed as object), decision: { model: STORY.model, decision_text: JSON.stringify({ proposal: { sell: "usdc", sell_amount: STORY.sell.toString(), max_concession_bps: 40 } }), prompt_sha256: "SYNTHETIC", raw_output_sha256: "SYNTHETIC" } } }
+          : a,
+      ),
+    });
+    const steps: LogStep[] = ["Roles and limits", "Genuine model proposal", "Filler fills", "Second signed order withheld", "Malicious requests", "Owner revokes", "Withheld order relayed", "Agent, oracle and MPC disabled", "Recovery to the owner"].map((title) => ({ title, lines: [] }));
+    const scenes = (ev: Evidence) => walkthroughScenes(ev, null, bindDemo(ev, null), steps, {}, STORY.model);
+    const expired = scenes(withDecision(expiredStoryEvidence()));
+    const relay = expired.find((sc) => sc.title.startsWith("7 ·"));
+    expect(relay?.title).toBe("7 · The withheld order is relayed: inconclusive");
+    expect(relay?.captions.join(" ")).toContain("relayed 4.5 s after its deadline");
+    expect(expired.flatMap((sc) => sc.captions).join(" ")).not.toContain("The verifier rejects it");
+    const held = scenes(withDecision(storyEvidence())).find((sc) => sc.title.startsWith("7 ·"));
+    expect(held?.captions.join(" ")).toContain("Another account relays the withheld order 37 s before its deadline. The verifier rejects it");
   });
 });

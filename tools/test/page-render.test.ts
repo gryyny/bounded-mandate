@@ -10,7 +10,7 @@ import { ACCEPTANCE_SCHEMA, type Acceptance, type BaselineOutcome, type CaseResu
 import { LIVE_MAINNET_PATH, isTxHash, loadLive } from "../src/page/mainnet.js";
 import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/page/render.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
-import { STORY, storyEvidence, txHash } from "./video-story-specimen.js";
+import { STORY, expiredStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
 
 const REV = "a".repeat(40);
 const FIXTURES = { "verifier/defuse-0.4.5.wasm": "e".repeat(64) };
@@ -355,6 +355,21 @@ describe("evidence page: revocation story", () => {
     const failed = { ...ev, assertions: ev.assertions.map((a) => (a.id === "withheld-rejected" ? { ...a, passed: false } : a)) };
     const html = renderHtml(failed, { acceptance: null, live: null });
     expect(stages(html)).toContain("rejected failure");
+    expect(html).toContain("withheld-rejected</a> <strong>did not hold</strong>");
+  });
+
+  it("narrates a failed check as not held, and an expired relay as inconclusive, never as rejection by revocation", () => {
+    const ev = storyEvidence();
+    const failed = { ...ev, assertions: ev.assertions.map((a) => (a.id === "withheld-executable" ? { ...a, passed: false } : a)) };
+    const notHeld = renderHtml(failed, { acceptance: null, live: null });
+    expect(stages(notHeld)).toContain("withheld failure");
+    expect(notHeld).toContain(escapeHtml("did not hold: withheld-executable"));
+    expect(notHeld).not.toContain(escapeHtml("the verifier's simulation accepts it"));
+
+    const html = renderHtml(expiredStoryEvidence(), { acceptance: null, live: null });
+    expect(stages(html)).toContain("rejected inconclusive");
+    expect(html).toContain(escapeHtml("inconclusive: the withheld order was relayed 4.5 s after its deadline"));
+    expect(html).not.toMatch(/rejected -?\d+ s before its deadline/);
     expect(html).toContain("withheld-rejected</a> <strong>did not hold</strong>");
   });
 

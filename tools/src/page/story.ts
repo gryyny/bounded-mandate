@@ -1,6 +1,7 @@
 // The revocation story in seven stages, each bound to the demo evidence it shows. The page's opening sequence
 // and the short video both read it. Every value comes from one run's assertions and receipts; a stage whose
-// evidence is absent lists what is missing and shows no numbers.
+// evidence is absent lists what is missing and shows no numbers. A stage whose check did not hold, or whose evidence
+// is inconclusive, narrates that outcome instead of its success sentence; acceptance certification is separate.
 import { z } from "zod";
 import { VALUE_DECIMALS } from "../agent/snapshot.js";
 import { DECIMALS } from "../demo/market.js";
@@ -37,17 +38,21 @@ export interface StageCheck {
   held: boolean | null;
 }
 
+/** held: every check held; not-held: a check failed; inconclusive: the evidence cannot show the stage; missing: evidence absent. */
+export type StageOutcome = "held" | "not-held" | "inconclusive" | "missing";
+
 export interface Stage {
   key: StageKey;
   title: string;
-  /** The stage's main number line; null when its evidence is missing. */
+  outcome: StageOutcome;
+  /** The stage's main number line, or its failure/inconclusive statement; null when its evidence is missing. */
   headline: string | null;
   facts: [string, string][];
   /** Execution labels beyond the run's mode, e.g. recorded genuine model output. */
   labels: string[];
   receipts: { index: number; receipt: Receipt }[];
   checks: StageCheck[];
-  /** One-sentence narration with this run's numbers; null when evidence is missing. */
+  /** Narration with this run's numbers, or of the failure/inconclusive outcome; null when evidence is missing. */
   caption: string | null;
   missing: string[];
 }
@@ -75,6 +80,7 @@ class Binder {
   readonly missing: string[] = [];
   readonly checks: StageCheck[] = [];
   readonly receipts: { index: number; receipt: Receipt }[] = [];
+  readonly inconclusive: string[] = [];
 
   constructor(
     private readonly ev: Evidence,
@@ -118,11 +124,26 @@ const verifierReason = (error: string): string =>
 /** The seven stages of the revocation story, in order, from one run's evidence. */
 export function revocationStory(ev: Evidence): Stage[] {
   const claimed = new Set<number>();
-  const stage = (key: StageKey, title: string, build: (b: Binder) => Omit<Stage, "key" | "title" | "receipts" | "checks" | "missing">): Stage => {
+  const stage = (key: StageKey, title: string, build: (b: Binder) => Omit<Stage, "key" | "title" | "outcome" | "receipts" | "checks" | "missing">): Stage => {
     const b = new Binder(ev, claimed);
     const built = build(b);
-    const complete = b.missing.length === 0;
-    return { key, title, ...built, headline: complete ? built.headline : null, caption: complete ? built.caption : null, receipts: b.receipts, checks: b.checks, missing: b.missing };
+    const failed = b.checks.filter((c) => c.held === false);
+    const outcome: StageOutcome = b.missing.length > 0 ? "missing" : b.inconclusive.length > 0 ? "inconclusive" : failed.length > 0 ? "not-held" : "held";
+    const notHeld = failed.map((c) => `"${c.description}" (${c.id})`).join("; ");
+    const failedSentence = failed.length === 0 ? "" : ` Check ${notHeld} did not hold.`;
+    const narration: Record<StageOutcome, { headline: string | null; caption: string | null }> = {
+      held: { headline: built.headline, caption: built.caption },
+      missing: { headline: null, caption: null },
+      inconclusive: {
+        headline: `inconclusive: ${b.inconclusive.join("; ")}`,
+        caption: `${title} is inconclusive in this run: ${b.inconclusive.join("; ")}.${failedSentence} This stage is not shown as evidence.`,
+      },
+      "not-held": {
+        headline: `did not hold: ${failed.map((c) => c.id).join(", ")}`,
+        caption: `${title}: in this run, check ${notHeld} did not hold. This stage is not shown as evidence.`,
+      },
+    };
+    return { key, title, outcome, ...built, ...narration[outcome], receipts: b.receipts, checks: b.checks, missing: b.missing };
   };
   const mandate = ev.identifiers.mandate ?? "the mandate";
   const owner = ev.identifiers.owner ?? "the owner";
@@ -240,7 +261,11 @@ export function revocationStory(ev: Evidence): Stage[] {
       const [r] = b.tx(/withheld order after revocation/);
       const rej = b.observed("withheld-rejected");
       const relayer = Events.safeParse(r?.detail);
-      const secondsLeft = rej?.order_deadline_ns == null ? null : Number((BigInt(rej.order_deadline_ns) - BigInt(rej.relay_block_time_ns)) / 1_000_000_000n);
+      const leftNs = rej?.order_deadline_ns == null ? null : BigInt(rej.order_deadline_ns) - BigInt(rej.relay_block_time_ns);
+      const secondsLeft = leftNs === null ? null : Number(leftNs / 1_000_000_000n);
+      if (rej !== null && leftNs === null) b.inconclusive.push("the withheld order's deadline is not recorded");
+      // A relay after the deadline fails for expiry whatever the key state, so it cannot show revocation's effect.
+      if (leftNs !== null && leftNs < 0n) b.inconclusive.push(`the withheld order was relayed ${units((-leftNs).toString(), 9, 1)} s after its deadline, so its rejection does not show the effect of revocation`);
       return {
         headline: rej === null || secondsLeft === null ? null : `rejected ${String(secondsLeft)} s before its deadline`,
         facts:

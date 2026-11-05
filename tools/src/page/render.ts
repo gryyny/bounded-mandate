@@ -275,7 +275,7 @@ function modesKey(ev: Evidence, live: LiveView): string {
 }
 
 function stageCard(s: Stage, i: number, ev: Evidence): string {
-  const state = s.missing.length > 0 ? "missing" : s.checks.some((c) => c.held === false) ? "failure" : "held";
+  const state = { held: "held", "not-held": "failure", inconclusive: "inconclusive", missing: "missing" }[s.outcome];
   const txs = s.receipts.map(
     ({ index, receipt }) => `<a href="#tx-${String(index)}">tx ${escapeHtml(shortHash(receipt.tx_hash ?? receipt.label))}</a>${receipt.outcome === "failure" ? " (failed)" : ""}`,
   );
@@ -286,7 +286,7 @@ function stageCard(s: Stage, i: number, ev: Evidence): string {
   const facts = s.facts.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
   return `<li class="stage ${s.key} ${state}" id="stage-${s.key}"><p class="stage-head"><span class="stage-n" aria-hidden="true">${String(i + 1)}</span><span class="stage-title">${escapeHtml(s.title)}</span></p>
 <p class="stage-modes">${modeBadge(ev.mode)}${labels}</p>
-${s.headline === null ? `<p class="headline absent">Not in this evidence: ${escapeHtml(s.missing.join("; "))}</p>` : `<p class="headline">${escapeHtml(s.headline)}</p>`}
+${s.headline === null ? `<p class="headline absent">Not in this evidence: ${escapeHtml(s.missing.join("; "))}</p>` : `<p class="headline${s.outcome === "held" ? "" : " absent"}">${escapeHtml(s.headline)}</p>`}
 ${facts === "" ? "" : `<dl class="stage-facts">${facts}</dl>`}
 <p class="bound">Evidence: ${[...txs, ...checks].join(" · ")}</p></li>`;
 }

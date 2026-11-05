@@ -113,3 +113,17 @@ export function storyEvidence(): Evidence {
     ],
   });
 }
+
+/** SYNTHETIC: the withheld order relayed 4.5 s after its deadline, so the demo marks withheld-rejected as not held. */
+export const EXPIRED_RELAY_NS = STORY.deadlineNs + 4_500_000_000n;
+export function expiredStoryEvidence(): Evidence {
+  const ev = storyEvidence();
+  return {
+    ...ev,
+    assertions: ev.assertions.map((a) =>
+      a.id === "withheld-rejected"
+        ? { ...a, passed: false, observed: { error: "SYNTHETIC order expired", relay_block_time_ns: EXPIRED_RELAY_NS.toString(), order_deadline_ns: STORY.deadlineNs.toString(), nonce_used: false } }
+        : a,
+    ),
+  };
+}

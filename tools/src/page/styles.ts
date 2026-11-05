@@ -158,6 +158,7 @@ li.stage {
 li.stage.revoked, li.stage.rejected { border-top-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--sheet)); }
 li.stage.recovered { border-top-color: var(--pass); }
 li.stage.failure, li.stage.missing { border-top-color: var(--fail); }
+li.stage.inconclusive { border-top-color: var(--stale); }
 .stage-head { display: flex; align-items: center; gap: .6rem; margin: 0; }
 .stage-n { flex: none; width: 1.9rem; height: 1.9rem; border-radius: 50%; display: grid; place-items: center; border: 2px solid currentColor; font: 700 .85rem/1 var(--mono); }
 li.stage.revoked .stage-n, li.stage.rejected .stage-n { color: var(--accent); }

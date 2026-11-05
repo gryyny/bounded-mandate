@@ -29,7 +29,7 @@ import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js"
 import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
 import { GATE_LABEL, escapeHtml as esc, loadAcceptance } from "../page/render.js";
-import { revocationStory, shortHash, unboundReceipts, units, usdc, wnear, type Stage } from "../page/story.js";
+import { revocationStory, shortHash, unboundReceipts, units, usdc, wnear, type Stage, type StageKey } from "../page/story.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
@@ -42,7 +42,7 @@ const FPS = 30;
 const sha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const rel = (p: string): string => relative(REPO_ROOT, p);
 
-interface LogStep {
+export interface LogStep {
   title: string;
   lines: { ok: boolean; gate: string; text: string }[];
 }
@@ -98,7 +98,7 @@ function certification(binding: DemoBinding): { chip: string; sentence: string }
     : { chip: "Not certified for this demo", sentence: `Not certified for this demo: ${binding.reasons.join("; ")}. No gate counts as passed.` };
 }
 
-function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
+export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
   const A = new Map(ev.assertions.map((a) => [a.id, a]));
   const obs = (id: string): unknown => {
     const a = A.get(id);
@@ -122,6 +122,10 @@ function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBi
   };
   const checks = (s: LogStep): string => list(s.lines.map((l) => `<span class="${l.ok ? "ok" : "bad"}">${l.ok ? "ok" : "FAIL"}</span> <code>[${esc(l.gate)}]</code> ${esc(l.text)}`));
   const status = certification(binding);
+  // A scene narrates success only when its story stage held; otherwise it narrates the stage's outcome.
+  const story = new Map(revocationStory(ev).map((s) => [s.key, s]));
+  const held = (key: StageKey): boolean => story.get(key)?.outcome === "held";
+  const narrate = (key: StageKey, success: string): string => (held(key) ? success : (story.get(key)?.caption ?? `${key}: not in this evidence.`));
 
   const roles = stepOf("Roles and limits");
   const initial = (obs("grant-initial-value") as { contract: string }).contract;
@@ -175,7 +179,7 @@ function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBi
       kind: "demo",
       title: "1 · Grant and limits",
       body: txs(/grant/) + checks(roles),
-      captions: [`The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. The agent's only key can call propose_order.`],
+      captions: [narrate("limits", `The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. The agent's only key can call propose_order.`)],
     },
     {
       kind: "demo",
@@ -187,7 +191,7 @@ function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBi
         ["Prompt sha256", decision.prompt_sha256],
         ["Raw output sha256", decision.raw_output_sha256],
       ]) + txs(/propose_order \(order 1\)/) + checks(model),
-      captions: [`Recorded genuine model output, ${modelName}: sell ${usdc(proposal.sell_amount)} for wNEAR, at most ${String(proposal.max_concession_bps)} bps concession. The contract signs it.`],
+      captions: [narrate("trade", `Recorded genuine model output, ${modelName}: sell ${usdc(proposal.sell_amount)} for wNEAR, at most ${String(proposal.max_concession_bps)} bps concession. The contract signs it.`)],
     },
     {
       kind: "demo",
@@ -198,14 +202,14 @@ function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBi
         ["Mandate USDC", `${usdc(trade.before.usdc ?? "0")} → ${usdc(trade.after.usdc ?? "0")}`],
         ["Mandate wNEAR", `${wnear(trade.before.wnear ?? "0")} → ${wnear(trade.after.wnear ?? "0")}`],
       ]) + txs(/execute_intents order|settle_order/) + checks(fill),
-      captions: [`Our filler fills it on the pinned mainnet verifier WASM: the mandate pays ${usdc(trade.signed.sell_amount)} and receives ${wnear(trade.signed.buy_amount)}, exactly as signed.`],
+      captions: [narrate("trade", `Our filler fills it on the pinned mainnet verifier WASM: the mandate pays ${usdc(trade.signed.sell_amount)} and receives ${wnear(trade.signed.buy_amount)}, exactly as signed.`)],
     },
     {
       kind: "demo",
       labels: ["Scripted proposal"],
       title: "4 · A second signed order is withheld",
       body: txs(/scripted, withheld/) + checks(withheld),
-      captions: ["A scripted second order is signed and withheld. Before revocation the verifier would still accept it."],
+      captions: [narrate("withheld", "A scripted second order is signed and withheld. Before revocation the verifier would still accept it.")],
     },
     {
       kind: "demo",
@@ -216,22 +220,22 @@ function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBi
     },
     {
       kind: "demo",
-      title: "6 · Owner revokes; key removal confirmed",
+      title: held("revoked") ? "6 · Owner revokes; key removal confirmed" : `6 · Owner revokes: ${story.get("revoked")?.outcome ?? "missing"}`,
       body: txs(/^owner revoke/) + checks(revoke),
-      captions: ["The owner revokes. The verifier confirms the grant key is removed; only then is the withheld order's reservation released."],
+      captions: [narrate("revoked", "The owner revokes. The verifier confirms the grant key is removed; only then is the withheld order's reservation released.")],
     },
     {
       kind: "demo",
-      title: "7 · The withheld order is relayed and rejected",
+      title: held("rejected") ? "7 · The withheld order is relayed and rejected" : `7 · The withheld order is relayed: ${story.get("rejected")?.outcome ?? "missing"}`,
       body: kv([["Verifier error", reason], ["Time left before its deadline", `${String(secondsLeft)} s`], ["Nonce used", String(rejected.nonce_used)]]) + txs(/withheld order after revocation/) + checks(relay),
-      captions: [`Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the key no longer exists.`],
+      captions: [narrate("rejected", `Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the key no longer exists.`)],
     },
     {
       kind: "demo",
       labels: ["Ordinary recovery (not the owner-key rescue)"],
       title: "8 · Ordinary recovery with agent, oracle and MPC unavailable",
       body: kv([["Recovered", `${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)}`], ["Destination", `${ev.identifiers.owner ?? "owner"} (owner's Intents account)`], ["Mandate left", `${usdc(rec.mandate_final.usdc)}, ${wnear(rec.mandate_final.wnear)}`]]) + txs(/set_fail|set_mode|after revocation/) + txs(/recover/) + checks(disabled) + checks(recovery),
-      captions: [`With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} through ordinary recovery.`],
+      captions: [narrate("recovered", `With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} through ordinary recovery.`)],
     },
     {
       kind: "summary",
@@ -291,6 +295,9 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   if (unbound.length > 0) throw new Error(`receipts not bound to any story stage: ${unbound.join(", ")}`);
   const status = certification(binding);
   const mainnet = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run: pending approval — no mainnet transaction has been executed.";
+  const notShown = stages.filter((s) => s.outcome !== "held");
+  // The story outcome is the demo's; the certification sentence is the acceptance run's. Neither implies the other.
+  const storyCaption = notShown.length === 0 ? "" : `In this run ${String(notShown.length)} of ${String(stages.length)} story stages are not shown as evidence: ${notShown.map((s) => `${s.title} (${s.outcome})`).join(", ")}. `;
   const mainnetCaption = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run pending approval; no mainnet transaction executed.";
   return [
     {
@@ -313,12 +320,12 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
     {
       kind: "summary",
       title: "Check it yourself",
-      body: `${list([
+      body: `${notShown.length === 0 ? "" : `<p class="note">${esc(storyCaption)}</p>`}${list([
         "<b>Watch</b> this video, or read the evidence page: each stage links to its transactions and checks.",
         `<b>Inspect mainnet receipts:</b> ${esc(mainnet)}`,
         "<b>Run</b> <code>make demo</code> and <code>make test</code>: no funds or model key needed.",
       ])}<p class="note">${esc(status.sentence)}</p>`,
-      captions: [`Sandbox run with labelled test doubles. ${mainnetCaption} Reproduce it with make demo and make test.`],
+      captions: [`Sandbox run with labelled test doubles. ${storyCaption}${mainnetCaption} Reproduce it with make demo and make test.`],
     },
   ];
 }
