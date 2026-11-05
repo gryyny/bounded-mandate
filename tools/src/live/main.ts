@@ -4,15 +4,18 @@
 // - Each step ends with an operation-specific terminal check over chain state and the whole receipt tree.
 // - An ambiguous outcome stops the run (exit 1). Nothing is ever resubmitted or substituted; a resume
 //   (MANDATE_LIVE_RESUME=1) first reconciles the ledger with chain state.
+// - A model-sourced propose step is a recorded agent decision (decision-request before the model call, decision
+//   after it). A recorded decision is never re-asked; a request without a result stops unless
+//   MANDATE_LIVE_ALLOW_NEW_DECISION=1. A no-action sends nothing, and fill/settle/withhold of that step are skipped.
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { actions, type Account, type Action } from "near-api-js";
 import { z } from "zod";
-import { decide, decisionRecord } from "../agent/adapter.js";
-import { AnthropicProvider, ClaudeCliProvider, type ModelProvider } from "../agent/providers.js";
-import { buildSnapshot } from "../agent/snapshot.js";
+import { toRecording, writeRecording } from "../agent/live-recording.js";
+import { AnthropicProvider, ClaudeCliProvider, NearAiProvider, type LiveModelProvider } from "../agent/providers.js";
+import { RebalanceVerdict, allocation, assess, callModel, inputsFrom, judgeCall, objectiveProblems, readObservations, type FreshObservations } from "../agent/rebalance.js";
 import { environment, sourceBinding } from "../evidence/source.js";
 import { payableFor } from "../filler/arithmetic.js";
 import { Filler, mandateLeg } from "../filler/filler.js";
@@ -21,9 +24,9 @@ import { MandateClient, VerifierClient, tokenId } from "../near/contracts.js";
 import { loadCredential, type Credential } from "../near/credentials.js";
 import { REPO_ROOT } from "../near/sandbox.js";
 import { Evidence, GrantView, OrderView, SignedNep413, type Asset, type Assertion, type Proposal, type Receipt } from "../types.js";
-import { BudgetExceeded, checkActual, checkPlanned, totals, type Planned } from "./budget.js";
+import { BudgetExceeded, checkActual, checkPlanned, sellProblem, totals, type Planned } from "./budget.js";
 import { Ledger, canonical, type LedgerEntry } from "./ledger.js";
-import { Refusal, loadManifest, type LiveManifest, type Step } from "./manifest.js";
+import { Refusal, loadManifest, type LiveManifest, type ModelSource, type Step } from "./manifest.js";
 import { credentialProblems } from "./network.js";
 import { STEP_SIGNER, preflight, worstFee, type Check } from "./preflight.js";
 import {
@@ -59,6 +62,8 @@ export interface LiveDeps {
   outRoot?: string;
   timeoutMs?: number;
   pollMs?: number;
+  /** Replaces the manifest's model provider for every model-sourced step (tests use labelled synthetic providers). */
+  modelProvider?: LiveModelProvider;
 }
 
 const BalancesJson = z.object({ usdc: z.string(), wnear: z.string() }).strict();
@@ -144,6 +149,7 @@ interface Runtime {
   gasPrice: bigint;
   receipts: Receipt[];
   assertions: Assertion[];
+  agent: { provider: LiveModelProvider | undefined; allowNewDecision: boolean; env: NodeJS.ProcessEnv };
 }
 
 class Stop extends Error {}
@@ -176,11 +182,11 @@ async function probe(rt: Runtime, phase: string, deadlineNs: bigint, chain: bool
 /** Steps whose transaction is expected to fail; a failed final outcome is verified, not a stop. */
 const FAILURE_EXPECTED = new Set<string>(["refused_proposal", "relay_withheld"]);
 
-/** The latest `withhold` record of this run. */
+/** The latest `withhold` record of this run; null if there is none or it was skipped (never an earlier one). */
 function latestWithheld(ledger: Ledger): Withheld | null {
   const done = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold");
   const last = done.at(-1);
-  return last === undefined ? null : Withheld.parse(last.data.withheld);
+  return last === undefined || last.data.skipped === true ? null : Withheld.parse(last.data.withheld);
 }
 
 const sha256Of = (value: unknown): string => createHash("sha256").update(canonical(value)).digest("hex");
@@ -207,6 +213,38 @@ const nextStepIndex = (ledger: Ledger): number => {
   return done.length === 0 ? 0 : Math.max(...done) + 1;
 };
 
+/**
+ * The order a fill/settle/withhold step acts on: its explicit order_id, else the order of the most recent propose
+ * step before it, else (no propose step before it) the latest order this run created. `skipped` when that propose
+ * step made no order: the step must not act on an earlier one.
+ */
+function targetOrder(rt: Runtime, i: number, explicit: string | undefined): { order_id: string } | { skipped: string } | null {
+  if (explicit !== undefined) return { order_id: explicit };
+  const j = rt.m.steps.slice(0, i).map((x) => x.kind).lastIndexOf("propose");
+  if (j === -1) {
+    const last = createdOrders(rt.ledger).at(-1);
+    return last === undefined ? null : { order_id: last };
+  }
+  const done = rt.ledger.ofKind("step-done").filter((e) => e.data.step === j).at(-1);
+  if (done === undefined) return null;
+  if (typeof done.data.order_id === "string") return { order_id: done.data.order_id };
+  return { skipped: `step ${j + 1} propose made no order (${typeof done.data.reason === "string" ? done.data.reason : "no order id"})` };
+}
+
+function orderOf(rt: Runtime, i: number, kind: string, explicit: string | undefined): string {
+  const t = targetOrder(rt, i, explicit);
+  if (t === null) throw new Stop(`${kind}: no order id`);
+  if ("skipped" in t) throw new Stop(`${kind}: ${t.skipped}`);
+  return t.order_id;
+}
+
+/** Records a step that did not run because its target propose step made no order. Nothing is sent. */
+function skipStep(rt: Runtime, i: number, kind: string, reason: string): void {
+  const verification = { skipped: true, reason };
+  rt.assertions.push({ id: `step-${i + 1}-${kind}`, gate: "LIVE", description: `${kind}: skipped, nothing sent (${reason})`, passed: true, observed: verification });
+  rt.ledger.append("step-done", { step: i, kind, skipped: true, reason, verification });
+}
+
 function orderAllowed(rt: Runtime, orderId: string): void {
   if (!createdOrders(rt.ledger).includes(orderId) && !rt.m.fillable_preexisting_orders.includes(orderId)) {
     throw new Stop(`order ${orderId} was not created by this run and is not listed in fillable_preexisting_orders; refused`);
@@ -214,6 +252,173 @@ function orderAllowed(rt: Runtime, orderId: string): void {
 }
 
 const fc = (method: string, args: Record<string, unknown>, tgas: number): Action => actions.functionCall(method, args, BigInt(tgas) * TGAS, 0n);
+
+async function proposePlan(rt: Runtime, expect: "signed" | "rejected", proposal: Proposal, detail: Record<string, unknown>): Promise<Plan> {
+  const grant = await rt.mandate.grant();
+  if (grant === null) throw new Stop("propose: no grant");
+  const a = [fc("propose_order", { proposal }, rt.m.gas_tgas.propose)];
+  return {
+    signer: rt.accounts.agent,
+    receiver: rt.mandate.id,
+    method: "propose_order",
+    actions: a,
+    planned: { worst_fee_yocto: worstFee(rt.m, "propose", rt.gasPrice).toString(), deposit_yocto: plannedDeposit(a).toString(), sell: { asset: proposal.sell, units: proposal.sell_amount } },
+    pre: { kind: "propose", proposal, expect, grant },
+    detail,
+  };
+}
+
+const decimalsOf = (m: LiveManifest) => ({ usdc: m.mandate_config.usdc.decimals, wnear: m.mandate_config.wnear.decimals });
+
+function observe(rt: Runtime): Promise<FreshObservations> {
+  const c = rt.m.mandate_config;
+  return readObservations(rt.client, {
+    mandate: rt.mandate.id,
+    verifier: rt.verifier.id,
+    oracle: rt.m.accounts.oracle,
+    tokens: { usdc: c.usdc.token, wnear: c.wnear.token },
+    priceIds: { usdc: c.usdc.price_id, wnear: c.wnear.price_id },
+  });
+}
+
+function providerFor(rt: Runtime, source: ModelSource): LiveModelProvider {
+  if (rt.agent.provider !== undefined) return rt.agent.provider;
+  switch (source.provider) {
+    case "anthropic":
+      return new AnthropicProvider(source.model);
+    case "claude-cli":
+      return new ClaudeCliProvider(source.model);
+    case "near-ai": {
+      const { model, timeout_ms, max_tokens } = source;
+      if (model === undefined || timeout_ms === undefined || max_tokens === undefined) throw new Error("near-ai needs model, timeout_ms and max_tokens");
+      return NearAiProvider.fromEnv(rt.agent.env, { model, timeoutMs: timeout_ms, maxTokens: max_tokens });
+    }
+  }
+}
+
+/**
+ * A new agent decision from fresh inputs. The request is persisted before the model is called, the result
+ * (exact raw output, verdicts, recording file) after it; balanced or unusable inputs never call the model.
+ */
+async function newDecision(rt: Runtime, i: number, source: ModelSource, supersedes: number | null): Promise<LedgerEntry> {
+  const observations = await observe(rt);
+  const decimals = decimalsOf(rt.m);
+  const usable = inputsFrom(observations, decimals);
+  const record = (data: Record<string, unknown>) => rt.ledger.append("decision", { step: i, ...data, observations });
+  if (!usable.ok) return record({ model_called: false, verdict: { kind: "rejected", boundary: "inputs", problems: usable.problems } });
+  const a = assess(usable.inputs, source.notes);
+  if (a.kind === "balanced") return record({ model_called: false, verdict: a.verdict, allocation: a.allocation });
+  let provider: LiveModelProvider;
+  try {
+    provider = providerFor(rt, source);
+  } catch (error) {
+    return record({ model_called: false, verdict: { kind: "rejected", boundary: "provider", problems: [error instanceof Error ? error.message : String(error)] }, allocation: a.allocation });
+  }
+  const requestBody = provider.requestBody?.(a.prompt) ?? null;
+  const request = rt.ledger.append("decision-request", {
+    step: i,
+    supersedes,
+    provider: provider.name,
+    requested_model: source.model ?? null,
+    prompt_version: a.prompt.version,
+    prompt_sha256: a.prompt.sha256,
+    request_body: requestBody,
+    observations,
+    allocation: a.allocation,
+  });
+  const result = await callModel(provider, a.prompt);
+  const judged = judgeCall(usable.inputs, a.allocation, result);
+  const rec = toRecording(
+    { step: i, requestSeq: request.seq, provider: provider.name, requestedModel: source.model ?? null, observations, decimals, notes: source.notes, requestBody },
+    { assessment: a, result, ...judged },
+  );
+  const recording = writeRecording(rt.ledger.dir, rec);
+  return record({
+    request_seq: request.seq,
+    model_called: true,
+    provider: rec.provider,
+    requested_model: rec.requested_model,
+    model: rec.model,
+    prompt_version: a.prompt.version,
+    prompt_sha256: a.prompt.sha256,
+    started_at: rec.started_at,
+    finished_at: rec.finished_at,
+    duration_ms: rec.duration_ms,
+    raw_output: rec.raw_output,
+    decision_text: rec.decision_text,
+    provider_error: rec.provider_error,
+    adapter_verdict: judged.adapter,
+    verdict: judged.verdict,
+    recording,
+    allocation: a.allocation,
+  });
+}
+
+/** Records a model-sourced propose step that sends nothing. A finding marks a decision that failed, not a decline. */
+function noAction(rt: Runtime, i: number, reason: string, evidence: Record<string, unknown>, finding: string | null): void {
+  const verification = { no_action: true, reason, ...evidence };
+  rt.assertions.push({
+    id: `step-${i + 1}-propose`,
+    gate: "LIVE",
+    description: finding === null ? `propose: agent no-action, nothing sent (${reason})` : "propose: agent decision not accepted, nothing sent",
+    passed: finding === null,
+    observed: verification,
+  });
+  rt.ledger.append("step-done", { step: i, kind: "propose", no_action: true, reason, verification, ...(finding === null ? {} : { finding: `step ${i + 1} propose: ${finding}` }) });
+}
+
+/**
+ * Plans a model-sourced proposal from this step's recorded decision, making one only if none exists. A recorded
+ * decision is never re-asked: on resume its proposal is re-checked against fresh state and submitted unchanged,
+ * or the step becomes a no-action. Returns null when nothing is to be sent.
+ */
+async function modelPlan(rt: Runtime, i: number, expect: "signed" | "rejected", source: ModelSource): Promise<Plan | null> {
+  const ofStep = (kind: "decision" | "decision-request") => rt.ledger.ofKind(kind).filter((e) => e.data.step === i);
+  const recorded = ofStep("decision").at(-1);
+  const request = ofStep("decision-request").at(-1);
+  const resumed = recorded !== undefined && (request === undefined || recorded.seq > request.seq);
+  let entry: LedgerEntry;
+  if (resumed) entry = recorded;
+  else if (request !== undefined && !rt.agent.allowNewDecision) {
+    throw new Stop(
+      `step ${i + 1} propose: the model request in ledger entry ${request.seq} has no recorded result; the model may have answered, so it is not asked again. Set MANDATE_LIVE_ALLOW_NEW_DECISION=1 to make a new, recorded decision.`,
+    );
+  } else entry = await newDecision(rt, i, source, request?.seq ?? null);
+  const verdict = RebalanceVerdict.parse(entry.data.verdict);
+  const evidence: Record<string, unknown> = {
+    decision_seq: entry.seq,
+    model_called: entry.data.model_called === true,
+    verdict,
+    observations: entry.data.observations,
+    allocation: entry.data.allocation ?? null,
+    ...(resumed ? { resumed_from_ledger: true } : {}),
+  };
+  if (verdict.kind === "no-action") {
+    noAction(rt, i, `${verdict.reason}: ${verdict.detail}`, evidence, null);
+    return null;
+  }
+  if (verdict.kind === "rejected") {
+    noAction(rt, i, `rejected at ${verdict.boundary}`, evidence, `agent decision rejected at ${verdict.boundary}: ${verdict.problems.join("; ")}`);
+    return null;
+  }
+  if (resumed) {
+    const observations = await observe(rt);
+    const usable = inputsFrom(observations, decimalsOf(rt.m));
+    const problems = usable.ok ? objectiveProblems(usable.inputs, allocation(usable.inputs), verdict.proposal) : usable.problems;
+    evidence.recheck = { observations, problems };
+    if (problems.length > 0) {
+      const reason = `recorded proposal not acceptable at fresh state: ${problems.join("; ")}`;
+      noAction(rt, i, reason, evidence, usable.ok ? null : reason);
+      return null;
+    }
+  }
+  const overBudget = sellProblem(rt.m.budget, totals(rt.ledger), { asset: verdict.proposal.sell, units: verdict.proposal.sell_amount });
+  if (overBudget !== null) {
+    noAction(rt, i, "proposal exceeds the run budget", evidence, `budget: ${overBudget}`);
+    return null;
+  }
+  return proposePlan(rt, expect, verdict.proposal, { source: "live-model", ...evidence });
+}
 
 async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" | "withhold" }>): Promise<Plan> {
   const { m, mandate } = rt;
@@ -228,39 +433,9 @@ async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" 
       const prev = await mandate.grant();
       return { signer: rt.accounts.owner, receiver: mandate.id, method: "grant", actions: a, planned: base("grant", a), pre: { kind: "grant", previous_epoch: prev?.epoch ?? null }, detail: {} };
     }
-    case "propose": {
-      const grant = await mandate.grant();
-      if (grant === null) throw new Stop("propose: no grant");
-      let proposal: Proposal;
-      let detail: Record<string, unknown> = { source: step.source.from };
-      if (step.source.from === "manifest") {
-        proposal = step.source.proposal;
-      } else {
-        if (grant.initial_reference === null) throw new Stop("propose: grant has no reference to show the model");
-        const provider: ModelProvider = step.source.provider === "anthropic" ? new AnthropicProvider() : new ClaudeCliProvider();
-        const snapshot = buildSnapshot({
-          grant,
-          prices: { usdc: grant.initial_reference.usdc, wnear: grant.initial_reference.wnear },
-          decimals: { usdc: m.mandate_config.usdc.decimals, wnear: m.mandate_config.wnear.decimals },
-          balances: await balancesOf(rt.ctx, mandate.id),
-          notes: step.source.notes,
-        });
-        const decision = await decide(provider, snapshot);
-        detail = { source: "live-model", decision: decisionRecord(decision) };
-        if (decision.verdict.kind !== "proposal") throw new Stop(`model did not propose (${decision.verdict.kind}); nothing submitted`);
-        proposal = decision.verdict.proposal;
-      }
-      const a = [fc("propose_order", { proposal }, g.propose)];
-      return {
-        signer: rt.accounts.agent,
-        receiver: mandate.id,
-        method: "propose_order",
-        actions: a,
-        planned: { ...base("propose", a), sell: { asset: proposal.sell, units: proposal.sell_amount } },
-        pre: { kind: "propose", proposal, expect: step.expect, grant },
-        detail,
-      };
-    }
+    case "propose":
+      if (step.source.from !== "manifest") throw new Stop("propose: a model-sourced proposal is planned from its recorded decision");
+      return proposePlan(rt, step.expect, step.source.proposal, { source: "manifest" });
     case "refused_proposal": {
       const grant = await mandate.grant();
       if (grant === null) throw new Stop("refused_proposal: no grant");
@@ -307,8 +482,7 @@ async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" 
       };
     }
     case "fill": {
-      const orderId = step.order_id ?? createdOrders(rt.ledger).at(-1);
-      if (orderId === undefined) throw new Stop("fill: no order id");
+      const orderId = orderOf(rt, i, "fill", step.order_id);
       orderAllowed(rt, orderId);
       const order = await mandate.order(orderId);
       if (order?.state.state !== "signed") throw new Stop(`fill: order ${orderId} is not signed (${JSON.stringify(order?.state)})`);
@@ -349,8 +523,7 @@ async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" 
       };
     }
     case "settle": {
-      const orderId = step.order_id ?? createdOrders(rt.ledger).at(-1);
-      if (orderId === undefined) throw new Stop("settle: no order id");
+      const orderId = orderOf(rt, i, "settle", step.order_id);
       orderAllowed(rt, orderId);
       const a = [fc("settle_order", { order_id: orderId }, g.settle)];
       return { signer: rt.accounts.owner, receiver: mandate.id, method: "settle_order", actions: a, planned: base("settle", a), pre: { kind: "settle", order_id: orderId }, detail: { order_id: orderId } };
@@ -456,7 +629,12 @@ async function finishStep(rt: Runtime, step: number, kind: string, pre: Pre, out
 
 /** Prepares and simulates the withheld bundle; never sends it. Failures are findings, not stops. */
 async function withhold(rt: Runtime, i: number, step: Extract<Step, { kind: "withhold" }>): Promise<void> {
-  const orderId = step.order_id ?? createdOrders(rt.ledger).at(-1);
+  const target = targetOrder(rt, i, step.order_id);
+  if (target !== null && "skipped" in target) {
+    skipStep(rt, i, "withhold", target.skipped);
+    return;
+  }
+  const orderId = target?.order_id;
   if (orderId === undefined || !createdOrders(rt.ledger).includes(orderId)) throw new Stop(`withhold: order ${orderId ?? "?"} was not created by this run`);
   const order = await rt.mandate.order(orderId);
   const grant = await rt.mandate.grant();
@@ -614,6 +792,20 @@ async function execute(rt: Runtime, from: number): Promise<void> {
       await relayWithheld(rt, i, step);
       continue;
     }
+    if (step.kind === "fill" || step.kind === "settle") {
+      const target = targetOrder(rt, i, step.order_id);
+      if (target !== null && "skipped" in target) {
+        skipStep(rt, i, step.kind, target.skipped);
+        continue;
+      }
+    }
+    if (step.kind === "propose" && step.source.from === "model") {
+      const decided = await modelPlan(rt, i, step.expect, step.source);
+      if (decided === null) continue;
+      checkPlanned(rt.m.budget, totals(rt.ledger), decided.planned);
+      await send(rt, i, step, decided);
+      continue;
+    }
     const p = await plan(rt, i, step);
     checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
     await send(rt, i, step, p);
@@ -643,6 +835,11 @@ async function send(rt: Runtime, i: number, step: Step, p: Plan, gate?: () => Pr
  */
 async function relayWithheld(rt: Runtime, i: number, step: Extract<Step, { kind: "relay_withheld" }>): Promise<void> {
   const probes: Probe[] = [];
+  const lastWithhold = rt.ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold").at(-1);
+  if (lastWithhold?.data.skipped === true) {
+    skipRelay(rt, i, new RelaySkipped(`no withheld order: step ${z.number().int().parse(lastWithhold.data.step) + 1} withhold was skipped`, { classification: "inconclusive" }), probes);
+    return;
+  }
   try {
     const pre = await relayGate(rt, step, "relay pre-check");
     probes.push(pre.probe);
@@ -725,6 +922,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       gasPrice,
       receipts,
       assertions,
+      agent: { provider: deps.modelProvider, allowNewDecision: env.MANDATE_LIVE_ALLOW_NEW_DECISION === "1", env },
     });
     // A resume first proves it is on the ledger's chain, then reconciles (reads only, nothing is sent),
     // so that preflight sees the orders and fees the interrupted run actually produced.

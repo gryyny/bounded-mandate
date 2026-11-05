@@ -1,0 +1,217 @@
+{
+  "schema_version": 2,
+  "notes": [
+    "TEMPLATE (live-agent variant of manifest.example.json) for an approval package. Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is. Identical to manifest.example.json except these notes and step 4, whose proposal comes from the live agent instead of the manifest. Budgets, caps, policy and the funded sequence are unchanged.",
+    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata. All re-read through https://free.rpc.fastnear.com on 2026-11-04 (block ~223070360): unchanged.",
+    "RPC: https://free.rpc.fastnear.com (listed in the NEAR RPC provider directory). The rpc.mainnet.near.org endpoint is deprecated and heavily rate-limited. For reconciling older transactions, https://archival-rpc.mainnet.fastnear.com is FastNEAR's archival endpoint.",
+    "Sequence: grant; one deliberately forbidden proposal (concession 51 bps > 50 bps policy maximum) that the mandate must refuse; one live agent decision (step 4), filled and settled if the agent trades; a second signed order of 0.5 USDC from the manifest that is withheld (bundle simulated, not sent); revoke; relay of the withheld bundle, which passes only if the verifier rejects it for the removed key before its deadline with both nonces unused and balances unchanged; recovery of both assets to the owner's Intents account.",
+    "Live agent (step 4): before deciding, the runner reads the grant, the mandate's Intents balances and both oracle prices (get_price_no_older_than with the grant's oracle_max_age_sec) at one final block and records price, conf, expo, publish_time, age and the block height/time. A missing, unconfident or stale price, or a grant that is not active, sends nothing and is recorded as a finding.",
+    "Objective (the agent's own rule, not contract policy): keep about 50/50 USDC/wNEAR by USD value at those current prices. If the USDC share is within 2 percentage points of 50%, the step is a no-action without a model call. Otherwise the model is called once (prompt v1). A proposal is accepted only if it sells the overweight asset, no more than the amount needed to reach 50/50 plus 1% (and one unit), within the per-order cap and remaining outstanding capacity valued at the larger of the grant's reference and the current price, with a concession at most the grant's, and within this manifest's sale budget. A model decline is a no-action; invalid output, extra fields, wrong direction, oversize, truncation, timeout or a provider error send nothing and are recorded as findings.",
+    "If step 4 makes no order (no-action or finding), steps 5 (fill) and 6 (settle) are recorded as skipped and send nothing; they never act on another order. The withheld order is the manifest's own fixed 0.5 USDC proposal (step 7), so the revocation test of steps 8-10 runs whatever the agent decides. Recovery always runs.",
+    "This budget allows only USDC sales (max_order_sell.wnear 0) and at most 1 USDC per order. A wNEAR-heavy state therefore cannot trade: an accepted wNEAR proposal is recorded as a budget finding and nothing is sent. Funding the mandate with 5 USDC and 1.25 wNEAR at NEAR ~= $4.0 is balanced (no-action); 5 USDC and 1.0 wNEAR is about 55.6% USDC, needing about 0.5 USDC to reach 50/50.",
+    "Model: provider near-ai (NEAR AI Cloud, https://cloud-api.near.ai/v1/chat/completions, OpenAI-compatible). The API key is read from NEAR_AI_API_KEY and never recorded. The model id must be explicit (no default, no fallback) and should list structured_outputs in GET https://cloud-api.near.ai/v1/models. One attempt, timeout_ms and max_tokens bounded; any finish_reason other than stop is rejected. Model quality, latency and TEE attestation are not verified by this runner.",
+    "Recording and resume: the request is written to the ledger before the call, and the exact request body, raw response, verdict and inputs after it, also as out/live/<manifest sha256>/decision-step-4-request-<seq>.json (replayable without credentials). A resume never asks the model again for a recorded decision: it re-checks the recorded proposal against fresh state and submits exactly it, or records a no-action. A request without a recorded result stops the run unless MANDATE_LIVE_ALLOW_NEW_DECISION=1, which makes a new, recorded decision.",
+    "Grant policy: PROPOSED, pending the owner's policy decision; not adopted. SPEC.md requires an oracle maximum age of 60 seconds and proposes a deadline no later than 60 seconds after authorization; Policy::DEMO uses 60/60. This template proposes order_ttl_sec 120 and oracle_max_age_sec 120 for the mainnet run only, as an explicit deviation the owner must accept in the approval; otherwise set both to 60. An order's deadline is min(now + order_ttl, oldest price publish time + oracle_max_age); 60 s leaves too little time on mainnet for MPC signing, revocation to FINAL and the relay, so the revocation test would likely be inconclusive. Trade-off: prices up to 120 s old are accepted and a signed order stays executable up to 120 s while revocation is pending. Every cap is unchanged.",
+    "Budget caps: owner inventory <= 5 USDC + 1.25 wNEAR (about $10 at NEAR ~= $4.0 on 2026-11-04); single order <= 1 USDC; mandate sales <= 2 USDC in total (the refused 0.5 USDC is counted conservatively); filler pays <= 0.5 wNEAR in total (the withheld relay is counted conservatively). Recompute the wNEAR units from the price on the approval day.",
+    "Deployment and storage (<= 5 NEAR allocation) and all funding are done separately by the owner; this runner never funds, deposits or deploys.",
+    "The worst-case fee of the steps below at gas price 1e8 yocto is (sum over transaction steps of the step's gas_tgas + 5) x 1e12 x 1e8 = 1310 TGas = 0.131 NEAR; max_fee_yocto is 0.15 NEAR. Preflight refuses if the live gas price makes the worst case exceed it.",
+    "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
+    "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
+    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders."
+  ],
+  "network": {
+    "name": "mainnet",
+    "chain_id": "mainnet",
+    "genesis_hash": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
+    "rpc_url": "https://free.rpc.fastnear.com"
+  },
+  "approval": {
+    "approved_by": "REPLACE_ME: approver name",
+    "reference": "REPLACE_ME: approval message/date reference"
+  },
+  "accounts": {
+    "mandate": "REPLACE_ME: mandate contract account (e.g. <name>.near)",
+    "owner": "REPLACE_ME: owner account",
+    "agent": "REPLACE_ME: agent account (only key: function-call propose_order)",
+    "filler": "REPLACE_ME: filler account",
+    "verifier": "intents.near",
+    "signer": "v1.signer",
+    "oracle": "aggregate-oracle.near"
+  },
+  "code_hashes": {
+    "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
+    "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
+    "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+    "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+    "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
+  },
+  "versions": {
+    "verifier": "0.4.5",
+    "signer": "3.17.0",
+    "oracle": "0.4.1"
+  },
+  "verifier_fee_pips": 1,
+  "mandate_config": {
+    "owner_id": "REPLACE_ME: same as accounts.owner",
+    "agent_id": "REPLACE_ME: same as accounts.agent",
+    "verifier_id": "intents.near",
+    "signer_id": "v1.signer",
+    "oracle_id": "aggregate-oracle.near",
+    "usdc": {
+      "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "decimals": 6,
+      "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    },
+    "wnear": {
+      "token": "wrap.near",
+      "decimals": 24,
+      "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750"
+    }
+  },
+  "keys": {
+    "mandate_full_access": [
+      "REPLACE_ME: each full-access key the approved upgrade-key policy allows on the mandate account; use [] for a locked account"
+    ],
+    "agent": {
+      "public_key": "REPLACE_ME: ed25519 public key of the agent's function-call key",
+      "max_allowance_yocto": "250000000000000000000000"
+    },
+    "owner": {
+      "public_key": "REPLACE_ME: ed25519 public key of the owner's full-access key used here"
+    },
+    "filler": {
+      "public_key": "REPLACE_ME: ed25519 public key of the filler's full-access key",
+      "intents_public_key": "REPLACE_ME: ed25519 key the filler registered on intents.near (add_public_key)"
+    }
+  },
+  "credentials": {
+    "owner": "REPLACE_ME: absolute path to the owner credential JSON (chmod 600, outside the repo)",
+    "agent": "REPLACE_ME: absolute path to the agent credential JSON",
+    "filler": "REPLACE_ME: absolute path to the filler account credential JSON",
+    "filler_intents": "REPLACE_ME: absolute path to the filler Intents signing key JSON"
+  },
+  "budget": {
+    "max_fee_yocto": "150000000000000000000000",
+    "max_deposit_yocto": "0",
+    "max_transactions": 10,
+    "owner_inventory_max": {
+      "usdc": "5000000",
+      "wnear": "1250000000000000000000000"
+    },
+    "max_order_sell": {
+      "usdc": "1000000",
+      "wnear": "0"
+    },
+    "max_total_sell": {
+      "usdc": "2000000",
+      "wnear": "0"
+    },
+    "filler_spend_max": {
+      "usdc": "0",
+      "wnear": "500000000000000000000000"
+    },
+    "owner_recovery_reserve_yocto": "500000000000000000000000"
+  },
+  "gas_tgas": {
+    "grant": 250,
+    "propose": 150,
+    "fill": 100,
+    "settle": 50,
+    "revoke": 150,
+    "reconcile_registration": 200,
+    "recover": 80
+  },
+  "storage": {
+    "order_record_bytes": 1000,
+    "grant_state_bytes": 2000
+  },
+  "expect_existing_grant": false,
+  "fillable_preexisting_orders": [],
+  "expected_nonces": {
+    "owner": "REPLACE_ME: owner key nonce read at approval time",
+    "agent": "REPLACE_ME: agent key nonce read at approval time",
+    "filler": "REPLACE_ME: filler key nonce read at approval time"
+  },
+  "steps": [
+    {
+      "kind": "check"
+    },
+    {
+      "kind": "grant",
+      "policy": {
+        "per_order_cap_bps": 2000,
+        "outstanding_cap_bps": 2000,
+        "max_concession_bps": 50,
+        "oracle_max_age_sec": 120,
+        "max_confidence_bps": 50,
+        "breaker_drawdown_bps": 200,
+        "turnover_cap_bps": 10000,
+        "order_ttl_sec": 120,
+        "min_remaining_sec": 15,
+        "max_pricing_delay_sec": 30,
+        "proposal_charge_bps": 50
+      }
+    },
+    {
+      "kind": "refused_proposal",
+      "proposal": {
+        "sell": "usdc",
+        "sell_amount": "500000",
+        "max_concession_bps": 51
+      },
+      "error": "concession above policy maximum"
+    },
+    {
+      "kind": "propose",
+      "source": {
+        "from": "model",
+        "provider": "near-ai",
+        "model": "REPLACE_ME: exact NEAR AI Cloud model id with structured_outputs",
+        "timeout_ms": 90000,
+        "max_tokens": 4096,
+        "notes": []
+      },
+      "expect": "signed"
+    },
+    {
+      "kind": "fill"
+    },
+    {
+      "kind": "settle"
+    },
+    {
+      "kind": "propose",
+      "source": {
+        "from": "manifest",
+        "proposal": {
+          "sell": "usdc",
+          "sell_amount": "500000",
+          "max_concession_bps": 30
+        }
+      },
+      "expect": "signed"
+    },
+    {
+      "kind": "withhold"
+    },
+    {
+      "kind": "revoke"
+    },
+    {
+      "kind": "relay_withheld",
+      "min_remaining_sec": 10
+    },
+    {
+      "kind": "recover",
+      "asset": "usdc"
+    },
+    {
+      "kind": "recover",
+      "asset": "wnear"
+    },
+    {
+      "kind": "check"
+    }
+  ]
+}

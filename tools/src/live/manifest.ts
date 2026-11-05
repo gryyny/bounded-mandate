@@ -18,6 +18,29 @@ const AssetConfig = z.object({ token: AccountId, decimals: z.number().int().min(
 
 export const OrderExpectation = z.enum(["signed", "rejected"]);
 
+/**
+ * A live agent decision: fresh oracle prices, a deterministic 50/50 objective guard, and at most one model call.
+ * near-ai needs an explicit model id and bounds; there is no default model and no fallback.
+ */
+export const ModelSource = z
+  .object({
+    from: z.literal("model"),
+    provider: z.enum(["anthropic", "claude-cli", "near-ai"]),
+    model: z.string().min(1).optional(),
+    timeout_ms: z.number().int().min(1_000).max(600_000).optional(),
+    max_tokens: z.number().int().min(1).max(32_768).optional(),
+    notes: z.array(z.string()),
+  })
+  .strict()
+  .superRefine((s, ctx) => {
+    if (s.provider === "near-ai") {
+      for (const k of ["model", "timeout_ms", "max_tokens"] as const) if (s[k] === undefined) ctx.addIssue({ code: "custom", path: [k], message: "required for provider near-ai" });
+    } else {
+      for (const k of ["timeout_ms", "max_tokens"] as const) if (s[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: `not supported for provider ${s.provider}` });
+    }
+  });
+export type ModelSource = z.infer<typeof ModelSource>;
+
 export const Step = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("check") }).strict(),
   z.object({ kind: z.literal("grant"), policy: Policy.strict() }).strict(),
@@ -26,7 +49,7 @@ export const Step = z.discriminatedUnion("kind", [
       kind: z.literal("propose"),
       source: z.discriminatedUnion("from", [
         z.object({ from: z.literal("manifest"), proposal: Proposal }).strict(),
-        z.object({ from: z.literal("model"), provider: z.enum(["anthropic", "claude-cli"]), notes: z.array(z.string()) }).strict(),
+        ModelSource,
       ]),
       expect: OrderExpectation.default("signed"),
     })

@@ -407,3 +407,28 @@ describe("refused proposal verification", () => {
     expect((await verify(outcome([receipt(MANDATE, policy)]), created)).passed).toBe(false);
   });
 });
+
+describe("live-agent manifest template", () => {
+  const read = (name: string) => JSON.parse(readFileSync(join(import.meta.dirname, "../src/live", name), "utf8")) as Record<string, unknown> & { steps: unknown[] };
+  const agent = read("manifest.live-agent.example.json");
+  const fixed = read("manifest.example.json");
+
+  it("is refused as is (placeholders)", async () => {
+    const d = tmp();
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: writeJson(d, "t.json", agent), MANDATE_LIVE_CONFIRM: "x" });
+    expect(r.exitCode).toBe(2);
+    expect(r.message).toMatch(/invalid manifest/);
+  });
+
+  it("equals the fixed template except its notes and a model-sourced step 4; the funded sequence and budgets are unchanged", () => {
+    const strip = (m: typeof agent) => ({ ...m, notes: null, steps: m.steps.map((x, k) => (k === 3 ? null : x)) });
+    expect(strip(agent)).toEqual(strip(fixed));
+    const steps = LiveManifest.shape.steps.parse(agent.steps);
+    expect(steps.map((x) => x.kind)).toEqual(["check", "grant", "refused_proposal", "propose", "fill", "settle", "propose", "withhold", "revoke", "relay_withheld", "recover", "recover", "check"]);
+    expect(sequenceProblems(steps)).toEqual([]);
+    const [trade, withheld] = steps.filter((x) => x.kind === "propose");
+    expect(trade?.kind === "propose" && trade.source).toMatchObject({ from: "model", provider: "near-ai", timeout_ms: 90_000, max_tokens: 4_096 });
+    // The withheld order stays a fixed manifest proposal, so the revocation test runs whatever the agent decides.
+    expect(withheld?.kind === "propose" && withheld.source).toEqual({ from: "manifest", proposal: { sell: "usdc", sell_amount: "500000", max_concession_bps: 30 } });
+  });
+});

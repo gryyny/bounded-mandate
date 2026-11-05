@@ -50,6 +50,15 @@ export function totals(ledger: Ledger): Totals {
   return t;
 }
 
+/** Why selling `sell` would exceed the run's sale caps, or null. */
+export function sellProblem(budget: LiveManifest["budget"], spent: Totals, sell: z.infer<typeof AssetUnits>): string | null {
+  const { asset, units } = sell;
+  if (BigInt(units) > BigInt(budget.max_order_sell[asset])) return `order selling ${units} ${asset} exceeds max_order_sell ${budget.max_order_sell[asset]}`;
+  const total = spent.sold[asset] + BigInt(units);
+  if (total > BigInt(budget.max_total_sell[asset])) return `selling ${units} ${asset} would bring the run to ${total}, above max_total_sell ${budget.max_total_sell[asset]}`;
+  return null;
+}
+
 /** Throws before a transaction whose worst case would exceed any cap. */
 export function checkPlanned(budget: LiveManifest["budget"], spent: Totals, planned: Planned): void {
   const fail = (msg: string): never => {
@@ -61,10 +70,8 @@ export function checkPlanned(budget: LiveManifest["budget"], spent: Totals, plan
   const dep = spent.deposit_yocto + BigInt(planned.deposit_yocto);
   if (dep > BigInt(budget.max_deposit_yocto)) fail(`deposits ${dep} yocto would exceed max_deposit_yocto ${budget.max_deposit_yocto}`);
   if (planned.sell !== undefined) {
-    const { asset, units } = planned.sell;
-    if (BigInt(units) > BigInt(budget.max_order_sell[asset])) fail(`order selling ${units} ${asset} exceeds max_order_sell ${budget.max_order_sell[asset]}`);
-    const total = spent.sold[asset] + BigInt(units);
-    if (total > BigInt(budget.max_total_sell[asset])) fail(`selling ${units} ${asset} would bring the run to ${total}, above max_total_sell ${budget.max_total_sell[asset]}`);
+    const problem = sellProblem(budget, spent, planned.sell);
+    if (problem !== null) fail(problem);
   }
   if (planned.filler_pay !== undefined) {
     const { asset, units } = planned.filler_pay;

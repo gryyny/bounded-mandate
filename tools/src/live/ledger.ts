@@ -14,7 +14,7 @@ const Entry = z
     seq: z.number().int().nonnegative(),
     at: z.string(),
     prev: z.string().regex(/^[0-9a-f]{64}$/),
-    kind: z.enum(["start", "tx-intent", "tx-result", "step-done", "stopped", "reconciled"]),
+    kind: z.enum(["start", "tx-intent", "tx-result", "step-done", "stopped", "reconciled", "decision-request", "decision"]),
     data: z.record(z.string(), z.unknown()),
     hash: z.string().regex(/^[0-9a-f]{64}$/),
   })

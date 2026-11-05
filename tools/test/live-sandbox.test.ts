@@ -22,6 +22,10 @@ import { NearClient, NEAR } from "../src/near/client.js";
 import { MandateClient } from "../src/near/contracts.js";
 import { LocalNetwork, REPO_ROOT, requireSuccess } from "../src/near/sandbox.js";
 import { offlineManifest, recordRpc, writeCredential, writeJson } from "./live-helpers.js";
+import { mkdirSync } from "node:fs";
+import { loadRecording, recordingName, replayRecording } from "../src/agent/live-recording.js";
+import { RebalanceVerdict } from "../src/agent/rebalance.js";
+import { SyntheticProvider, proposeJson } from "./agent-live-helpers.js";
 
 let net: LocalNetwork;
 let world: World;
@@ -666,4 +670,228 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
       expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
     }
   }, 600_000);
+});
+
+// Model-sourced propose steps with SYNTHETIC provider answers (written by the test, never model output) on a fresh
+// mandate: fresh oracle inputs, the 50/50 objective guard, no-action and skipped follow-up steps, and resume safety.
+describe("live agent decisions (synthetic provider answers)", () => {
+  const USDC = 10n ** 6n;
+  const WNEAR = 10n ** 24n;
+  let agentM: LiveManifest;
+  const modelStep = {
+    kind: "propose" as const,
+    source: { from: "model" as const, provider: "near-ai" as const, model: "synthetic-never-called", timeout_ms: 10_000, max_tokens: 500, notes: ["synthetic market note"] },
+    expect: "signed" as const,
+  };
+
+  /** Transport that fails the first get_grant view once armed: a crash after the decision, before signing. */
+  class FaultProvider extends JsonRpcProvider {
+    failGrantOnce = false;
+    override async callFunctionRaw(params: Parameters<JsonRpcProvider["callFunctionRaw"]>[0]): ReturnType<JsonRpcProvider["callFunctionRaw"]> {
+      if (this.failGrantOnce && (params as { method?: string }).method === "get_grant") {
+        this.failGrantOnce = false;
+        throw new Error("simulated crash after the decision, before signing");
+      }
+      return super.callFunctionRaw(params);
+    }
+  }
+
+  beforeAll(async () => {
+    const root = net.root.id;
+    const mandateId = `agentmandate.${root}`;
+    const config = { ...base.mandate_config, agent_id: `agent3.${root}` };
+    await net.createAccount("agentmandate", { balanceNear: 30n, wasm: world.wasm.mandate.bytes, init: { method: "new", args: { config } }, key: "none" });
+    const agent3 = await net.createAccount("agent3", { balanceNear: 5n, key: { receiver: mandateId, methods: ["propose_order"], allowance: AGENT_ALLOWANCE } });
+    if (agent3.key === null) throw new Error("agent3 key");
+    agentM = {
+      ...base,
+      accounts: { ...base.accounts, mandate: mandateId, agent: agent3.id },
+      mandate_config: config,
+      keys: { ...base.keys, agent: { public_key: agent3.key.getPublicKey().toString(), max_allowance_yocto: AGENT_ALLOWANCE.toString() } },
+      credentials: { ...base.credentials, agent: writeCredential(dir, "agent3.json", agent3.id, agent3.key) },
+      steps: [{ kind: "grant", policy: DEMO_POLICY }, modelStep, { kind: "fill" }, { kind: "settle" }, { kind: "revoke" }, { kind: "recover", asset: "usdc" }, { kind: "recover", asset: "wnear" }],
+    };
+  }, 120_000);
+
+  const mandateOf = () => new MandateClient(world.client, agentM.accounts.mandate);
+  const fund = async (usdc: bigint, wnear: bigint): Promise<void> => {
+    await mintAndDeposit(world, world.owner, "usdc", usdc, agentM.accounts.mandate);
+    await mintAndDeposit(world, world.owner, "wnear", wnear, agentM.accounts.mandate);
+    await postPrices(world);
+    await settleFinal();
+  };
+  const manifestFor = (reference: string): string => writeJson(dir, `agent-${reference.replace(/ /g, "-")}.json`, { ...agentM, approval: { ...agentM.approval, reference } });
+  const ledgerOf = (path: string): Ledger => {
+    const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+    return Ledger.load(Ledger.dirFor(join(dir, "live"), sha), sha);
+  };
+  const live = (path: string, extra: Partial<LiveDeps>, env: Record<string, string> = {}) => runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path, ...env }, deps(extra));
+  const kinds = (l: Ledger, kind: "tx-intent" | "decision" | "decision-request") => l.ofKind(kind).map((e) => e.data.kind ?? e.data.step);
+  const doneOf = (l: Ledger, step: number) => l.ofKind("step-done").find((e) => e.data.step === step)?.data;
+  const sendsOf = (calls: { method: string }[]) => calls.filter((c) => c.method === "send_tx").length;
+
+  it("balanced at current prices: no model call, no propose transaction; fill and settle are skipped", async () => {
+    await fund(30n * USDC, 10n * WNEAR); // $29.994 vs $30.00 at the oracle stub's 0.9998 / 3.00
+    const provider = new SyntheticProvider(proposeJson("usdc", USDC));
+    const rpc = new JsonRpcProvider({ url: world.client.rpcUrl });
+    const calls = recordRpc(rpc);
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    const path = manifestFor("balanced");
+    const r = await live(path, { client: new NearClient(world.client.rpcUrl, rpc), modelProvider: provider });
+    expect(r.message).toBe("completed");
+    expect(r.exitCode).toBe(0);
+    expect(provider.calls).toBe(0);
+    expect(sendsOf(calls)).toBe(4); // grant, revoke, recover, recover
+    const l = ledgerOf(path);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "revoke", "recover", "recover"]);
+    expect(l.ofKind("decision-request")).toEqual([]);
+    const decision = l.ofKind("decision")[0]?.data as { model_called: boolean; verdict: unknown; observations: { block: { height: number }; prices: { usdc: { price: string; publish_time: number } } } };
+    expect(decision.model_called).toBe(false);
+    expect(RebalanceVerdict.parse(decision.verdict)).toMatchObject({ kind: "no-action", reason: "balanced" });
+    expect(decision.observations.prices.usdc.price).toBe("99980000");
+    expect(decision.observations.block.height).toBeGreaterThan(0);
+    expect(doneOf(l, 1)).toMatchObject({ kind: "propose", no_action: true });
+    expect(doneOf(l, 1)?.order_id).toBeUndefined();
+    for (const step of [2, 3]) expect(doneOf(l, step)).toMatchObject({ skipped: true, reason: expect.stringMatching(/^step 2 propose made no order \(balanced/) as unknown });
+    const steps = r.evidence?.assertions.filter((a) => a.id.startsWith("step-")) ?? [];
+    expect(steps.map((a) => a.id)).toEqual(["step-1-grant", "step-2-propose", "step-3-fill", "step-4-settle", "step-5-revoke", "step-6-recover", "step-7-recover"]);
+    expect(steps.every((a) => a.passed)).toBe(true);
+    expect((await mandateOf().allOrders()).length).toBe(ordersBefore);
+    expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
+
+  it("USDC-heavy: exactly one bounded trade, filled and settled; the recording replays to the same verdict", async () => {
+    await fund(40n * USDC, 5n * WNEAR); // $39.992 vs $15.00: 72.7% USDC; 50/50 needs ~12.5 USDC, per-order cap ~$11
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    const rpc = new JsonRpcProvider({ url: world.client.rpcUrl });
+    const calls = recordRpc(rpc);
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    const ownerBefore = await balances(world, world.owner.id);
+    const mandateBefore = await balances(world, agentM.accounts.mandate);
+    const path = manifestFor("usdc heavy");
+    const r = await live(path, { client: new NearClient(world.client.rpcUrl, rpc), modelProvider: provider });
+    expect(r.message).toBe("completed");
+    expect(provider.calls).toBe(1);
+    expect(sendsOf(calls)).toBe(7);
+    const l = ledgerOf(path);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "propose", "fill", "settle", "revoke", "recover", "recover"]);
+    const [request] = l.ofKind("decision-request");
+    const [decision] = l.ofKind("decision");
+    const intent = l.ofKind("tx-intent").find((e) => e.data.kind === "propose");
+    // Request before the call, decision before signing.
+    expect(request !== undefined && decision !== undefined && intent !== undefined && request.seq < decision.seq && decision.seq < intent.seq).toBe(true);
+    expect(RebalanceVerdict.parse(decision?.data.verdict)).toEqual({ kind: "proposal", proposal: { sell: "usdc", sell_amount: (10n * USDC).toString(), max_concession_bps: 30 }, reason: "synthetic rebalance" });
+    expect(BigInt((decision?.data.allocation as { needed_units: string }).needed_units) > 10n * USDC).toBe(true);
+    const orders = await mandateOf().allOrders();
+    expect(orders.length).toBe(ordersBefore + 1);
+    expect(orders.at(-1)).toMatchObject({ sell: "usdc", sell_amount: (10n * USDC).toString(), state: { state: "released", reason: "settled" } });
+    expect((await balances(world, world.owner.id)).usdc - ownerBefore.usdc).toBe(mandateBefore.usdc - 10n * USDC);
+    const ref = decision?.data.recording as { file: string; sha256: string };
+    const rec = loadRecording(l.dir, ref.file, ref.sha256);
+    expect(rec.provider).toBe("synthetic");
+    expect(rec.snapshot.assets.usdc.price_usd).toBe("0.9998");
+    expect((await replayRecording(rec)).verdict).toEqual(decision?.data.verdict);
+  }, 300_000);
+
+  it("a wrong-direction answer sends nothing: a finding, fill and settle skipped, recovery runs", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const provider = new SyntheticProvider(proposeJson("wnear", WNEAR));
+    const path = manifestFor("wrong direction");
+    const r = await live(path, { modelProvider: provider });
+    expect(r.exitCode).toBe(1);
+    expect(r.message).toMatch(/completed with findings: step 2 propose: agent decision rejected at objective: sells wnear, but usdc is overweight/);
+    const l = ledgerOf(path);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "revoke", "recover", "recover"]);
+    expect(doneOf(l, 2)).toMatchObject({ skipped: true });
+    expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
+
+  it("a crash after the recorded decision: the resume does not ask again, re-checks and submits that proposal once", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const rpc = new FaultProvider({ url: world.client.rpcUrl });
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    provider.onDecide = () => {
+      rpc.failGrantOnce = true;
+    };
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    const path = manifestFor("crash after decision");
+    const first = await live(path, { client: new NearClient(world.client.rpcUrl, rpc), modelProvider: provider });
+    expect(first.exitCode).toBe(1);
+    expect(first.message).toMatch(/simulated crash after the decision/);
+    expect(kinds(ledgerOf(path), "tx-intent")).toEqual(["grant"]);
+    provider.onDecide = null;
+    await postPrices(world);
+    await settleFinal();
+    const resumed = await live(path, { modelProvider: provider }, { MANDATE_LIVE_RESUME: "1" });
+    expect(resumed.message).toBe("completed");
+    expect(provider.calls).toBe(1);
+    const l = ledgerOf(path);
+    expect([l.ofKind("decision-request").length, l.ofKind("decision").length]).toEqual([1, 1]);
+    expect(kinds(l, "tx-intent")).toEqual(["grant", "propose", "fill", "settle", "revoke", "recover", "recover"]);
+    const detail = l.ofKind("tx-intent").find((e) => e.data.kind === "propose")?.data.detail as { resumed_from_ledger?: boolean; recheck?: { problems: string[] }; decision_seq?: number };
+    expect(detail.resumed_from_ledger).toBe(true);
+    expect(detail.recheck?.problems).toEqual([]);
+    expect(detail.decision_seq).toBe(l.ofKind("decision")[0]?.seq);
+    expect((await mandateOf().allOrders()).length).toBe(ordersBefore + 1);
+  }, 300_000);
+
+  it("a model request without a recorded result stops the resume; only the explicit flag makes a new, recorded decision", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const path = manifestFor("request without result");
+    const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+    const ledgerDir = Ledger.dirFor(join(dir, "live"), sha);
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    // Blocks the recording file of the pending request, so the run dies between the model call and its result.
+    provider.onDecide = () => {
+      const lines = readFileSync(join(ledgerDir, "ledger.jsonl"), "utf8").trim().split("\n");
+      const seq = (JSON.parse(lines.at(-1) ?? "{}") as { seq: number }).seq;
+      mkdirSync(join(ledgerDir, recordingName(1, seq)));
+    };
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    const first = await live(path, { modelProvider: provider });
+    expect(first.exitCode).toBe(1);
+    expect(first.message).toMatch(/EEXIST/);
+    provider.onDecide = null;
+    await postPrices(world);
+    await settleFinal();
+    const refused = await live(path, { modelProvider: provider }, { MANDATE_LIVE_RESUME: "1" });
+    expect(refused.exitCode).toBe(1);
+    expect(refused.message).toMatch(/step 2 propose: the model request in ledger entry \d+ has no recorded result.*MANDATE_LIVE_ALLOW_NEW_DECISION=1/);
+    expect(provider.calls).toBe(1);
+    expect(kinds(ledgerOf(path), "tx-intent")).toEqual(["grant"]);
+    await postPrices(world);
+    await settleFinal();
+    const allowed = await live(path, { modelProvider: provider }, { MANDATE_LIVE_RESUME: "1", MANDATE_LIVE_ALLOW_NEW_DECISION: "1" });
+    expect(allowed.message).toBe("completed");
+    expect(provider.calls).toBe(2);
+    const l = ledgerOf(path);
+    const requests = l.ofKind("decision-request");
+    expect(requests.length).toBe(2);
+    expect(requests[1]?.data.supersedes).toBe(requests[0]?.seq);
+    expect(l.ofKind("decision").map((e) => e.data.request_seq)).toEqual([requests[1]?.seq]);
+    expect(kinds(l, "tx-intent").filter((k) => k === "propose").length).toBe(1);
+    expect((await mandateOf().allOrders()).length).toBe(ordersBefore + 1);
+  }, 600_000);
+
+  it("an ambiguous propose submission is reconciled from chain on resume, never replaced or re-decided", async () => {
+    await fund(40n * USDC, 5n * WNEAR);
+    const provider = new SyntheticProvider(proposeJson("usdc", 10n * USDC));
+    const lossy = new LossyProvider({ url: world.client.rpcUrl });
+    lossy.dropAt = 2; // grant, propose
+    const ordersBefore = (await mandateOf().allOrders()).length;
+    const path = manifestFor("ambiguous propose");
+    const first = await live(path, { client: new NearClient(world.client.rpcUrl, lossy), modelProvider: provider });
+    expect(first.message).toMatch(/step 2 propose: ambiguous outcome/);
+    const resumed = await live(path, { modelProvider: provider }, { MANDATE_LIVE_RESUME: "1" });
+    expect(resumed.message).toBe("completed");
+    expect(provider.calls).toBe(1);
+    const l = ledgerOf(path);
+    expect(kinds(l, "tx-intent").filter((k) => k === "propose").length).toBe(1);
+    expect(l.ofKind("decision").length).toBe(1);
+    expect(l.ofKind("reconciled").map((e) => e.data.step)).toEqual([1]);
+    const orders = await mandateOf().allOrders();
+    expect(orders.length).toBe(ordersBefore + 1);
+    expect(orders.at(-1)?.state).toEqual({ state: "released", reason: "settled" });
+    expect(await balances(world, agentM.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
+  }, 300_000);
 });
