@@ -1,0 +1,48 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "jsonrpc": "2.0",
+  "id": "verify",
+  "result": {
+    "final_execution_status": "FINAL",
+    "status": {
+      "SuccessValue": ""
+    },
+    "transaction": {
+      "hash": "GwZtYkANURMYPbTzk89pqpdn8n7fPoDYmKMmaRUgbhAB",
+      "signer_id": "owner.synthetic.near",
+      "receiver_id": "mandate.synthetic.near",
+      "actions": [
+        {
+          "FunctionCall": {
+            "method_name": "grant",
+            "args": "e30=",
+            "gas": 300000000000000,
+            "deposit": "0"
+          }
+        }
+      ]
+    },
+    "transaction_outcome": {
+      "id": "GwZtYkANURMYPbTzk89pqpdn8n7fPoDYmKMmaRUgbhAB",
+      "block_hash": "SYNTHETICblockGrant",
+      "outcome": {
+        "executor_id": "owner.synthetic.near",
+        "status": {
+          "SuccessReceiptId": "SYNTHETICreceiptGrant"
+        }
+      }
+    },
+    "receipts_outcome": [
+      {
+        "id": "SYNTHETICreceiptGrant",
+        "block_hash": "SYNTHETICblockGrant2",
+        "outcome": {
+          "executor_id": "mandate.synthetic.near",
+          "status": {
+            "SuccessValue": ""
+          }
+        }
+      }
+    ]
+  }
+}

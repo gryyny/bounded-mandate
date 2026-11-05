@@ -29,7 +29,7 @@ import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js"
 import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
 import { GATE_LABEL, escapeHtml as esc, loadAcceptance } from "../page/render.js";
-import { revocationStory, shortHash, unboundReceipts, units, usdc, wnear, type Stage, type StageKey } from "../page/story.js";
+import { AGENT_OBJECTIVE, allocation, isoNs, priceText, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type Stage, type StageKey } from "../page/story.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
@@ -134,7 +134,26 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const proposal = (JSON.parse(decision.decision_text) as { proposal: { sell: string; sell_amount: string; max_concession_bps: number } }).proposal;
   const fill = stepOf("Filler fills");
   const trade = (obs("trade-executed") as { signed: { sell_amount: string; buy_amount: string }; before: Record<string, string>; after: Record<string, string> });
+  const alloc = allocation(ev);
+  const allocRows: [string, string][] = alloc.ok
+    ? [
+        ["USDC share of value", `${share(alloc.value.before.usdcShare)} → ${share(alloc.value.after.usdcShare)} (agent's target 50%)`],
+        ["Reference prices", `${priceText(alloc.value.reference)} (grant's initial reference, sandbox test double)`],
+      ]
+    : [];
   const withheld = stepOf("Second signed order withheld");
+  const identity = withheldIdentity(ev);
+  const identityRows: [string, string][] =
+    identity === null
+      ? []
+      : [
+          ["Order", `${identity.order_id} (epoch ${String(identity.epoch)})`],
+          ["Mandate nonce", identity.mandate_nonce],
+          ...(identity.deadline_ns === null ? [] : [["Deadline", isoNs(identity.deadline_ns)] as [string, string]]),
+          ["Signing key", identity.signing_public_key],
+          ["Bundle sha256", identity.bundle_sha256],
+          ["simulate_intents", identity.simulation],
+        ];
   const attacks = stepOf("Malicious requests");
   const attackRows = ev.assertions.filter((a) => a.id.startsWith("attack-"));
   const byBoundary = new Map<string, number>();
@@ -145,8 +164,10 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const attacksStopped = attackRows.filter((a) => a.passed).length;
   const revoke = stepOf("Owner revokes");
   const relay = stepOf("Withheld order relayed");
-  const rejected = (obs("withheld-rejected") as { error: string; relay_block_time_ns: string; order_deadline_ns: string; nonce_used: boolean });
-  const secondsLeft = Number((BigInt(rejected.order_deadline_ns) - BigInt(rejected.relay_block_time_ns)) / 1_000_000_000n);
+  const rejected = (obs("withheld-rejected") as { error: string; relay_block_time_ns: string; order_deadline_ns: string; nonce_used: boolean; verifier_receipt?: { block_time_ns: string } | null });
+  // The failed verifier receipt's block time when recorded, as on the page.
+  const rejectedAt = rejected.verifier_receipt?.block_time_ns ?? rejected.relay_block_time_ns;
+  const secondsLeft = Number((BigInt(rejected.order_deadline_ns) - BigInt(rejectedAt)) / 1_000_000_000n);
   const reason = /ExecutionError\\?":\\?"([^"\\]+)/.exec(rejected.error)?.[1] ?? rejected.error;
   const disabled = stepOf("Agent, oracle and MPC disabled");
   const recovery = stepOf("Recovery to the owner");
@@ -201,6 +222,7 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
         ["Signed buy", wnear(trade.signed.buy_amount)],
         ["Mandate USDC", `${usdc(trade.before.usdc ?? "0")} → ${usdc(trade.after.usdc ?? "0")}`],
         ["Mandate wNEAR", `${wnear(trade.before.wnear ?? "0")} → ${wnear(trade.after.wnear ?? "0")}`],
+        ...allocRows,
       ]) + txs(/execute_intents order|settle_order/) + checks(fill),
       captions: [narrate("trade", `Our filler fills it on the pinned mainnet verifier WASM: the mandate pays ${usdc(trade.signed.sell_amount)} and receives ${wnear(trade.signed.buy_amount)}, exactly as signed.`)],
     },
@@ -208,8 +230,15 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
       kind: "demo",
       labels: ["Scripted proposal"],
       title: "4 · A second signed order is withheld",
-      body: txs(/scripted, withheld/) + checks(withheld),
-      captions: [narrate("withheld", "A scripted second order is signed and withheld. Before revocation the verifier would still accept it.")],
+      body: kv(identityRows) + txs(/scripted, withheld/) + checks(withheld),
+      captions: [
+        narrate(
+          "withheld",
+          identity === null
+            ? "A scripted second order is signed and withheld. Before revocation the verifier would still accept it."
+            : `A scripted second order, ${identity.order_id}, is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.`,
+        ),
+      ],
     },
     {
       kind: "demo",
@@ -304,7 +333,7 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
       kind: "summary",
       labels: DEMO_LABELS,
       title: "Delegate trading within on\u2011chain limits",
-      body: `<p class="claim">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>${rail(stages, -1)}<p class="note">One sandbox run. Every number shown comes from out/evidence/demo.json.</p>`,
+      body: `<p class="claim">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>${rail(stages, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">One sandbox run. Every number shown comes from out/evidence/demo.json.</p>`,
       captions: ["Delegate trading within on-chain limits. Revoke the entire grant, including outstanding signed orders, and recover the remaining assets."],
     },
     ...stages.map((s, i): Scene => ({
@@ -355,6 +384,7 @@ table.cases th { text-align: left; padding: 3px 20px 3px 0; font: 700 22px "SF M
 img.shot { width: 100%; height: 690px; object-fit: contain; object-position: top center; border: 1px solid #2a3039; }
 ol.rail { list-style: none; display: flex; gap: 10px; padding: 0; margin: 0 0 26px; } ol.rail li { flex: 1; font: 600 18px/1.25 -apple-system, "Helvetica Neue", sans-serif; color: #6d6a62; border-top: 6px solid #2a3039; padding-top: 8px; }
 ol.rail li b { font-family: "SF Mono", Menlo, monospace; } ol.rail li.past { color: #a39d8f; border-color: #6fcf9f; } ol.rail li.now { color: #ece6d8; border-color: #e0866f; }
+.objective { font-size: 26px; color: #c9d6e3; margin: 0 0 10px; }
 .headline { font-size: 64px; line-height: 1.12; font-weight: 600; margin: 0 0 22px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin-top: 12px; }
 .caption { position: absolute; left: 0; right: 0; bottom: 0; min-height: 150px; padding: 24px 80px; background: rgba(0,0,0,.82); color: #fff;
   font: 500 36px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; text-align: center; display: flex; align-items: center; justify-content: center; }

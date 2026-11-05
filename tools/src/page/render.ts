@@ -1,5 +1,6 @@
-// Renders the static evidence page. Order: product position and claim, the seven-stage revocation story bound to
-// the demo evidence, three ways to check it, mainnet receipts (or the pending panel), the full demonstration,
+// Renders the static evidence page. Order: product position, claim and the run's allocation outcome, the seven-stage
+// revocation story bound to the demo evidence, three ways to check it, mainnet receipts (or the pending panel), the
+// opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
 // acceptance gates per case, the T5 baseline, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
 // certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
 // Demo assertions are story checks and never mark a gate.
@@ -7,16 +8,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
-import { REPO_ROOT } from "../evidence/report.js";
+import { REPO_ROOT, reportsDir } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
 import { Acceptance, type BaselineCase, type CaseResult } from "../evidence/schema.js";
 import { type Assertion, Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
+import { caseFilesBody, loadReportFiles, type ReportFile } from "./casefiles.js";
 import { chip, escapeHtml, modeBadge, word } from "./html.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
-import { revocationStory, shortHash, type Stage } from "./story.js";
+import { AGENT_OBJECTIVE, allocation, isoNs, offBalance, priceText, revocationStory, share, shortHash, usd, usdc, wnear, type Stage } from "./story.js";
 import { STYLES } from "./styles.js";
+import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
 export { escapeHtml } from "./html.js";
 
@@ -40,6 +43,11 @@ export interface RenderExtras {
    * NEAR transaction hash. `null`: none. `renderPage` loads out/evidence/live-mainnet.json when this is omitted.
    */
   live?: unknown;
+  /**
+   * Gate report files of the acceptance run (out/evidence/tests); the regrant and disclosure cases are embedded
+   * from them. `renderPage` loads them when this is omitted; `renderHtml` then shows none.
+   */
+  reports?: readonly ReportFile[];
   /** @deprecated Ignored: gate status comes only from acceptance.json. */
   gateReports?: unknown;
 }
@@ -291,11 +299,33 @@ ${facts === "" ? "" : `<dl class="stage-facts">${facts}</dl>`}
 <p class="bound">Evidence: ${[...txs, ...checks].join(" · ")}</p></li>`;
 }
 
+/** The agent's objective and the allocation before and after the permitted trade, from recorded values. */
+function outcomeBlock(ev: Evidence): string {
+  const objective = `<p><strong>The owner's objective for the agent:</strong> “${escapeHtml(AGENT_OBJECTIVE)}”. This is the agent's instruction (its system prompt), not a rule the contract enforces; the contract enforces only the limits of the grant. Nothing here claims a profit.</p>`;
+  const a = allocation(ev);
+  if (!a.ok) return `<div class="outcome">${objective}<p class="muted">Allocation not shown: this evidence lacks ${escapeHtml(a.missing.join(" and "))}.</p></div>`;
+  const { before, after, reference } = a.value;
+  const row = (k: string, f: (s: typeof before) => string): string => `<tr><th scope="row">${escapeHtml(k)}</th><td>${escapeHtml(f(before))}</td><td>${escapeHtml(f(after))}</td></tr>`;
+  return `<div class="outcome">${objective}
+<div class="scroll"><table><caption>The mandate's Intents account around the permitted trade (${escapeHtml(ev.mode)})</caption><thead><tr><th scope="col"></th><th scope="col">Before the trade</th><th scope="col">After the trade</th></tr></thead><tbody>
+${row("USDC", (s) => `${usdc(s.units.usdc)} · ${usd(s.value.usdc.toString())}`)}
+${row("wNEAR", (s) => `${wnear(s.units.wnear)} · ${usd(s.value.wnear.toString())}`)}
+${row("Total value", (s) => usd(s.value.total.toString()))}
+${row("USDC share of value", (s) => share(s.usdcShare))}
+${row("Distance from 50 / 50", offBalance)}
+</tbody></table></div>
+<p class="source">Balances: story check trade-executed (before and after). Prices: the grant's initial reference recorded in grant-active, ${escapeHtml(priceText(reference))}, read by the contract at ${escapeHtml(isoNs(reference.observed_at_ns))}${ev.mode === "sandbox" ? "; in this sandbox run they are the oracle test double's prices that the demo posted, not market prices" : ""}. Values in integer units, rounded down to the cent; shares to the nearest 0.01%. Valued at fixed reference prices, this is not a measure of profit or loss.</p></div>`;
+}
+
 function storySection(ev: Evidence): string {
   const stages = revocationStory(ev);
   return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The revocation story, from one ${escapeHtml(ev.mode)} run</h2>
 <p class="source">Every value is read from out/evidence/demo.json (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1). Story checks never mark an acceptance gate (§2).</p>
 <ol class="stages">${stages.map((s, i) => stageCard(s, i, ev)).join("\n")}</ol></section>`;
+}
+
+function casesSection(acc: Acceptance | null, binding: DemoBinding, reports: readonly ReportFile[]): string {
+  return section("§R", "sandbox", "regrant", "Regrant and disclosed signatures: sandbox acceptance cases", caseFilesBody(acc, binding, reports));
 }
 
 function pathsSection(live: LiveView): string {
@@ -305,8 +335,8 @@ function pathsSection(live: LiveView): string {
       : `<a href="${escapeHtml(VIDEO_URL)}" rel="noopener noreferrer">${escapeHtml(VIDEO_URL)}</a>`;
   const mainnet =
     live.kind === "mainnet"
-      ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a></p>`
-      : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a></p>`;
+      ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
+      : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a> · <a href="#verify">read-only checks you can run from this page</a></p>`;
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
 <li><p class="do">Watch the short video</p><p class="see">See: the seven stages above narrated with this run's numbers, in about a minute.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
@@ -513,6 +543,7 @@ function legacySection(legacy: Inputs["legacy"]): string {
 /** Pure renderer; throws when the evidence, acceptance, policy or legacy reports fail schema validation. */
 export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string {
   const { ev, acc, binding, policy, legacy, live } = parseInputs(evidence, extras);
+  const script = clientScript();
   const views = gateViews(acc, binding);
   const passedCount = views.filter((v) => v.status === "passed").length;
   const anyFailed = views.some((v) => v.status === "failed");
@@ -521,7 +552,7 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src '${scriptHash(script)}'; connect-src https:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <title>Bounded mandate — evidence (${escapeHtml(ev.mode)})</title>
@@ -537,6 +568,7 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <p class="position">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>
 ${modesKey(ev, live)}
 <p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
+${outcomeBlock(ev)}
 <p class="facts-line">Gates passed and certified for this demo: ${String(passedCount)} / ${String(views.length)}</p>
 ${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
 ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
@@ -544,6 +576,8 @@ ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was m
 ${storySection(ev)}
 ${pathsSection(live)}
 ${section("§M", "mainnet", "mainnet", "Mainnet receipts", mainnetBody(live))}
+${section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", verifySection(ev, verifyData(ev, live)))}
+${casesSection(acc, binding, extras.reports ?? [])}
 ${demonstrationSection(ev)}
 ${gatesSection(acc, binding, views)}
 ${comparisonSection(acc, views)}
@@ -551,8 +585,9 @@ ${limitsSection(ev, acc, binding, views, live)}
 ${policySection(policy)}
 ${provenanceSection(ev, acc, binding)}
 ${legacySection(legacy)}
-<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no scripts, fonts or network requests. Evidence schema version ${String(ev.schema_version)}.</footer>
+<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no external files, fonts or links needed. Its one inline script makes network requests only after you press “Run read-only checks” (§V). Evidence schema version ${String(ev.schema_version)}.</footer>
 </main>
+<script>${script}</script>
 </body>
 </html>
 `;
@@ -571,7 +606,8 @@ export function renderPage(evidence: Evidence, outDir: string, extras: RenderExt
   const acceptance = extras.acceptance === undefined ? loadAcceptance(REPO_ROOT) : extras.acceptance;
   const runId = extras.latestRunId === undefined ? latestRunId(REPO_ROOT) : extras.latestRunId;
   const live = extras.live === undefined ? loadLive(REPO_ROOT) : extras.live;
-  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId, live });
+  const reports = extras.reports ?? loadReportFiles(reportsDir(REPO_ROOT));
+  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId, live, reports });
   mkdirSync(outDir, { recursive: true });
   const path = join(outDir, "index.html");
   writeFileSync(path, html);

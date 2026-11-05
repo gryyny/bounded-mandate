@@ -1,0 +1,76 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "jsonrpc": "2.0",
+  "id": "verify",
+  "result": {
+    "final_execution_status": "FINAL",
+    "status": {
+      "Failure": {
+        "ActionError": {
+          "index": 0,
+          "kind": {
+            "FunctionCallError": {
+              "ExecutionError": "Smart contract panicked: public key 'ed25519:SYNTHETICgrantKeySYNTHETICgrantKey11111' doesn't exist for account 'mandate.synthetic.near'"
+            }
+          }
+        }
+      }
+    },
+    "transaction": {
+      "hash": "Gs3NrdjvCKZzC7yFUBsNbDP7X4yCx1UoSEPvBk6xQpDY",
+      "signer_id": "filler.synthetic.near",
+      "receiver_id": "intents.near",
+      "actions": [
+        {
+          "FunctionCall": {
+            "method_name": "execute_intents",
+            "args": "eyJzaWduZWQiOlt7InN0YW5kYXJkIjoibmVwNDEzIiwicGF5bG9hZCI6eyJtZXNzYWdlIjoie1wic2lnbmVyX2lkXCI6XCJtYW5kYXRlLnN5bnRoZXRpYy5uZWFyXCIsXCJkZWFkbGluZVwiOlwiMjAyNy0wMS0xNVQwODowMTowMFpcIixcImludGVudHNcIjpbe1wiaW50ZW50XCI6XCJ0b2tlbl9kaWZmXCIsXCJkaWZmXCI6e1wibmVwMTQxOnVzZGMuc3ludGhldGljLm5lYXJcIjpcIjU5ODMxOTY3XCIsXCJuZXAxNDE6d3JhcC5zeW50aGV0aWMubmVhclwiOlwiLTIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwXCJ9fV19Iiwibm9uY2UiOiJVMWxPVkVoRlZFbERMVzFoYm1SaGRHVXRibTl1WTJVPSIsInJlY2lwaWVudCI6ImludGVudHMubmVhciJ9LCJwdWJsaWNfa2V5IjoiZWQyNTUxOTpTWU5USEVUSUNncmFudEtleVNZTlRIRVRJQ2dyYW50S2V5MTExMTEiLCJzaWduYXR1cmUiOiJlZDI1NTE5OlNZTlRIRVRJQ21hbmRhdGVTaWduYXR1cmUifSx7InN0YW5kYXJkIjoibmVwNDEzIiwicGF5bG9hZCI6eyJtZXNzYWdlIjoie1wic2lnbmVyX2lkXCI6XCJmaWxsZXIuc3ludGhldGljLm5lYXJcIixcImRlYWRsaW5lXCI6XCIyMDI3LTAxLTE1VDA4OjAyOjAwWlwiLFwiaW50ZW50c1wiOlt7XCJpbnRlbnRcIjpcInRva2VuX2RpZmZcIixcImRpZmZcIjp7XCJuZXAxNDE6dXNkYy5zeW50aGV0aWMubmVhclwiOlwiLTU5ODMxOTY3XCIsXCJuZXAxNDE6d3JhcC5zeW50aGV0aWMubmVhclwiOlwiMTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTlcIn19XX0iLCJub25jZSI6IlUxbE9WRWhGVkVsRExXWnBiR3hsY2kxdWIyNWpaUT09IiwicmVjaXBpZW50IjoiaW50ZW50cy5uZWFyIn0sInB1YmxpY19rZXkiOiJlZDI1NTE5OlNZTlRIRVRJQ2ZpbGxlcktleSIsInNpZ25hdHVyZSI6ImVkMjU1MTk6U1lOVEhFVElDZmlsbGVyU2lnbmF0dXJlIn1dfQ==",
+            "gas": 300000000000000,
+            "deposit": "0"
+          }
+        }
+      ]
+    },
+    "transaction_outcome": {
+      "id": "Gs3NrdjvCKZzC7yFUBsNbDP7X4yCx1UoSEPvBk6xQpDY",
+      "block_hash": "SYNTHETICblockTx",
+      "outcome": {
+        "executor_id": "filler.synthetic.near",
+        "status": {
+          "SuccessReceiptId": "SYNTHETICreceiptVerifier"
+        }
+      }
+    },
+    "receipts_outcome": [
+      {
+        "id": "SYNTHETICreceiptVerifier",
+        "block_hash": "SYNTHETICblockReject",
+        "outcome": {
+          "executor_id": "intents.near",
+          "status": {
+            "Failure": {
+              "ActionError": {
+                "index": 0,
+                "kind": {
+                  "FunctionCallError": {
+                    "ExecutionError": "Smart contract panicked: public key 'ed25519:SYNTHETICgrantKeySYNTHETICgrantKey11111' doesn't exist for account 'mandate.synthetic.near'"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "SYNTHETICreceiptRefund",
+        "block_hash": "SYNTHETICblockRefund",
+        "outcome": {
+          "executor_id": "filler.synthetic.near",
+          "status": {
+            "SuccessValue": ""
+          }
+        }
+      }
+    ]
+  }
+}

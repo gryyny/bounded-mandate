@@ -1,0 +1,12 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "jsonrpc": "2.0",
+  "id": "verify",
+  "result": {
+    "chain_id": "testnet",
+    "genesis_hash": "FWJ9kR6KFWoyMoNjpLXXGHeuiy7tEY6GmoFeCA5yuc6b",
+    "version": {
+      "version": "SYNTHETIC"
+    }
+  }
+}

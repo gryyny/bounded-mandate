@@ -1,6 +1,7 @@
 // `make demo`: the complete unfunded sandbox story, with evidence in out/evidence/demo.json.
 // Chain actions run on a local sandbox against our contract, the pinned verifier WASM and labelled test
 // doubles; the model step replays a recorded genuine interaction. Nothing here touches a public network.
+import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -17,11 +18,14 @@ import { BENIGN_NOTES, DECIMALS, DEMO_POLICY, DEPOSITS, PRICES, SCRIPTED_WITHHEL
 import { Recorder, chainSnapshot, grantDemo, tryLoadRecording } from "./story.js";
 import { balances, fillerKey, postPrices, setupWorld, type World } from "./world.js";
 import { valueUnits } from "../agent/snapshot.js";
+import { canonical } from "../live/ledger.js";
 import { simulationProblem } from "../live/verify.js";
 import { renderPage } from "../page/render.js";
 
 const str = (v: bigint): string => v.toString();
 const balStr = (b: Record<string, bigint>): Record<string, string> => Object.fromEntries(Object.entries(b).map(([k, v]) => [k, str(v)]));
+/** Same digest as the live runner's bundle_sha256: sha256 of the canonical JSON of the exact signed bundle. */
+const bundleSha256 = (bundle: unknown): string => createHash("sha256").update(canonical(bundle)).digest("hex");
 
 async function accessKeys(world: World, accountId: string): Promise<unknown[]> {
   const list = await world.client.provider.viewAccessKeyList({ accountId, finalityQuery: { finality: "optimistic" } });
@@ -49,6 +53,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     path: grant.path,
     public_key: grant.public_key,
     policy: grant.policy,
+    initial_reference: grant.initial_reference,
   });
   rec.check("grant-initial-value", "T3", "initial reference value equals deposits x posted prices (independent derivation)", grant.initial_value === str(expectedInitial), {
     contract: grant.initial_value,
@@ -131,7 +136,19 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const prepared = await filler.prepare(withheldSigned);
   if ("shortfall" in prepared) throw new Error(prepared.shortfall);
   const simProblem = simulationProblem(await verifier.simulate(prepared.bundle));
-  rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)", simProblem === null, simProblem ?? "accepted");
+  const withheldBundleSha256 = bundleSha256(prepared.bundle);
+  rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)", simProblem === null, {
+    simulation: simProblem ?? "accepted",
+    order_id: withheldId,
+    epoch: withheld.epoch,
+    mandate: mandate.id,
+    signing_public_key: withheldSigned.public_key,
+    mandate_nonce: withheldSigned.payload.nonce,
+    deadline_ns: withheld.deadline_ns,
+    payload_sha256: withheld.payload_hash,
+    bundle_sha256: withheldBundleSha256,
+    filler_nonce: prepared.own.payload.nonce,
+  });
 
   rec.step("Malicious requests");
   const suite = await runAttackSuite(world);
@@ -167,6 +184,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   rec.check("revoked", "T1", "grant revoked and the grant key is no longer registered on the verifier", revoke.success && revoked?.status === "revoked" && keyGone, {
     status: revoked?.status,
     key_registered: !keyGone,
+    grant_public_key: grant.public_key,
   });
   const releasedWithheld = await mandate.order(withheldId);
   rec.check("withheld-released", "T1", "withheld order's reservation released only by confirmed key removal", releasedWithheld?.state.state === "released" && releasedWithheld.state.reason === "key_removed", releasedWithheld?.state);
@@ -178,12 +196,29 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const nonceUsed = await verifier.isNonceUsed(mandate.id, withheldSigned.payload.nonce);
   const mandateAfter = await balances(world, mandate.id);
   const relayError = relay.error ?? relay.receipts.find((r) => !r.success)?.error ?? "";
+  const verifierFailure = relay.receipts.find((r) => r.executor_id === verifier.id && r.error !== undefined);
   rec.check(
     "withheld-rejected",
     "T1",
     "relayed withheld order failed for the removed key, before its deadline, with no balance change",
     !relay.success && /public key|invalid signature/i.test(relayError) && relayTime <= BigInt(withheld.deadline_ns ?? "0") && !nonceUsed && JSON.stringify(balStr(mandateBefore)) === JSON.stringify(balStr(mandateAfter)),
-    { error: relayError.slice(0, 300), relay_block_time_ns: str(relayTime), order_deadline_ns: withheld.deadline_ns, nonce_used: nonceUsed },
+    {
+      error: relayError.slice(0, 300),
+      relay_block_time_ns: str(relayTime),
+      order_deadline_ns: withheld.deadline_ns,
+      nonce_used: nonceUsed,
+      relay_tx_hash: relay.tx_hash ?? null,
+      relayer: world.relayer.id,
+      verifier: verifier.id,
+      mandate: mandate.id,
+      revoked_key: withheldSigned.public_key,
+      mandate_nonce: withheldSigned.payload.nonce,
+      bundle_sha256: bundleSha256(prepared.bundle),
+      verifier_receipt:
+        verifierFailure === undefined
+          ? null
+          : { id: verifierFailure.id, block_hash: verifierFailure.block_hash, block_time_ns: str(await client.blockTimestampAt(verifierFailure.block_hash)) },
+    },
   );
 
   rec.step("Agent, oracle and MPC disabled");

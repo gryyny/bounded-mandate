@@ -1,0 +1,34 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "mandate": "mandate.synthetic.near",
+  "filler": "filler.synthetic.near",
+  "owner": "owner.synthetic.near",
+  "verifier": "intents.near",
+  "key": "ed25519:SYNTHETICgrantKeySYNTHETICgrantKey11111",
+  "relay_tx_hash": "Gs3NrdjvCKZzC7yFUBsNbDP7X4yCx1UoSEPvBk6xQpDY",
+  "grant_tx_hash": "GwZtYkANURMYPbTzk89pqpdn8n7fPoDYmKMmaRUgbhAB",
+  "deadline_ns": "1800000060000000000",
+  "order_id": "1",
+  "bundle": [
+    {
+      "standard": "nep413",
+      "payload": {
+        "message": "{\"signer_id\":\"mandate.synthetic.near\",\"deadline\":\"2027-01-15T08:01:00Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:usdc.synthetic.near\":\"59831967\",\"nep141:wrap.synthetic.near\":\"-20000000000000000000000000\"}}]}",
+        "nonce": "U1lOVEhFVElDLW1hbmRhdGUtbm9uY2U=",
+        "recipient": "intents.near"
+      },
+      "public_key": "ed25519:SYNTHETICgrantKeySYNTHETICgrantKey11111",
+      "signature": "ed25519:SYNTHETICmandateSignature"
+    },
+    {
+      "standard": "nep413",
+      "payload": {
+        "message": "{\"signer_id\":\"filler.synthetic.near\",\"deadline\":\"2027-01-15T08:02:00Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:usdc.synthetic.near\":\"-59831967\",\"nep141:wrap.synthetic.near\":\"19999999999999999999999999\"}}]}",
+        "nonce": "U1lOVEhFVElDLWZpbGxlci1ub25jZQ==",
+        "recipient": "intents.near"
+      },
+      "public_key": "ed25519:SYNTHETICfillerKey",
+      "signature": "ed25519:SYNTHETICfillerSignature"
+    }
+  ]
+}

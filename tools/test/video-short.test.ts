@@ -98,4 +98,28 @@ describe("short video cut", () => {
     const held = scenes(withDecision(storyEvidence())).find((sc) => sc.title.startsWith("7 ·"));
     expect(held?.captions.join(" ")).toContain("Another account relays the withheld order 37 s before its deadline. The verifier rejects it");
   });
+
+  it("states the agent's objective, the allocation outcome and the withheld order's identity", () => {
+    const ev = storyEvidence();
+    const short = shortScenes(ev, bindDemo(ev, null), false);
+    expect(short[0]?.body).toContain("Agent's objective: keep the portfolio near 50% USDC / 50% wNEAR by USD value. An instruction to the agent, not a rule the contract enforces.");
+    // Shares derived in the page test from the same SYNTHETIC inputs: 2,000 USDC + 100 wNEAR at $1 / $3, then the trade.
+    expect(short.find((sc) => sc.title === "3 · Successful trade")?.captions.join(" ")).toContain("A recorded synthetic-model-1 proposal sells 12.34 USDC for 4.0000 wNEAR, signed by the contract and filled exactly. USDC share: 86.96% to 86.43%, target 50%.");
+    // The allocation sentence does not add a caption frame to the short cut.
+    expect(short.find((sc) => sc.title === "3 · Successful trade")?.captions.flatMap(chunks)).toHaveLength(1);
+    const steps: LogStep[] = ["Roles and limits", "Genuine model proposal", "Filler fills", "Second signed order withheld", "Malicious requests", "Owner revokes", "Withheld order relayed", "Agent, oracle and MPC disabled", "Recovery to the owner"].map((title) => ({ title, lines: [] }));
+    const withDecision: Evidence = {
+      ...ev,
+      assertions: ev.assertions.map((a) =>
+        a.id === "model-proposal-on-chain"
+          ? { ...a, observed: { ...(a.observed as object), decision: { model: STORY.model, decision_text: JSON.stringify({ proposal: { sell: "usdc", sell_amount: STORY.sell.toString(), max_concession_bps: 40 } }), prompt_sha256: "SYNTHETIC", raw_output_sha256: "SYNTHETIC" } } }
+          : a,
+      ),
+    };
+    const walk = walkthroughScenes(withDecision, null, bindDemo(withDecision, null), steps, {}, STORY.model);
+    const withheld = walk.find((sc) => sc.title.startsWith("4 ·"));
+    expect(withheld?.captions.join(" ")).toContain("A scripted second order, 7, is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.");
+    for (const text of ["SYNTHETICnonce", "9".repeat(64), "simulate_intents"]) expect(withheld?.body).toContain(text);
+    expect(walk.find((sc) => sc.title.startsWith("3 ·"))?.body).toContain("86.96% → 86.43% (agent&#39;s target 50%)");
+  });
 });

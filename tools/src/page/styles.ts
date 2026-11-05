@@ -182,6 +182,24 @@ ol.path-list .see { font-size: .92rem; }
 .pending-panel p { margin: .3rem 0; }
 .pending-title { font: 700 1.05rem/1.35 var(--serif); }
 pre.commands { white-space: pre-wrap; overflow-wrap: anywhere; }
+.outcome { margin: 0 0 1.4rem; padding: 1rem 1.2rem; border: 1px solid var(--rule); background: color-mix(in srgb, var(--pass-bg) 45%, var(--sheet)); }
+.outcome p { margin: 0 0 .7rem; max-width: 80ch; }
+.outcome table { font-variant-numeric: tabular-nums; }
+.outcome .source { margin: .7rem 0 0; }
+.verify-controls { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; }
+.verify-controls input { font: .86rem var(--mono); padding: .45rem .6rem; border: 1px solid var(--rule-strong); background: var(--sheet); color: var(--ink); min-width: 0; flex: 1 1 22rem; }
+.verify-controls button { font: 700 .78rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: .6rem .9rem; border: 2px solid var(--accent); background: var(--sheet); color: var(--accent); cursor: pointer; }
+.verify-controls button:disabled { opacity: .5; cursor: progress; }
+.vparts { display: grid; gap: 1rem; margin-top: 1rem; }
+.vpart { background: var(--sheet); border: 1px solid var(--rule); padding: .9rem 1.1rem; min-width: 0; }
+.vpart h3 { margin-top: 0; }
+ol.vitems { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .6rem; }
+li.vitem { border-left: 4px solid var(--rule-strong); padding: .2rem 0 .2rem .8rem; overflow-wrap: anywhere; }
+li.vitem.verified { border-color: var(--pass); } li.vitem.failed { border-color: var(--fail); } li.vitem.inconclusive, li.vitem.error { border-color: var(--stale); }
+li.vitem p { margin: 0 0 .4rem; }
+article.casefile { background: var(--sheet); border: 1px solid var(--rule); padding: .9rem 1.1rem; margin: 0 0 1rem; min-width: 0; }
+article.casefile h3 { margin-top: 0; display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.note-line { font: 700 .72rem/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--stale); margin: 0 0 .5rem; }
 footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule-strong); font: .76rem/1.6 var(--mono); color: var(--muted); }
 .muted { color: var(--muted); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

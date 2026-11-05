@@ -3,9 +3,10 @@
 // evidence is absent lists what is missing and shows no numbers. A stage whose check did not hold, or whose evidence
 // is inconclusive, narrates that outcome instead of its success sentence; acceptance certification is separate.
 import { z } from "zod";
-import { VALUE_DECIMALS } from "../agent/snapshot.js";
+import { SYSTEM_PROMPT } from "../agent/prompt.js";
+import { VALUE_DECIMALS, formatPrice, valueUnits } from "../agent/snapshot.js";
 import { DECIMALS } from "../demo/market.js";
-import { Policy, type Evidence, type Receipt } from "../types.js";
+import { Policy, Reference, type Evidence, type Receipt } from "../types.js";
 
 /** Decimal string of integer units with `decimals`, rounded down to `places`. */
 export function units(raw: string, decimals: number, places: number): string {
@@ -28,6 +29,33 @@ export const shortHash = (h: string): string => {
   return body.length > 16 ? `${h.slice(0, colon)}${body.slice(0, 6)}…${body.slice(-4)}` : h;
 };
 const pct = (bps: number): string => `${(bps / 100).toFixed(2).replace(/\.00$/, "")}%`;
+/** UTC time of a nanosecond timestamp, to the millisecond. */
+export const isoNs = (ns: string): string => new Date(Number(BigInt(ns) / 1_000_000n)).toISOString();
+
+/** The agent's objective, quoted from its system prompt. It is an instruction to the agent; the contract does not enforce it. */
+export const AGENT_OBJECTIVE: string = /Objective: ([^.]+)\./.exec(SYSTEM_PROMPT)?.[1] ?? "not stated in the agent prompt";
+
+export interface Split {
+  units: { usdc: string; wnear: string };
+  /** USD value at the reference prices, in 10^-12 USD, rounded down per asset. */
+  value: { usdc: bigint; wnear: bigint; total: bigint };
+  /** USDC share of the total value in hundredths of a percent, rounded to the nearest. */
+  usdcShare: bigint;
+}
+
+export interface Allocation {
+  /** The grant's initial reference, as recorded in grant-active. */
+  reference: Reference;
+  before: Split;
+  after: Split;
+}
+
+/** "52.63%" from hundredths of a percent. */
+export const share = (hundredths: bigint): string => `${(hundredths / 100n).toString()}.${(hundredths % 100n).toString().padStart(2, "0")}%`;
+/** Distance of the USDC share from 50%, in percentage points. */
+export const offBalance = (s: Split): string => share(s.usdcShare >= 5_000n ? s.usdcShare - 5_000n : 5_000n - s.usdcShare).replace("%", " pts");
+export const priceText = (ref: Reference): string => `USDC $${formatPrice(ref.usdc)}, wNEAR $${formatPrice(ref.wnear)}`;
+
 
 export type StageKey = "balances" | "limits" | "trade" | "withheld" | "revoked" | "rejected" | "recovered";
 
@@ -65,15 +93,66 @@ const Events = z.object({ signer_id: z.string().optional(), events: z.array(z.ob
 const SHAPES = {
   "trade-executed": z.object({ before: Pair, after: Pair, signed: z.object({ sell: z.string(), sell_amount: dec, buy: z.string(), buy_amount: dec.nullable() }) }),
   "grant-initial-value": z.object({ contract: dec }),
-  "grant-active": z.object({ epoch: z.number(), path: z.string(), public_key: z.string().nullable(), policy: Policy }),
+  "grant-active": z.object({ epoch: z.number(), path: z.string(), public_key: z.string().nullable(), policy: Policy, initial_reference: Reference.nullable().optional() }),
   "agent-one-restricted-key": z.array(z.object({ permission: z.object({ FunctionCall: z.object({ method_names: z.array(z.string()), receiver_id: z.string() }) }) })),
   "model-proposal-on-chain": z.object({ mode: z.string(), decision: z.object({ model: z.string() }).nullable(), order: OrderLike.extend({ concession_bps: z.number() }).nullable() }),
-  revoked: z.object({ status: z.string().optional(), key_registered: z.boolean() }),
+  revoked: z.object({ status: z.string().optional(), key_registered: z.boolean(), grant_public_key: z.string().nullable().optional() }),
   "withheld-released": z.object({ state: z.string(), reason: z.string().optional() }),
-  "withheld-rejected": z.object({ error: z.string(), relay_block_time_ns: dec, order_deadline_ns: dec.nullable(), nonce_used: z.boolean() }),
+  "withheld-rejected": z.object({
+    error: z.string(),
+    relay_block_time_ns: dec,
+    order_deadline_ns: dec.nullable(),
+    nonce_used: z.boolean(),
+    relay_tx_hash: z.string().nullable().optional(),
+    relayer: z.string().optional(),
+    mandate: z.string().optional(),
+    revoked_key: z.string().optional(),
+    bundle_sha256: z.string().optional(),
+    verifier_receipt: z.object({ id: z.string(), block_hash: z.string(), block_time_ns: dec }).nullable().optional(),
+  }),
   recovered: z.object({ recovered: Pair, mandate_final: Pair }),
 } as const;
 type Shape<K extends keyof typeof SHAPES> = z.infer<(typeof SHAPES)[K]>;
+
+/** Identity of the withheld order and its simulation, recorded by newer demos; older evidence holds only "accepted". */
+export const WithheldIdentity = z.object({
+  simulation: z.string(),
+  order_id: z.string(),
+  epoch: z.number(),
+  mandate: z.string(),
+  signing_public_key: z.string(),
+  mandate_nonce: z.string(),
+  deadline_ns: dec.nullable(),
+  payload_sha256: z.string().nullable(),
+  bundle_sha256: z.string(),
+  filler_nonce: z.string(),
+});
+export type WithheldIdentity = z.infer<typeof WithheldIdentity>;
+
+export const withheldIdentity = (ev: Evidence): WithheldIdentity | null => {
+  const parsed = WithheldIdentity.safeParse(ev.assertions.find((a) => a.id === "withheld-executable")?.observed);
+  return parsed.success ? parsed.data : null;
+};
+
+function split(units: { usdc: string; wnear: string }, ref: Reference): Split {
+  const usdcValue = valueUnits(BigInt(units.usdc), DECIMALS.usdc, ref.usdc);
+  const wnearValue = valueUnits(BigInt(units.wnear), DECIMALS.wnear, ref.wnear);
+  const total = usdcValue + wnearValue;
+  return { units, value: { usdc: usdcValue, wnear: wnearValue, total }, usdcShare: total === 0n ? 0n : (usdcValue * 20_000n / total + 1n) / 2n };
+}
+
+/**
+ * The mandate's allocation before and after the permitted trade (trade-executed), valued at the grant's initial
+ * reference (grant-active). Integer arithmetic on recorded values; null with the reasons when either is absent.
+ */
+export function allocation(ev: Evidence): { ok: true; value: Allocation } | { ok: false; missing: string[] } {
+  const trade = SHAPES["trade-executed"].safeParse(ev.assertions.find((a) => a.id === "trade-executed")?.observed);
+  const grant = SHAPES["grant-active"].safeParse(ev.assertions.find((a) => a.id === "grant-active")?.observed);
+  const ref = grant.success ? (grant.data.initial_reference ?? null) : null;
+  const missing = [...(trade.success ? [] : ["balances before and after the trade (trade-executed)"]), ...(ref === null ? ["the grant's initial reference prices (grant-active)"] : [])];
+  if (!trade.success || ref === null) return { ok: false, missing };
+  return { ok: true, value: { reference: ref, before: split(trade.data.before, ref), after: split(trade.data.after, ref) } };
+}
 
 /** Collects the evidence one stage is bound to, and what is missing. */
 class Binder {
@@ -119,7 +198,7 @@ class Binder {
 }
 
 const verifierReason = (error: string): string =>
-  (/ExecutionError\\?":\\?"([^"\\]+)/.exec(error)?.[1] ?? error).replace(/^Smart contract panicked: /, "").replace(/ed25519:[1-9A-HJ-NP-Za-km-z]+/g, (k) => shortHash(k));
+  (/ExecutionError\\?":\\?"([^"\\]+)/.exec(error)?.[1] ?? error).replace(/^Smart contract panicked: /, "");
 
 /** The seven stages of the revocation story, in order, from one run's evidence. */
 export function revocationStory(ev: Evidence): Stage[] {
@@ -204,6 +283,8 @@ export function revocationStory(ev: Evidence): Stage[] {
       b.check("settled-release");
       const modelName = model !== null && model.mode === "recorded-model" && model.decision !== null ? model.decision.model : null;
       const s = trade?.signed;
+      const alloc = allocation(ev);
+      const moved = alloc.ok ? `${share(alloc.value.before.usdcShare)} → ${share(alloc.value.after.usdcShare)}` : null;
       return {
         headline: s === undefined || s.buy_amount === null ? null : `sold ${amount(s.sell, s.sell_amount)} → bought ${amount(s.buy, s.buy_amount)}`,
         facts:
@@ -213,12 +294,16 @@ export function revocationStory(ev: Evidence): Stage[] {
                 ["Proposed by", modelName === null ? "a scripted proposal" : `recorded output of ${modelName}`],
                 ...(model.order === null ? [] : [["Order id", `${model.order.id}, concession ≤ ${String(model.order.concession_bps)} bps`] as [string, string]]),
                 ["Mandate after", `${usdc(trade.after.usdc)} + ${wnear(trade.after.wnear)}`],
+                ...(moved === null ? [] : [["USDC share of value", `${moved} (target 50%, at the grant's reference prices)`] as [string, string]]),
               ],
         labels: modelName === null ? ["scripted proposal"] : ["recorded genuine model output"],
         caption:
           s === undefined || s.buy_amount === null
             ? null
-            : `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal`} sells ${amount(s.sell, s.sell_amount)}. The contract signs it, and our filler executes it for ${amount(s.buy, s.buy_amount)}, exactly as signed.`,
+            : moved === null
+              ? `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal`} sells ${amount(s.sell, s.sell_amount)}. The contract signs it, and our filler executes it for ${amount(s.buy, s.buy_amount)}, exactly as signed.`
+              : // Kept to one caption frame: the allocation replaces words, not adds a frame.
+                `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal`} sells ${amount(s.sell, s.sell_amount)} for ${amount(s.buy, s.buy_amount)}, signed by the contract and filled exactly. USDC share: ${moved.replace(" → ", " to ")}, target 50%.`,
       };
     }),
     stage("withheld", "Signed pending order", (b) => {
@@ -229,11 +314,26 @@ export function revocationStory(ev: Evidence): Stage[] {
       const order = z.object({ order: OrderLike }).safeParse(signRequested?.data);
       if (r !== undefined && !order.success) b.missing.push("signed order in the withheld receipt's events");
       const o = order.success ? order.data.order : null;
+      const id = withheldIdentity(ev);
+      const key = grantKey.success ? grantKey.data.public_key : null;
+      if (id !== null && o !== null && id.order_id !== o.id) b.inconclusive.push(`the simulated order ${id.order_id} is not the signed order ${o.id}`);
+      if (id !== null && key !== null && id.signing_public_key !== key) b.inconclusive.push("the withheld order was not signed by the grant key");
+      const identity: [string, string][] =
+        id === null
+          ? [["Identity", "order nonce, deadline and bundle hash are not recorded in this evidence"]]
+          : [
+              ["Mandate nonce", id.mandate_nonce],
+              ...(id.deadline_ns === null ? [] : [["Deadline", `${isoNs(id.deadline_ns)} (${id.deadline_ns} ns)`] as [string, string]]),
+              ["Signing key", id.signing_public_key],
+              ...(id.payload_sha256 === null ? [] : [["NEP-413 payload hash", id.payload_sha256] as [string, string]]),
+              ["Bundle sha256", id.bundle_sha256],
+            ];
       return {
         headline: o === null || o.buy_amount === null ? null : `order id ${o.id}: ${amount(o.sell, o.sell_amount)} → ${amount(o.buy, o.buy_amount)}`,
         facts: [
           ["State", "signed by the grant key, withheld from the verifier"],
-          ...(executable === true ? [["Before revoke", "the verifier's simulation accepts it"] as [string, string]] : []),
+          ...(executable === true ? [["Before revoke", id === null ? "the verifier's simulation accepts it" : "the verifier's simulation (simulate_intents) accepts this exact bundle"] as [string, string]] : []),
+          ...identity,
         ],
         labels: ["scripted proposal"],
         caption:
@@ -246,11 +346,11 @@ export function revocationStory(ev: Evidence): Stage[] {
       b.tx(/^owner revoke/);
       const revoked = b.observed("revoked");
       const released = b.observed("withheld-released");
-      const key = grantKey.success ? grantKey.data.public_key : null;
+      const key = revoked?.grant_public_key ?? (grantKey.success ? grantKey.data.public_key : null);
       return {
         headline: revoked === null ? null : `grant ${revoked.status ?? "revoked"} · key registered: ${revoked.key_registered ? "yes" : "no"}`,
         facts: [
-          ...(key === null ? [] : [["Removed key", shortHash(key)] as [string, string]]),
+          ...(key === null ? [] : [["Removed key", key] as [string, string]]),
           ...(released === null ? [] : [["Withheld order", `${released.state}${released.reason === undefined ? "" : ` (${released.reason})`}`] as [string, string]]),
         ],
         labels: [],
@@ -261,20 +361,35 @@ export function revocationStory(ev: Evidence): Stage[] {
       const [r] = b.tx(/withheld order after revocation/);
       const rej = b.observed("withheld-rejected");
       const relayer = Events.safeParse(r?.detail);
-      const leftNs = rej?.order_deadline_ns == null ? null : BigInt(rej.order_deadline_ns) - BigInt(rej.relay_block_time_ns);
+      // The failed verifier receipt's block time when recorded; older evidence has only the block time read just before the relay.
+      const atNs = rej?.verifier_receipt?.block_time_ns ?? rej?.relay_block_time_ns ?? null;
+      const leftNs = rej?.order_deadline_ns == null || atNs === null ? null : BigInt(rej.order_deadline_ns) - BigInt(atNs);
       const secondsLeft = leftNs === null ? null : Number(leftNs / 1_000_000_000n);
       if (rej !== null && leftNs === null) b.inconclusive.push("the withheld order's deadline is not recorded");
       // A relay after the deadline fails for expiry whatever the key state, so it cannot show revocation's effect.
       if (leftNs !== null && leftNs < 0n) b.inconclusive.push(`the withheld order was relayed ${units((-leftNs).toString(), 9, 1)} s after its deadline, so its rejection does not show the effect of revocation`);
+      const key = rej?.revoked_key ?? (grantKey.success ? grantKey.data.public_key : null);
+      const id = withheldIdentity(ev);
+      if (rej !== null && key === null) b.inconclusive.push("the removed signing key is not recorded");
+      if (rej !== null && key !== null && !rej.error.includes(`public key '${key}' doesn't exist for account '${rej.mandate ?? mandate}'`)) {
+        b.inconclusive.push("the verifier error does not name the removed grant key");
+      }
+      if (rej?.bundle_sha256 !== undefined && id !== null && rej.bundle_sha256 !== id.bundle_sha256) b.inconclusive.push("the relayed bundle is not the simulated bundle");
+      const receipt = rej?.verifier_receipt ?? null;
       return {
         headline: rej === null || secondsLeft === null ? null : `rejected ${String(secondsLeft)} s before its deadline`,
         facts:
           rej === null
             ? []
             : [
-                ["Relayed by", relayer.success && relayer.data.signer_id !== undefined ? relayer.data.signer_id : "another account"],
+                ["Relayed by", rej.relayer ?? (relayer.success && relayer.data.signer_id !== undefined ? relayer.data.signer_id : "another account")],
                 ["Verifier error", verifierReason(rej.error)],
+                ...(rej.order_deadline_ns === null ? [] : [["Deadline", isoNs(rej.order_deadline_ns)] as [string, string]]),
+                receipt === null
+                  ? ["Block time before relay", isoNs(rej.relay_block_time_ns)]
+                  : ["Rejected in block", `${receipt.block_hash} at ${isoNs(receipt.block_time_ns)}`],
                 ["Nonce used", rej.nonce_used ? "yes" : "no"],
+                ...(rej.bundle_sha256 === undefined || id === null ? [] : [["Same bundle as simulated", rej.bundle_sha256 === id.bundle_sha256 ? "yes (bundle sha256 matches)" : "no"] as [string, string]]),
               ],
         labels: [],
         caption:

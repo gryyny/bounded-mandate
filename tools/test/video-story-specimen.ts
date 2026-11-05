@@ -61,7 +61,13 @@ export const STORY = {
   relayNs: 1_000_000_000_000_000_000n,
   deadlineNs: 1_000_000_037_000_000_000n, // 37 s later
   model: "synthetic-model-1",
+  /** Grant reference: USDC $1.00, wNEAR $3.00 (mantissa, exponent), so the initial value is $2,300.00. */
+  reference: { usdc: { price: 100_000_000n, expo: -8 }, wnear: { price: 300_000_000n, expo: -8 } },
+  key: "ed25519:SYNTHETICkeySYNTHETICkey",
+  bundleSha256: "9".repeat(64),
 } as const;
+
+const price = (id: string, p: { price: bigint; expo: number }) => ({ price_id: id, price: p.price.toString(), conf: "1", expo: p.expo, publish_time_sec: "1000000000" });
 
 /** Evidence carrying every assertion and receipt the seven story stages bind to. */
 export function storyEvidence(): Evidence {
@@ -99,19 +105,58 @@ export function storyEvidence(): Evidence {
     assertions: [
       held("mandate-no-keys", []),
       held("agent-one-restricted-key", [{ permission: { FunctionCall: { method_names: ["propose_order"], receiver_id: "mandate.synthetic" } } }]),
-      held("grant-active", { epoch: 1, path: "mandate/v1/1", public_key: "ed25519:SYNTHETICkeySYNTHETICkey", policy }),
+      held("grant-active", {
+        epoch: 1,
+        path: "mandate/v1/1",
+        public_key: s.key,
+        policy,
+        initial_reference: { usdc: price("SYNTHETIC-usdc", s.reference.usdc), wnear: price("SYNTHETIC-wnear", s.reference.wnear), observed_at_ns: "1000000000000000000" },
+      }),
       held("grant-initial-value", { contract: s.initialValue.toString() }),
       held("model-proposal-on-chain", { mode: "recorded-model", decision: { model: s.model }, order: { id: "6", sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString(), concession_bps: 40 } }),
       held("trade-executed", { before: { usdc: s.before.usdc.toString(), wnear: s.before.wnear.toString() }, after, signed: { sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString() } }),
       held("settled-release", { state: "released", reason: "settled" }),
-      held("withheld-executable", "accepted"),
-      held("revoked", { status: "revoked", key_registered: false }),
+      held("withheld-executable", {
+        simulation: "accepted",
+        order_id: "7",
+        epoch: 1,
+        mandate: "mandate.synthetic",
+        signing_public_key: s.key,
+        mandate_nonce: "SYNTHETICnonce",
+        deadline_ns: s.deadlineNs.toString(),
+        payload_sha256: "8".repeat(64),
+        bundle_sha256: s.bundleSha256,
+        filler_nonce: "SYNTHETICfillernonce",
+      }),
+      held("revoked", { status: "revoked", key_registered: false, grant_public_key: s.key }),
       held("withheld-released", { state: "released", reason: "key_removed" }),
-      held("withheld-rejected", { error: "SYNTHETIC public key doesn't exist", relay_block_time_ns: s.relayNs.toString(), order_deadline_ns: s.deadlineNs.toString(), nonce_used: false }),
+      held("withheld-rejected", {
+        error: `SYNTHETIC Smart contract panicked: public key '${s.key}' doesn't exist for account 'mandate.synthetic'`,
+        relay_block_time_ns: (s.relayNs - 1_000_000_000n).toString(),
+        order_deadline_ns: s.deadlineNs.toString(),
+        nonce_used: false,
+        relayer: "relayer.synthetic",
+        mandate: "mandate.synthetic",
+        revoked_key: s.key,
+        bundle_sha256: s.bundleSha256,
+        verifier_receipt: { id: "SYNTHETICreceipt", block_hash: "SYNTHETICblock", block_time_ns: s.relayNs.toString() },
+      }),
       held("agent-stopped", "SYNTHETIC grant is not active"),
       held("recovered", { recovered: after, mandate_final: { usdc: "0", wnear: "0" } }),
     ],
   });
+}
+
+/** SYNTHETIC: the same story in the format of demos before the withheld identity and grant reference were recorded. */
+export function olderStoryEvidence(): Evidence {
+  const ev = storyEvidence();
+  const older: Record<string, (o: Record<string, unknown>) => unknown> = {
+    "grant-active": (o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "initial_reference")),
+    "withheld-executable": () => "accepted",
+    revoked: (o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "grant_public_key")),
+    "withheld-rejected": (o) => ({ error: o.error, relay_block_time_ns: o.relay_block_time_ns, order_deadline_ns: o.order_deadline_ns, nonce_used: o.nonce_used }),
+  };
+  return { ...ev, assertions: ev.assertions.map((a) => (a.id in older ? { ...a, observed: older[a.id]?.(a.observed as Record<string, unknown>) } : a)) };
 }
 
 /** SYNTHETIC: the withheld order relayed 4.5 s after its deadline, so the demo marks withheld-rejected as not held. */

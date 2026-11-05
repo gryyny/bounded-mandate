@@ -1,0 +1,12 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "jsonrpc": "2.0",
+  "id": "verify",
+  "result": {
+    "header": {
+      "hash": "SYNTHETICblockReject",
+      "height": 200000000,
+      "timestamp_nanosec": "1800000010000000000"
+    }
+  }
+}

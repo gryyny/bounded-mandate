@@ -1,0 +1,17 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "jsonrpc": "2.0",
+  "id": "verify",
+  "error": {
+    "name": "HANDLER_ERROR",
+    "cause": {
+      "name": "UNKNOWN_TRANSACTION",
+      "info": {
+        "requested_transaction_hash": "Gs3NrdjvCKZzC7yFUBsNbDP7X4yCx1UoSEPvBk6xQpDY"
+      }
+    },
+    "code": -32000,
+    "message": "Server error",
+    "data": "Transaction Gs3NrdjvCKZzC7yFUBsNbDP7X4yCx1UoSEPvBk6xQpDY doesn't exist"
+  }
+}

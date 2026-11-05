@@ -9,8 +9,9 @@ import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { ACCEPTANCE_SCHEMA, type Acceptance, type BaselineOutcome, type CaseResult, type T5Data } from "../src/evidence/schema.js";
 import { LIVE_MAINNET_PATH, isTxHash, loadLive } from "../src/page/mainnet.js";
 import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/page/render.js";
+import { clientScript, scriptHash } from "../src/page/verify.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
-import { STORY, expiredStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
+import { STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
 
 const REV = "a".repeat(40);
 const FIXTURES = { "verifier/defuse-0.4.5.wasm": "e".repeat(64) };
@@ -248,7 +249,10 @@ describe("evidence page: escaping and self-containment", () => {
       baseline: { ...t5("attack_succeeded"), command: evil },
     });
     const html = page(acc, specimen({ command: evil, identifiers: { [evil]: evil }, unknowns: [evil], receipts: [receipt(evil, { note: evil }, { tx_hash: evil })], assertions: [check(evil, evil, evil, evil)] }));
-    expect(html).not.toContain("<script>");
+    expect(html).not.toContain(evil);
+    expect(html).not.toContain("<script>alert");
+    // The page's own client script is the only script element.
+    expect(html.match(/<script\b/gi)).toHaveLength(1);
     expect(html).toContain(escapeHtml(evil));
     expect(escapeHtml(evil)).toBe("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;&amp;&#39;");
   });
@@ -259,7 +263,16 @@ describe("evidence page: escaping and self-containment", () => {
     const path = renderPage(specimen(), dir, { acceptance: null, latestRunId: null, live: null, gateReports: ["ignored"] });
     const html = readFileSync(path, "utf8");
     expect(path).toBe(join(dir, "index.html"));
-    expect(html).not.toMatch(/<(script|link|img|iframe)\b/i);
+    // One inline script, allowed by its hash; no other script, stylesheet, image or frame, and nothing loaded from elsewhere.
+    const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)];
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]?.[1]).toBe("");
+    const script = scripts[0]?.[2] ?? "";
+    expect(script).toBe(clientScript());
+    expect(script).not.toMatch(/https?:\/\//);
+    expect(html).toContain(`script-src '${scriptHash(script)}'`);
+    const rest = html.replace(scripts[0]?.[0] ?? "", "");
+    expect(rest).not.toMatch(/<(script|link|img|iframe)\b/i);
     expect(html).not.toMatch(/\b(src|href)=["']?(https?:)?\/\//i);
     expect(html).toContain("Content-Security-Policy");
     expect(gateStatus(html, "T1")).toBe("not-run");
@@ -483,5 +496,131 @@ describe("evidence page: mainnet section", () => {
   it("shows a stopped mainnet run as stopped", () => {
     const html = renderHtml(specimen(), { acceptance: null, live: live({ unknowns: ["run stopped: SYNTHETIC ambiguous outcome"] }) });
     expect(html).toContain("Run stopped: run stopped: SYNTHETIC ambiguous outcome");
+  });
+});
+
+describe("evidence page: outcome, withheld identity and sandbox cases", () => {
+  const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+  const stages = (h: string): string[] => [...h.matchAll(/<li class="stage ([a-z]+) ([a-z-]+)"/g)].map((m) => `${m[1] ?? ""} ${m[2] ?? ""}`);
+  const withObserved = (ev: Evidence, id: string, edit: (o: Record<string, unknown>) => Record<string, unknown>): Evidence => ({
+    ...ev,
+    assertions: ev.assertions.map((a) => (a.id === id ? { ...a, observed: edit(a.observed as Record<string, unknown>) } : a)),
+  });
+
+  it("states the agent's objective as its instruction, not a contract rule, and shows the allocation from recorded balances", () => {
+    expect(html).toContain(escapeHtml("“keep the portfolio near 50% USDC / 50% wNEAR by USD value”"));
+    expect(html).toContain("not a rule the contract enforces");
+    expect(html).toContain("Nothing here claims a profit.");
+    // Independent derivation in micro-dollars from the SYNTHETIC raw inputs and reference ($1.00, $3.00).
+    const s = STORY;
+    const micro = (u: bigint, w: bigint) => ({ u: u * 1n, w: (w * 3n * 10n ** 6n) / 10n ** 24n });
+    const pctOf = (v: { u: bigint; w: bigint }) => {
+      const h = (v.u * 20_000n / (v.u + v.w) + 1n) / 2n;
+      return `${String(h / 100n)}.${String(h % 100n).padStart(2, "0")}%`;
+    };
+    const before = micro(s.before.usdc, s.before.wnear);
+    const after = micro(s.before.usdc - s.sell, s.before.wnear + s.buy);
+    expect(pctOf(before)).toBe("86.96%");
+    for (const text of [pctOf(before), pctOf(after), "$2,300.00", "$2,299.66", "USDC $1, wNEAR $3", "not a measure of profit or loss", `${pctOf(before)} → ${pctOf(after)} (target 50%`]) {
+      expect(html).toContain(escapeHtml(text));
+    }
+    const older = renderHtml(olderStoryEvidence(), { acceptance: null, live: null });
+    expect(older).toContain("Allocation not shown: this evidence lacks the grant&#39;s initial reference prices (grant-active).");
+  });
+
+  it("shows the withheld order's identity, simulation, removal, rejection and recovery", () => {
+    for (const text of [
+      "SYNTHETICnonce",
+      "9".repeat(64),
+      "8".repeat(64),
+      new Date(Number(STORY.deadlineNs / 1_000_000n)).toISOString(),
+      "the verifier&#39;s simulation (simulate_intents) accepts this exact bundle",
+      "ed25519:SYNTHETICkeySYNTHETICkey",
+      "SYNTHETICblock at ",
+      "yes (bundle sha256 matches)",
+      "rejected 37 s before its deadline",
+    ]) expect(html).toContain(text);
+    expect(stages(html).every((s) => s.endsWith(" held"))).toBe(true);
+  });
+
+  it("keeps older evidence without the identity held, and says what is not recorded", () => {
+    const older = renderHtml(olderStoryEvidence(), { acceptance: null, live: null });
+    expect(stages(older).every((s) => s.endsWith(" held"))).toBe(true);
+    expect(older).toContain("order nonce, deadline and bundle hash are not recorded in this evidence");
+    expect(older).toContain("Block time before relay");
+    expect(older).toContain(escapeHtml("rejected 38 s before its deadline"));
+  });
+
+  it("narrates as inconclusive a rejection that does not name the key, a different bundle, or a different simulated order", () => {
+    const cases: [Evidence, string, string][] = [
+      [withObserved(storyEvidence(), "withheld-rejected", (o) => ({ ...o, error: "SYNTHETIC invalid signature" })), "rejected inconclusive", "the verifier error does not name the removed grant key"],
+      [withObserved(storyEvidence(), "withheld-rejected", (o) => ({ ...o, bundle_sha256: "7".repeat(64) })), "rejected inconclusive", "the relayed bundle is not the simulated bundle"],
+      [withObserved(storyEvidence(), "withheld-executable", (o) => ({ ...o, order_id: "8" })), "withheld inconclusive", "the simulated order 8 is not the signed order 7"],
+      [withObserved(storyEvidence(), "withheld-executable", (o) => ({ ...o, signing_public_key: "ed25519:OTHER" })), "withheld inconclusive", "the withheld order was not signed by the grant key"],
+    ];
+    for (const [ev, stage, reason] of cases) {
+      const h = renderHtml(ev, { acceptance: null, live: null });
+      expect(stages(h)).toContain(stage);
+      expect(h).toContain(escapeHtml(reason));
+    }
+  });
+
+  it("places the verification panel and the sandbox cases between the mainnet section and the demonstration", () => {
+    const at = (id: string) => html.indexOf(`id="${id}"`);
+    expect(at("mainnet")).toBeLessThan(at("verify"));
+    expect(at("verify")).toBeLessThan(at("regrant"));
+    expect(at("regrant")).toBeLessThan(at("demo"));
+    expect(html).toContain("No acceptance run is attached, so no case report is shown.");
+  });
+
+  const report = (id: string, data: unknown, over: Record<string, unknown> = {}): { file: string; text: string } => {
+    const [gate, kase] = id.split(".") as [string, string];
+    return {
+      file: `${id}.json`,
+      text: `${JSON.stringify({ schema: "bounded-mandate/gate-report/2", gate, case: kase, passed: true, mode: "sandbox", run_id: "run-SYNTHETIC", source: { revision: REV, dirty: false }, spec_sha256: "b".repeat(64), fixture_manifest_sha256: "d".repeat(64), wasm_sha256: {}, command: "SYNTHETIC", generated_at_unix: 1, data, ...over }, null, 2)}\n`,
+    };
+  };
+  const t1 = { relays: [{ label: "SYNTHETIC-before", order_id: 0, epoch: 1, after_confirmed_removal: false, executed: true }, { label: "SYNTHETIC-after", order_id: 1, epoch: 1, after_confirmed_removal: true, executed: false }, { label: "SYNTHETIC-regrant", order_id: 1, epoch: 1, after_confirmed_removal: true, executed: false }], executions_after_confirmed_removal: 0 };
+  const t2b = { mechanism: "SYNTHETIC mechanism text", steps: [{ order: 0, phase: "SYNTHETIC disclosed", accounted: true }, { order: 0, phase: "independent relay", executed: true }, { order: 1, phase: "relay after confirmed removal", executed: false, state: "released:key_removed" }] };
+  const reports = [report("T1.withheld-regrant", t1), report("T2b.disclosed-relay", t2b), report("T2b.callback-failed-after-disclosure", t2b)];
+
+  it("summarizes each regrant and disclosure case from its own report, embedded verbatim with its sha256", () => {
+    const h = renderHtml(specimen(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: null, reports });
+    expect(h.match(/sandbox acceptance test - not part of the mainnet sequence/g)).toHaveLength(3);
+    expect(h).toContain("2 relays after confirmed key removal (SYNTHETIC-after, SYNTHETIC-regrant): 0 executions.");
+    expect(h).toContain("1 relay without confirmed removal of its own key (SYNTHETIC-before): 1 execution, recorded honestly.");
+    expect(h).toContain("2 independent relays: 1 executed");
+    expect(h).toContain("1 relay after confirmed removal: 0 executions.");
+    expect(h).toContain("<strong>Mechanism (recorded):</strong> SYNTHETIC mechanism text");
+    for (const r of reports) {
+      expect(h).toContain(createHash("sha256").update(r.text).digest("hex"));
+      expect(h).toContain(escapeHtml(r.text));
+    }
+    expect(h).toContain("released:key_removed");
+  });
+
+  it("does not show a report from another run, a missing report or an uncertified pass as evidence", () => {
+    const other = [report("T1.withheld-regrant", t1, { run_id: "run-OTHER" }), ...reports.slice(1)];
+    const h = renderHtml(specimen(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: null, reports: other });
+    expect(h).toContain("its run run-OTHER is not the acceptance run run-SYNTHETIC");
+    expect(h).not.toContain("SYNTHETIC-after, SYNTHETIC-regrant");
+    const missing = renderHtml(specimen(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: null, reports: [] });
+    expect(missing).toContain("Report <code>T1.withheld-regrant.json</code> is not available to this page.");
+    const uncertified = renderHtml(specimen({}, { dirty: true }), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: null, reports });
+    expect(uncertified).toContain("passed, not certified for this demo</span></h3>");
+  });
+
+  it("reads the certified bundle's actual regrant and disclosure reports", () => {
+    const bundle = join(repo, "evidence/7fc3f90");
+    const acc = JSON.parse(readFileSync(join(bundle, "acceptance.json"), "utf8")) as Acceptance;
+    const files = ["T1.withheld-regrant.json", "T2b.disclosed-relay.json", "T2b.callback-failed-after-disclosure.json"].map((file) => ({ file, text: readFileSync(join(bundle, "tests", file), "utf8") }));
+    const ev = Evidence.parse(JSON.parse(readFileSync(join(bundle, "demo.json"), "utf8")));
+    const h = renderHtml(ev, { acceptance: acc, latestRunId: acc.run_id, live: null, reports: files });
+    const relays = (JSON.parse(files[0]?.text ?? "") as { data: { relays: { after_confirmed_removal: boolean; executed: boolean }[] } }).data.relays;
+    const after = relays.filter((r) => r.after_confirmed_removal);
+    expect(h).toContain(`${String(after.length)} relays after confirmed key removal`);
+    expect(h).toContain(`: ${String(after.filter((r) => r.executed).length)} executions.`);
+    expect(h).not.toContain("not shown as evidence");
+    expect(h.match(/recorded result: <span class="status success">passed<\/span>/g)).toHaveLength(3);
   });
 });

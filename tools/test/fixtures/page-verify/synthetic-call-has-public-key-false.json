@@ -1,0 +1,17 @@
+{
+  "_synthetic": "SYNTHETIC: hand-made JSON-RPC response for tools/test/page-verify.test.ts; not a recorded mainnet response",
+  "jsonrpc": "2.0",
+  "id": "verify",
+  "result": {
+    "result": [
+      102,
+      97,
+      108,
+      115,
+      101
+    ],
+    "logs": [],
+    "block_height": 200000001,
+    "block_hash": "SYNTHETICblockView"
+  }
+}
