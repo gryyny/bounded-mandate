@@ -12,7 +12,7 @@ describe("short video cut", () => {
   it("tells the seven stages in order, between the position and the paths", () => {
     const scenes = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false);
     expect(scenes.map((s) => s.title)).toEqual([
-      "Delegate trading within on‑chain limits",
+      "Let an AI agent trade within limits a contract enforces",
       "1 · Balances",
       "2 · Trading limits",
       "3 · Successful trade",
@@ -121,5 +121,12 @@ describe("short video cut", () => {
     expect(withheld?.captions.join(" ")).toContain("A scripted second order, 7, is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.");
     for (const text of ["SYNTHETICnonce", "9".repeat(64), "simulate_intents"]) expect(withheld?.body).toContain(text);
     expect(walk.find((sc) => sc.title.startsWith("3 ·"))?.body).toContain("86.96% → 86.43% (agent&#39;s target 50%)");
+  });
+
+  it("opens with the README's plain claim in one caption frame", () => {
+    const first = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false)[0];
+    expect(first?.body).toContain("Once a revocation is confirmed, signed orders already issued fail too");
+    expect(first?.body).not.toContain("Revoke the entire grant");
+    expect(first?.captions.flatMap(chunks)).toHaveLength(1);
   });
 });

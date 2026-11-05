@@ -28,7 +28,7 @@ import { REQUIRED_CASES } from "../evidence/required.js";
 import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
 import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
-import { GATE_LABEL, escapeHtml as esc, loadAcceptance } from "../page/render.js";
+import { GATE_LABEL, HEADLINE, SUBTITLE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
 import { AGENT_OBJECTIVE, allocation, isoNs, priceText, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type Stage, type StageKey } from "../page/story.js";
 import { Evidence } from "../types.js";
 
@@ -332,9 +332,10 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
     {
       kind: "summary",
       labels: DEMO_LABELS,
-      title: "Delegate trading within on\u2011chain limits",
-      body: `<p class="claim">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>${rail(stages, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">One sandbox run. Every number shown comes from out/evidence/demo.json.</p>`,
-      captions: ["Delegate trading within on-chain limits. Revoke the entire grant, including outstanding signed orders, and recover the remaining assets."],
+      title: HEADLINE,
+      body: `<p class="claim">${esc(SUBTITLE)}</p>${rail(stages, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">One sandbox run. Every number shown comes from out/evidence/demo.json.</p>`,
+      // One caption frame: at most 24 words.
+      captions: ["Let an AI agent trade within limits a contract enforces. After a confirmed revocation, signed orders fail and the owner takes the assets back."],
     },
     ...stages.map((s, i): Scene => ({
       kind: "demo",

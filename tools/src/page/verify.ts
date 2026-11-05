@@ -44,16 +44,24 @@ export function verifyData(demo: Evidence, live: LiveView): VerifyData {
     verifier_code_hash: fixture === undefined ? "not recorded in this evidence" : hexToBase58(fixture),
     timeout_ms: TIMEOUT_MS,
   };
-  if (live.kind !== "mainnet") return { ...base, receipts: [], relay: null, relay_problem: null, current: null };
+  if (live.kind !== "mainnet") return { ...base, receipts: [], unverifiable: [], relay: null, relay_problem: null, current: null };
   const ev = live.ev;
   const detail = (d: unknown) => {
     const p = Detail.safeParse(d);
     return p.success ? p.data : {};
   };
-  const receipts: ExpectedTx[] = ev.receipts.flatMap((r) => {
+  const receipts: ExpectedTx[] = [];
+  const unverifiable: VerifyData["unverifiable"] = [];
+  for (const r of ev.receipts) {
     const d = detail(r.detail);
-    return d.withheld_relay === true || r.tx_hash === undefined || !isTxHash(r.tx_hash) || d.signer_id === undefined ? [] : [{ label: r.label, tx_hash: r.tx_hash, sender: d.signer_id, outcome: r.outcome }];
-  });
+    if (d.withheld_relay === true) continue;
+    const reasons = [
+      ...(r.tx_hash === undefined || !isTxHash(r.tx_hash) ? ["no NEAR transaction hash is recorded"] : []),
+      ...(d.signer_id === undefined ? ["its sender (signer_id) is not recorded, and the RPC needs it to look the transaction up"] : []),
+    ];
+    if (reasons.length > 0 || r.tx_hash === undefined || d.signer_id === undefined) unverifiable.push({ label: r.label, reason: reasons.join("; ") });
+    else receipts.push({ label: r.label, tx_hash: r.tx_hash, sender: d.signer_id, outcome: r.outcome });
+  }
   const relayReceipt = ev.receipts.find((r) => detail(r.detail).withheld_relay === true);
   const relayAssertion = ev.assertions.find((a) => /^step-\d+-relay_withheld$/.test(a.id));
   const observed = RelayObserved.safeParse(relayAssertion?.observed);
@@ -86,6 +94,7 @@ export function verifyData(demo: Evidence, live: LiveView): VerifyData {
     ...base,
     verifier,
     receipts,
+    unverifiable,
     relay,
     relay_problem: problems.length === 0 ? null : problems.join("; "),
     current: mandate === undefined ? null : { mandate, grant_key: observed.success ? observed.data.revoked_key : null },
@@ -119,12 +128,15 @@ function recordedPart(demo: Evidence): string {
 }
 
 export function verifySection(demo: Evidence, data: VerifyData): string {
-  const none = data.receipts.length === 0 && data.relay === null;
+  const none = data.receipts.length === 0 && data.unverifiable.length === 0 && data.relay === null && data.relay_problem === null;
   const historical = none
     ? `<p class="pending-title">No mainnet receipts yet.</p><p>The approved mainnet run has not happened, so there is no historical receipt to verify. After it, this part fetches each recorded transaction by hash and sender at final finality and checks the withheld order's relay.</p>`
-    : `<p>${String(data.receipts.length)} recorded transactions${data.relay === null ? "; the withheld-order relay cannot be checked: " + escapeHtml(data.relay_problem ?? "not recorded") : ", plus the withheld order's relay"}. A relay passes only if the verifier's receipt failed with the removed key's error, at a block time not after the order deadline, and the transaction hash, sender, receiver and bundle hash match the evidence.</p>`;
+    : `<p>${String(data.receipts.length)} recorded transactions to check${data.unverifiable.length === 0 ? "" : `, ${String(data.unverifiable.length)} more that cannot be checked (shown as inconclusive)`}${
+        data.relay === null ? `; the withheld-order relay cannot be checked: ${escapeHtml(data.relay_problem ?? "not recorded")}` : ", plus the withheld order's relay"
+      }. Each transaction's outcome is computed over its whole receipt tree, as the runner records it. The relay passes only if the verifier's receipt failed because the signing key recorded for the withheld order was not registered, at a block time not after the order deadline, and the transaction hash, sender, receiver and bundle sha256 match the evidence; without a recorded bundle sha256 it is inconclusive. This shows the key was absent when the order was relayed, not that it was ever registered or that the order was executable before revocation.</p>`;
   return `<div id="verify-panel" data-verify="${escapeHtml(JSON.stringify(data))}">
-<p>Optional and read-only. Nothing is requested until you press the button; then this page queries the RPC below directly from your browser. No wallet, key, account or funds. Every query first checks that the RPC is NEAR <code>${escapeHtml(data.chain_id)}</code> with genesis <code>${escapeHtml(data.genesis_hash)}</code>; on a wrong chain, an error or a timeout nothing is shown as verified, and recorded values are never substituted for a failed query.</p>
+<p>Optional and read-only. Nothing is requested until you press the button; then this page queries the RPC below directly from your browser. No wallet, key, account or funds. Each run first checks once that the RPC reports NEAR <code>${escapeHtml(data.chain_id)}</code> with genesis <code>${escapeHtml(data.genesis_hash)}</code>; on a wrong chain, an error or a timeout nothing is shown as verified, and recorded values are never substituted for a failed query.</p>
+<p><strong>The RPC you choose is trusted for every answer it returns.</strong> The genesis check only catches a wrong network, not an RPC that returns false data. For an independent result, run the checks again against a second RPC.</p>
 <p class="verify-controls"><label for="verify-rpc">Mainnet RPC (archival, so old receipts stay readable)</label> <input id="verify-rpc" type="url" value="${escapeHtml(data.rpc)}" spellcheck="false" autocomplete="off" size="44"> <button id="verify-run" type="button">Run read-only checks</button></p>
 <p id="verify-status" class="source" role="status" aria-live="polite"></p>
 <div id="verify-chain"></div>

@@ -23,6 +23,10 @@ import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js
 
 export { escapeHtml } from "./html.js";
 
+/** The product in two plain lines, aligned with the README's opening. */
+export const HEADLINE = "Let an AI agent trade within limits a contract enforces";
+export const SUBTITLE = "Once a revocation is confirmed, signed orders already issued fail too, and the owner takes the remaining assets back without the agent.";
+
 /** Public URL of the short video; a placeholder until it is hosted. */
 export const VIDEO_URL: string = "VIDEO_URL_PENDING";
 
@@ -564,8 +568,8 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <header class="docket">
 <p class="kicker">Bounded mandate · evidence dossier · NEAR Intents · USDC / wNEAR</p>
 <p class="chips" role="status">${headerChips(ev, binding, live)}</p>
-<h1>Delegate trading within on‑chain limits</h1>
-<p class="position">Revoke the entire grant—including outstanding signed orders—and recover the remaining assets.</p>
+<h1>${escapeHtml(HEADLINE)}</h1>
+<p class="position">${escapeHtml(SUBTITLE)}</p>
 ${modesKey(ev, live)}
 <p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
 ${outcomeBlock(ev)}

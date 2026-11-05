@@ -104,6 +104,7 @@ describe("verification panel: data from the evidence", () => {
     const none = verifyData(demo(), liveView(null));
     expect(none.receipts).toEqual([]);
     expect(none.relay).toBeNull();
+    expect(none.unverifiable).toEqual([]);
     expect(none.current).toBeNull();
     const d = mainnetData();
     expect(d.receipts.map((r) => r.tx_hash)).toEqual([X.grant_tx_hash]);
@@ -120,7 +121,11 @@ describe("verification panel: browser checks against a mocked RPC (SYNTHETIC fix
     expect(statuses(r.historical.items)).toEqual(["verified", "verified"]);
     expect(r.historical.verdict.status).toBe("verified");
     const relay = r.historical.items[1];
-    expect(relay?.title).toContain("rejected for the removed key before its deadline (rejected_revoked_key)");
+    expect(relay?.title).toContain(`rejected before its deadline because the signing key recorded for the withheld order was not registered on ${X.verifier}`);
+    expect(r.historical.verdict.title).toContain("All 2 recorded mainnet transactions match the chain");
+    // It states what the check cannot show.
+    expect(Object.fromEntries(relay?.facts ?? [])["Not shown by this check"]).toContain("that this key was ever registered, or that the order was executable before revocation");
+    for (const i of [relay, r.historical.verdict]) expect(i?.title).not.toMatch(/removed key|revoked key|revocation stopped/);
     const facts = Object.fromEntries(relay?.facts ?? []);
     expect(facts["Relayed bundle sha256"]).toBe(BUNDLE_SHA);
     expect(facts["Rejection reason"]).toContain(`public key '${X.key}' doesn't exist for account '${X.mandate}'`);
@@ -201,7 +206,7 @@ describe("verification panel: browser checks against a mocked RPC (SYNTHETIC fix
     ["hash", (t) => { transaction(t).hash = X.grant_tx_hash; }, "transaction hash"],
     ["receiver", (t) => { transaction(t).receiver_id = "intents.other.near"; }, "receiver"],
     ["finality", (t) => { t.final_execution_status = "EXECUTED_OPTIMISTIC"; }, "not final"],
-    ["error account", (t) => { firstReceipt(t).outcome.status = { Failure: { ActionError: { kind: { FunctionCallError: { ExecutionError: `public key '${X.key}' doesn't exist for account 'other.near'` } } } } }; }, "removed-key rejection"],
+    ["error account", (t) => { firstReceipt(t).outcome.status = { Failure: { ActionError: { kind: { FunctionCallError: { ExecutionError: `public key '${X.key}' doesn't exist for account 'other.near'` } } } } }; }, "unregistered-key rejection"],
     ["bundle", (t) => { firstCall(t).FunctionCall.args = Buffer.from(JSON.stringify({ signed: [] })).toString("base64"); }, "bundle"],
     ["other failure", (t) => { (t.receipts_outcome as unknown[]).push({ id: "x", block_hash: "y", outcome: { executor_id: X.filler, status: { Failure: {} } } }); }, "outside the verifier"],
   ];
@@ -217,6 +222,48 @@ describe("verification panel: browser checks against a mocked RPC (SYNTHETIC fix
     const r = await run((m, p) => (m === "tx" && p.tx_hash === X.grant_tx_hash ? withResult("tx-grant", (t) => (t.status = { Failure: {} })) : mainnet(m, p)));
     expect(r.historical.items[0]?.status).toBe("failed");
     expect(r.historical.items[0]?.reasons).toEqual(["chain outcome failure differs from the recorded success"]);
+  });
+
+  it("compares the recorded outcome with the whole receipt tree, as the runner records it", async () => {
+    // Top-level SuccessValue with a failed detached receipt: the runner records "failure" (toEvidenceReceipt).
+    const detached = (m: string, p: Record<string, unknown>) => (m === "tx" && p.tx_hash === X.grant_tx_hash ? ok("tx-grant-detached-failure") : mainnet(m, p));
+    const recordedSuccess = await run(detached);
+    expect(recordedSuccess.historical.items[0]?.status).toBe("failed");
+    expect(recordedSuccess.historical.items[0]?.reasons).toEqual(["chain outcome failure differs from the recorded success"]);
+    expect(recordedSuccess.historical.verdict.status).toBe("failed");
+    const failureLive = liveEvidence();
+    const recordedFailure = { ...failureLive, receipts: failureLive.receipts.map((r) => (r.tx_hash === X.grant_tx_hash ? { ...r, outcome: "failure" as const } : r)) };
+    const asRecorded = await run(detached, verifyData(demo(), liveView(recordedFailure)));
+    expect(asRecorded.historical.items[0]?.status).toBe("verified");
+    expect(asRecorded.historical.items[0]?.title).toContain("final, failure, as recorded");
+    const notFinal = await run((m, p) => (m === "tx" && p.tx_hash === X.grant_tx_hash ? withResult("tx-grant", (t) => {
+      for (const x of t.receipts_outcome as { outcome: { status: unknown } }[]) x.outcome.status = "Unknown";
+    }) : mainnet(m, p)));
+    expect(notFinal.historical.items[0]?.status).toBe("inconclusive");
+  });
+
+  it("is inconclusive, not silently checked, when the evidence records no bundle sha256", async () => {
+    const live = liveEvidence();
+    const noBundle = { ...live, receipts: live.receipts.map((r) => (r.tx_hash === X.relay_tx_hash ? { ...r, detail: { ...(r.detail as object), bundle_sha256: undefined } } : r)) };
+    const data = verifyData(demo(), liveView(noBundle));
+    expect(data.relay?.bundle_sha256).toBeNull();
+    const r = await run(mainnet, data);
+    expect(r.historical.items[1]?.status).toBe("inconclusive");
+    expect(r.historical.items[1]?.reasons.join(" ")).toContain("not checkable: the evidence records no bundle sha256");
+    expect(r.historical.verdict.status).toBe("inconclusive");
+  });
+
+  it("lists recorded transactions it cannot query as inconclusive, and counts them", async () => {
+    const live = liveEvidence();
+    const extra = { label: `owner revoke (${SYN})`, tx_hash: X.grant_tx_hash, outcome: "success" as const, detail: { step: 6 } };
+    const data = verifyData(demo(), liveView({ ...live, receipts: [...live.receipts, extra] }));
+    expect(data.unverifiable).toEqual([{ label: extra.label, reason: "its sender (signer_id) is not recorded, and the RPC needs it to look the transaction up" }]);
+    const r = await run(mainnet, data);
+    expect(statuses(r.historical.items)).toEqual(["verified", "inconclusive", "verified"]);
+    expect(r.historical.items[1]?.title).toBe(`${extra.label}: inconclusive, not checkable`);
+    expect(r.historical.verdict.title).toBe("Not verified: 1 of 3 checks did not hold");
+    const html = renderHtml(demo(), { acceptance: null, live: { ...live, receipts: [...live.receipts, extra] } });
+    expect(html).toContain("1 recorded transactions to check, 1 more that cannot be checked (shown as inconclusive)");
   });
 
   it("says there are no mainnet receipts yet, and still checks the current code hash", async () => {
@@ -281,6 +328,9 @@ describe("verification panel: opt-in wiring", () => {
     expect(html).toContain("No mainnet receipts yet.");
     expect(html).toContain('id="verify-rpc" type="url" value="https://archival-rpc.mainnet.fastnear.com"');
     expect(html).toContain("Current state, not history:");
+    expect(html).toContain("Each run first checks once that the RPC reports NEAR");
+    expect(html).toContain("The RPC you choose is trusted for every answer it returns.</strong> The genesis check only catches a wrong network, not an RPC that returns false data. For an independent result, run the checks again against a second RPC.");
+    expect(html).not.toContain("Every query first checks");
     expect(html).toContain("c. Recorded sandbox evidence");
     const data = JSON.parse(unescape(attr)) as VerifyData;
     expect(data.receipts).toEqual([]);

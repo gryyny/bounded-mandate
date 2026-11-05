@@ -565,6 +565,12 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
     }
   });
 
+  it("heads the page with the README's plain claim", () => {
+    expect(html).toContain("<h1>Let an AI agent trade within limits a contract enforces</h1>");
+    expect(html).toContain('<p class="position">Once a revocation is confirmed, signed orders already issued fail too, and the owner takes the remaining assets back without the agent.</p>');
+    expect(html).not.toContain("Revoke the entire grant—including outstanding signed orders");
+  });
+
   it("places the verification panel and the sandbox cases between the mainnet section and the demonstration", () => {
     const at = (id: string) => html.indexOf(`id="${id}"`);
     expect(at("mainnet")).toBeLessThan(at("verify"));

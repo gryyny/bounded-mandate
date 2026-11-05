@@ -3,10 +3,13 @@
 // the tests evaluate that same script. So each function may use only browser globals and the other listed
 // functions: no imports and no module-level values. Nothing here signs, sends a transaction or needs a wallet.
 //
-// Semantics follow classifyRelay in src/live/verify.ts: a relay of the withheld order counts as rejected for the
-// removed key only when the verifier's receipt failed with that key's error, at a block time not after the
-// order deadline, with nothing else failing; a successful transaction is "executed"; everything else is
-// inconclusive. The browser cannot re-read historical balances, so it checks the receipts, not balance deltas.
+// Semantics follow classifyRelay in src/live/verify.ts: a relay of the withheld order counts as rejected only when
+// the verifier's receipt failed because the order's recorded signing key was not registered, at a block time not
+// after the order deadline, with nothing else failing and the relayed bundle bound to the recorded one; a
+// successful transaction is "executed"; everything else is inconclusive. That shows the key was absent at relay
+// time, not that it was ever registered or that the order was executable before. The browser cannot re-read
+// historical balances, so it checks the receipts, not balance deltas. A recorded transaction outcome is compared
+// with the chain's outcome computed as the runner records it (toEvidenceReceipt in src/near/client.ts).
 
 export interface ExpectedTx {
   label: string;
@@ -36,6 +39,8 @@ export interface VerifyData {
   /** base58 sha256 of the pinned verifier WASM fixture. */
   verifier_code_hash: string;
   receipts: ExpectedTx[];
+  /** Recorded transactions the browser cannot query (no valid hash or sender), with the reason. */
+  unverifiable: { label: string; reason: string }[];
   relay: ExpectedRelay | null;
   /** Why the relay cannot be checked although mainnet receipts exist; null otherwise. */
   relay_problem: string | null;
@@ -161,8 +166,9 @@ export interface ReceiptView {
   error: string | null;
 }
 
+/** The transaction outcome and every receipt outcome, as the runner reads them. */
 export function receiptViews(tx: Record<string, unknown>): ReceiptView[] {
-  const list = Array.isArray(tx.receipts_outcome) ? (tx.receipts_outcome as unknown[]) : [];
+  const list = [...(tx.transaction_outcome === undefined ? [] : [tx.transaction_outcome]), ...(Array.isArray(tx.receipts_outcome) ? (tx.receipts_outcome as unknown[]) : [])];
   return list.map((r) => {
     const o = asObject(r);
     const outcome = asObject(o?.outcome);
@@ -176,6 +182,17 @@ export function receiptViews(tx: Record<string, unknown>): ReceiptView[] {
       error: kind === "failure" ? JSON.stringify(status?.Failure) : null,
     };
   });
+}
+
+/**
+ * The outcome the runner would record: "success" only when the transaction succeeded and no outcome in its tree
+ * failed; "unknown" when any status is not final, so nothing can be compared.
+ */
+export function chainOutcome(tx: Record<string, unknown>): "success" | "failure" | "unknown" {
+  const receipts = receiptViews(tx);
+  const top = statusKind(tx.status);
+  if (top === "unknown" || receipts.length === 0 || receipts.some((r) => r.kind === "unknown")) return "unknown";
+  return top === "success" && !receipts.some((r) => r.kind === "failure") ? "success" : "failure";
 }
 
 /** Why the transaction is not the expected one at final finality; empty when it is. */
@@ -242,7 +259,7 @@ export function classifyRelayTx(
   const reasons = [
     ...(statusKind(tx.status) === "failure" ? [] : ["the transaction status is not a final failure"]),
     ...(failure === null ? [`no failed receipt on ${e.verifier}`] : []),
-    ...(failure !== null && failure.error?.includes(expected) !== true ? [`the verifier error is not the removed-key rejection (${expected})`] : []),
+    ...(failure !== null && failure.error?.includes(expected) !== true ? [`the verifier error is not the unregistered-key rejection (${expected})`] : []),
     ...(blockTimeNs === null
       ? ["the failed receipt's block time could not be read"]
       : BigInt(blockTimeNs) > BigInt(e.deadline_ns)
@@ -250,7 +267,11 @@ export function classifyRelayTx(
         : []),
     ...(receipts.some((r) => r.kind === "failure" && r.executor !== e.verifier) ? ["a receipt outside the verifier failed"] : []),
     ...(receipts.some((r) => r.kind === "unknown") ? ["a receipt has no final status"] : []),
-    ...(e.bundle_sha256 !== null && bundleSha256 !== e.bundle_sha256 ? [`the relayed bundle's sha256 ${bundleSha256 ?? "(unreadable)"} differs from the recorded ${e.bundle_sha256}`] : []),
+    ...(e.bundle_sha256 === null
+      ? ["not checkable: the evidence records no bundle sha256, so the relayed bundle cannot be bound to the withheld order"]
+      : bundleSha256 !== e.bundle_sha256
+        ? [`the relayed bundle's sha256 ${bundleSha256 ?? "(unreadable)"} differs from the recorded ${e.bundle_sha256}`]
+        : []),
   ];
   return { classification: reasons.length === 0 ? "rejected_revoked_key" : "inconclusive", reasons, failure };
 }
@@ -265,13 +286,18 @@ export async function verifyTx(call: Call, e: ExpectedTx): Promise<Item> {
   if (!r.ok) return { status: "error", title: `${e.label}: not confirmed`, facts, reasons: [r.error] };
   const tx = asObject(r.result);
   if (tx === null) return { status: "error", title: `${e.label}: not confirmed`, facts, reasons: ["the RPC returned no transaction"] };
-  const kind = statusKind(tx.status);
+  const kind = chainOutcome(tx);
   const blocks = receiptViews(tx).map((x) => `${x.executor} ${x.kind} in block ${x.block_hash}`);
-  const reasons = [...identityProblems(tx, e, null), ...(kind === e.outcome ? [] : [`chain outcome ${kind} differs from the recorded ${e.outcome}`])];
+  const observed: [string, string][] = [...facts, ["Chain outcome (whole receipt tree)", kind], ["Receipts", blocks.join("; ") || "none"]];
+  const identity = identityProblems(tx, e, null);
+  if (identity.length === 0 && kind === "unknown") {
+    return { status: "inconclusive", title: `${e.label}: outcome not final, cannot be compared`, facts: observed, reasons: ["a transaction or receipt status is neither success nor failure"] };
+  }
+  const reasons = [...identity, ...(kind === e.outcome ? [] : [`chain outcome ${kind} differs from the recorded ${e.outcome}`])];
   return {
     status: reasons.length === 0 ? "verified" : "failed",
     title: `${e.label}: ${reasons.length === 0 ? `final, ${kind}, as recorded` : "does not match the evidence"}`,
-    facts: [...facts, ["Chain outcome", kind], ["Receipts", blocks.join("; ") || "none"]],
+    facts: observed,
     reasons,
   };
 }
@@ -283,7 +309,7 @@ export async function verifyRelay(call: Call, e: ExpectedRelay): Promise<Item> {
     ["Verifier", e.verifier],
     ["Mandate", e.mandate],
     ["Order", e.order_id],
-    ["Removed key", e.revoked_key],
+    ["Signing key recorded for the order", e.revoked_key],
     ["Order deadline", `${new Date(Number(BigInt(e.deadline_ns) / 1000000n)).toISOString()} (${e.deadline_ns} ns)`],
     ["Recorded bundle sha256", e.bundle_sha256 ?? "not recorded"],
   ];
@@ -309,9 +335,10 @@ export async function verifyRelay(call: Call, e: ExpectedRelay): Promise<Item> {
     ["Rejection receipt", c.failure === null ? "none" : `${c.failure.id} in block ${c.failure.block_hash}`],
     ["Block time", blockTime === null ? "unknown" : `${new Date(Number(BigInt(blockTime) / 1000000n)).toISOString()} (${blockTime} ns)`],
     ["Rejection reason", c.failure?.error ?? "none"],
+    ["Not shown by this check", `that this key was ever registered, or that the order was executable before revocation. The recorded transactions above are checked separately; the pre-revocation simulation is recorded evidence only.`],
   ];
   if (c.classification === "rejected_revoked_key") {
-    return { status: "verified", title: `${title}: rejected for the removed key before its deadline (rejected_revoked_key)`, facts: observed, reasons: [] };
+    return { status: "verified", title: `${title}: rejected before its deadline because the signing key recorded for the withheld order was not registered on ${e.verifier}`, facts: observed, reasons: [] };
   }
   return {
     status: c.classification === "executed" ? "failed" : "inconclusive",
@@ -322,17 +349,23 @@ export async function verifyRelay(call: Call, e: ExpectedRelay): Promise<Item> {
 }
 
 export async function verifyHistorical(call: Call, data: VerifyData): Promise<{ verdict: Item; items: Item[] }> {
-  if (data.receipts.length === 0 && data.relay === null) {
+  if (data.receipts.length === 0 && data.unverifiable.length === 0 && data.relay === null && data.relay_problem === null) {
     return { verdict: { status: "none", title: "No mainnet receipts yet: the approved mainnet run has not happened, so there is nothing historical to verify", facts: [], reasons: [] }, items: [] };
   }
   const items: Item[] = [];
   for (const e of data.receipts) items.push(await verifyTx(call, e));
+  for (const u of data.unverifiable) items.push({ status: "inconclusive", title: `${u.label}: inconclusive, not checkable`, facts: [], reasons: [u.reason] });
   if (data.relay !== null) items.push(await verifyRelay(call, data.relay));
   else items.push({ status: "inconclusive", title: "Withheld-order relay: cannot be checked", facts: [], reasons: [data.relay_problem ?? "the evidence records no relay of the withheld order"] });
   const bad = items.filter((i) => i.status !== "verified");
   const verdict: Item =
     bad.length === 0
-      ? { status: "verified", title: `All ${String(items.length)} recorded mainnet transactions confirmed, and the withheld order's relay was rejected for the removed key before its deadline`, facts: [], reasons: [] }
+      ? {
+          status: "verified",
+          title: `All ${String(items.length)} recorded mainnet transactions match the chain, and the withheld order's relay was rejected before its deadline because its recorded signing key was not registered on ${data.relay?.verifier ?? "the verifier"}`,
+          facts: [],
+          reasons: [],
+        }
       : {
           status: bad.some((i) => i.status === "failed") ? "failed" : bad.some((i) => i.status === "error") ? "error" : "inconclusive",
           title: `Not verified: ${String(bad.length)} of ${String(items.length)} checks did not hold`,
@@ -510,6 +543,7 @@ export const CLIENT_FUNCTIONS: readonly ((...args: never[]) => unknown)[] = [
   checkChain,
   statusKind,
   receiptViews,
+  chainOutcome,
   identityProblems,
   relayedBundle,
   canonicalJson,
