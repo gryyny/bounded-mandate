@@ -2,11 +2,19 @@
   "schema_version": 1,
   "bundles": [
     {
-      "path": "evidence/9493549",
-      "revision": "94935495f4664b75db17b1651c242ab6f8d0c772",
+      "path": "evidence/7f280ca",
+      "revision": "7f280caf0dbace1f3d2e363481d11263e3272322",
       "status": "certified",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
-      "run": "evidence/9493549/run.json"
+      "run": "evidence/7f280ca/run.json"
+    },
+    {
+      "path": "evidence/9493549",
+      "revision": "94935495f4664b75db17b1651c242ab6f8d0c772",
+      "status": "superseded",
+      "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
+      "run": "evidence/9493549/run.json",
+      "note": "certified; superseded by 7f280ca (story narration of failed checks, relay recheck before broadcast, deadline timeline). Contract source identical."
     },
     {
       "path": "evidence/34de374",

@@ -1,0 +1,70 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T1",
+  "case": "withheld-regrant",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261105T095644285Z-316664ff1b1c",
+  "source": {
+    "revision": "7f280caf0dbace1f3d2e363481d11263e3272322",
+    "dirty": false
+  },
+  "spec_sha256": "be8cb1ec6b74c8de3391fe869162d96967a1e8a4a9537b45c9dc5d8a301b417d",
+  "fixture_manifest_sha256": "1bf9de3a2d6a5e37d9dd1f2c5794070f09c9d510e4a4422afbdb94c54d20782d",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "/private/tmp/claude-501/-Users-gryyny-Projects-near-hackathon/cadfaf9c-f85a-4a1e-8fae-5c0151af2045/scratchpad/fresh-7f280ca/repo/target/debug/deps/t1_revocation-47286f49319fd2b2",
+  "generated_at_unix": 1793872925,
+  "data": {
+    "relays": [
+      {
+        "label": "before-removal",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": false,
+        "executed": true
+      },
+      {
+        "label": "withheld-after-revoke",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "withheld-after-regrant",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "new-grant-order",
+        "order_id": 2,
+        "epoch": 2,
+        "after_confirmed_removal": false,
+        "executed": true
+      },
+      {
+        "label": "epoch1-after-epoch3",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false
+      },
+      {
+        "label": "epoch2-after-epoch3",
+        "order_id": 3,
+        "epoch": 2,
+        "after_confirmed_removal": true,
+        "executed": false
+      }
+    ],
+    "executions_after_confirmed_removal": 0,
+    "notes": []
+  }
+}
