@@ -1,6 +1,6 @@
 // Release-preparation checks. Nothing here publishes, deploys or contacts a remote host.
 //   tsx src/release/main.ts secrets [--repo <name>=<path> ...] [--allow <file>]
-//   tsx src/release/main.ts site --page <index.html> [--console <dir>] [--video <dir> [--video-manifest <video.json>]] [--route <path> ...]
+//   tsx src/release/main.ts site --page <index.html> [--console <dir>] [--video <dir> --video-manifest <video.json>] [--route <path> ...]
 //   tsx src/release/main.ts licenses
 //   tsx src/release/main.ts links          (README local links, line anchors and headings)
 // Reports go to out/release/ (ignored). Exit status 1 when a check has open problems.
@@ -66,7 +66,9 @@ async function main(): Promise<number> {
     const report = await checkSite(site, routes);
     // Without --video the planned video URLs are not served, and the report says so (video: null).
     const video = videoDir === undefined ? null : { dir: videoDir, manifest: manifest ?? null, ...(await checkVideos(site, plannedVideos(manifest))) };
-    const problems = [...report.problems, ...(video?.problems ?? []), ...(manifest !== undefined && videoDir === undefined ? ["--video-manifest given without --video"] : [])];
+    // Served cuts are only meaningful against the certified ones, so --video and --video-manifest go together.
+    const pairing = manifest !== undefined && videoDir === undefined ? ["--video-manifest given without --video"] : manifest === undefined && videoDir !== undefined ? ["--video given without --video-manifest: the cuts cannot be compared with the certified ones"] : [];
+    const problems = [...report.problems, ...(video?.problems ?? []), ...pairing];
     const passed = report.passed && problems.length === report.problems.length;
     const path = write("site-check.json", JSON.stringify({ ...report, problems, passed, page, console: consoleDir ?? null, video }, null, 2) + "\n");
     for (const p of problems) console.error(`site: ${p}`);

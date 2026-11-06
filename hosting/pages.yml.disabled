@@ -51,12 +51,15 @@ jobs:
           console_args=()
           if [ -d "$dir/console" ]; then console_args=(--console "$PWD/$dir/console"); fi
           # Served cuts must equal the certified ones: their sha256 is checked against evidence/<rev>/video.json.
-          if [ -d "$dir/video" ]; then test -f "$dir/video.json"; console_args+=(--video "$PWD/$dir/video" --video-manifest "$PWD/$dir/video.json"); fi
+          # The planned video URLs are served from exactly the two certified cuts; nothing else is served there.
+          test -f "$dir/video.json"
+          test "$(cd "$dir/video" && ls -A | sort | tr '\n' ' ')" = "bounded-mandate-demo.mp4 bounded-mandate-short.mp4 "
+          console_args+=(--video "$PWD/$dir/video" --video-manifest "$PWD/$dir/video.json")
           (cd tools && npx --no-install tsx src/release/main.ts site --page "$PWD/../$dir/page/index.html" "${console_args[@]}")
           # Served bytes must equal the certified files.
           cmp "$dir/page/index.html" out/release/site/index.html
           if [ -d "$dir/console" ]; then diff -r "$dir/console" out/release/site/console; fi
-          if [ -d "$dir/video" ]; then diff -r "$dir/video" out/release/site/video; fi
+          diff -r "$dir/video" out/release/site/video
           ( cd out/release/site && find . -type f ! -name .nojekyll -exec sha256sum {} + | sort -k2 ) | tee out/release/site-sha256.txt
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

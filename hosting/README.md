@@ -22,12 +22,12 @@ These URLs follow from GitHub's project-site rule (`<owner>.github.io/<repositor
 ```sh
 cd tools
 npx tsx src/release/main.ts site --page ../evidence/<rev>/page/index.html --console ../evidence/<rev>/console
-# with the final cuts: add --video ../evidence/<rev>/video --video-manifest ../evidence/<rev>/video.json
+# with the final cuts (both flags together): add --video ../evidence/<rev>/video --video-manifest ../evidence/<rev>/video.json
 ```
 
 It assembles `out/release/site/`, serves it from `127.0.0.1` under `/bounded-mandate/`, requests every route and every linked page, asset and fragment, checks each page's CSP, and writes `out/release/site-check.json`. External links are listed and never requested. It exits 1 on any problem.
 
-At f01b496 the only problem was the then-pending video link; the page now shows the planned video URLs (`/video/bounded-mandate-short.mp4`, `/video/bounded-mandate-demo.mp4`) as plain text labelled unpublished. Before hosting, the release commit adds the final cuts under `evidence/<rev>/video/` and the check is run with `--video ../evidence/<rev>/video --video-manifest ../evidence/<rev>/video.json`. It then requests both planned video URLs from the local server, requires `video/mp4`, and compares each file's sha256 with the certified cut of the same name in `video.json`; a missing, retyped or different file fails the check. Without `--video` the report says `"video": null` and the video URLs are not checked.
+At f01b496 the only problem was the then-pending video link; the page now shows the planned video URLs (`/video/bounded-mandate-short.mp4`, `/video/bounded-mandate-demo.mp4`) as plain text labelled unpublished. Before hosting, the release commit adds the final cuts under `evidence/<rev>/video/` and the check is run with `--video ../evidence/<rev>/video --video-manifest ../evidence/<rev>/video.json`. It then requests both planned video URLs from the local server, requires `video/mp4`, and compares each file's sha256 with the certified cut of the same name in `video.json`; a missing, retyped or different file fails the check, and `--video` without `--video-manifest` is itself a problem. Without `--video` the report says `"video": null` and the video URLs are not checked. The Pages workflow requires `evidence/<rev>/video/` to hold exactly the two planned cuts.
 
 The served page is the certified bytes, so its wording is the state when it was rendered: the planned URLs keep their "planned, unpublished" chips and the sentence "Nothing was hosted there when this page was rendered." The status register records when hosting began and the served hashes.
 
