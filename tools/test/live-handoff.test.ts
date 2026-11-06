@@ -60,7 +60,7 @@ const cases = {
     "second-hash-for-satisfied-intent",
   ]),
   lost: new CaseRecorder("HANDOFF", "lost-response-resume", ["import-lookup-lost", "import-crash-after-handoff", "runner-withdrawal-lost"]),
-  unrecorded: new CaseRecorder("HANDOFF", "unrecorded-owner-tx", ["during-import", "while-awaiting-then-resume", "stray-then-runner-owner-step", "extra-owner-key-stray", "owner-key-added"]),
+  unrecorded: new CaseRecorder("HANDOFF", "unrecorded-owner-tx", ["during-import", "while-awaiting-then-resume", "stray-then-runner-owner-step", "extra-owner-key-stray", "owner-key-added", "stray-after-last-step"]),
   both: new CaseRecorder("WITHDRAW", "both-assets", ["registered-owner-runner-signed"]),
   unregistered: new CaseRecorder("WITHDRAW", "unregistered-owner", ["registers-only-where-needed", "external-withdrawal-unregistered-owner"]),
   retry: new CaseRecorder("WITHDRAW", "failed-receipt-retry", ["partial-failure-recorded", "retry-without-double-count", "external-refund-retried-and-imported", "verifier-failure-classified-failed"]),
@@ -679,6 +679,56 @@ describe("owner transactions the ledger does not record, by any key of the owner
       const current = ownerKeySnapshot(await finalClient.accessKeys(ownerK.id));
       const ok = await live(pathOf({ ...mk.manifest, expected_owner_keys: current, steps: [{ kind: "check" }] }, "key-current-fresh"));
       expect([ok.exitCode, ok.message]).toEqual([0, "completed"]);
+    });
+  }, 300_000);
+});
+
+/**
+ * SANDBOX DOUBLE transport: runs `stray` once, ahead of the first view query after the provider's first broadcast, i.e.
+ * while the runner verifies the last step of a one-transaction run, after which it sends nothing.
+ */
+function strayAfterFirstSend(provider: object, stray: () => Promise<void>): { fired: boolean } {
+  const state = { sent: false, fired: false };
+  const target = provider as unknown as { sendJsonRpc: (method: string, params: unknown) => Promise<unknown> };
+  const original = target.sendJsonRpc.bind(provider);
+  target.sendJsonRpc = async (method: string, params: unknown) => {
+    if (["send_tx", "broadcast_tx_async", "broadcast_tx_commit"].includes(method)) state.sent = true;
+    else if (state.sent && !state.fired && method === "query") {
+      state.fired = true;
+      await stray();
+    }
+    return original(method, params);
+  };
+  return state;
+}
+
+describe("an owner transaction after the last step", () => {
+  // gate: HANDOFF
+  it("is found by the closing check: the run stops with a finding instead of reporting completed", async () => {
+    const ownerZ = await net.createAccount("ownerz");
+    const mz = await deployMandate("mz", ownerZ);
+    await fund(mz.id, 1n * USDC, 0n);
+    const path = pathOf({ ...mz.manifest, steps: [{ kind: "recover", asset: "usdc" }] }, "stray-after-last");
+    const provider = new JsonRpcProvider({ url: world.client.rpcUrl });
+    const rpc = recordRpc(provider);
+    const hook = strayAfterFirstSend(provider, async () => {
+      requireSuccess(await finalClient.send("stray owner transaction after the last send (TEST)", mz.owner.account, world.relayer.id, [actions.transfer(1n)], "transfer"));
+    });
+    const r = await live(path, { client: new NearClient(world.client.rpcUrl, provider) });
+    await cases.unrecorded.check("stray-after-last-step", () => {
+      expect(hook.fired).toBe(true);
+      // The last step itself ran and verified: only the closing check can see the stray transaction.
+      expect(sends(rpc).length).toBe(1);
+      const l = ledgerOf(path);
+      expect(l.ofKind("step-done").map((e) => [e.data.step, e.data.kind, e.data.finding ?? null])).toEqual([[0, "recover", null]]);
+      expect(r.exitCode).toBe(1);
+      expect(r.message).not.toMatch(/completed/);
+      expect(r.message).toMatch(/^unrecorded owner transaction after the last step: owner key nonce on chain is (\d+), ledger expects (\d+); transactions exist that the ledger does not record$/);
+      const [, chain, want] = /nonce on chain is (\d+), ledger expects (\d+)/.exec(r.message) ?? [];
+      expect(BigInt(chain ?? "0") - BigInt(want ?? "0")).toBe(1n);
+      expect(l.entries.at(-1)?.kind).toBe("stopped");
+      expect(l.entries.at(-1)?.data.reason).toBe(r.message);
+      expect(r.evidence?.unknowns).toEqual([`run stopped: ${r.message}`]);
     });
   }, 300_000);
 });

@@ -1648,6 +1648,13 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     await execute(rt, nextStepIndex(ledger));
     if (resume) await retryWithdrawals(rt);
     for (const h of rt.external.supplied.values()) refuseHandoff(rt, null, h, [`unrelated: intent ${h.intent_sha256} is not pending in this run`], await refusalFee(rt, h));
+    // The checks before each send never see a transaction made after the last one; without this it surfaces only on resume.
+    const unrecorded: string[] = [];
+    for (const role of ["owner", "agent", "filler"] as const) {
+      const problems = await unrecordedProblems(rt, m.accounts[role]);
+      if (problems.length > 0) unrecorded.push(`unrecorded ${role} transaction after the last step: ${problems.join("; ")}`);
+    }
+    if (unrecorded.length > 0) throw new Stop(`${unrecorded.join(" | ")}; transactions exist that the ledger does not record`);
     const findings = currentFindings(ledger);
     if (findings.length > 0) {
       exitCode = 1;
