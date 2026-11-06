@@ -7,6 +7,8 @@ SHELL := /bin/bash
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
 TSX := cd tools && npx --no-install tsx
+# Browser tests need a pinned headless Chromium; install is idempotent and needs no credentials.
+BROWSER := cd tools && npx --no-install playwright install chromium >/dev/null
 
 # The fault-injection build is a separately named test WASM; --no-abi keeps production artifacts untouched.
 define build_wasm
@@ -22,6 +24,7 @@ RUN_ID = MANDATE_RUN_ID="$$(cat $(CURDIR)/out/run/run_id)"
 
 test:
 	$(NPM_CI)
+	$(BROWSER)
 	$(TSX) src/checks/run.ts start
 	$(TSX) src/checks/integrity.ts
 	cargo fmt --all --check
@@ -32,6 +35,9 @@ test:
 	$(RUN_ID) cargo test --workspace --locked
 	$(RUN_ID) cargo test -p bounded-mandate --lib --locked --features fault-injection
 	cd tools && npm run lint && npm run typecheck && npm run build && $(RUN_ID) npm test
+	$(TSX) src/release/main.ts links
+	$(TSX) src/release/main.ts secrets
+	$(TSX) src/release/main.ts licenses
 	$(TSX) src/checks/gates.ts
 	$(TSX) src/checks/acceptance.ts
 

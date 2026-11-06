@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # The release secret scan reads the full history.
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
@@ -35,6 +37,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
       - name: cargo-near
         run: command -v cargo-near || cargo install cargo-near --version 0.22.0 --locked
+      - name: Headless Chromium and its system libraries for browser tests
+        run: cd tools && npm ci --no-audit --no-fund --ignore-scripts && npx --no-install playwright install --with-deps chromium
       - name: make test
         run: make test
       - name: make demo
