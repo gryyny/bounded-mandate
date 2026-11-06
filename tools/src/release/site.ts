@@ -261,6 +261,40 @@ const get = async (url: string): Promise<Fetched> => {
   return { status: r.status, type: r.headers.get("content-type"), body, location: r.headers.get("location") };
 };
 
+export interface VideoCheck {
+  path: string;
+  status: number;
+  content_type: string | null;
+  bytes: number;
+  sha256: string | null;
+  expected_sha256: string | null;
+}
+
+/**
+ * Requests each planned video path (relative to the base) from the local server. Each must be served as
+ * video/mp4; when an expected sha256 is given, the served bytes must equal it (the certified cut in video.json).
+ */
+export async function checkVideos(root: string, expected: { path: string; sha256: string | null }[], base = PLANNED_BASE): Promise<{ videos: VideoCheck[]; problems: string[] }> {
+  const { server, origin } = await serveSite(root, base);
+  const videos: VideoCheck[] = [];
+  const problems: string[] = [];
+  try {
+    for (const e of expected) {
+      const r = await fetch(new URL(e.path, `${origin}${base}`).href, { redirect: "manual" });
+      const body = r.status === 200 ? Buffer.from(await r.arrayBuffer()) : null;
+      const sha256 = body === null ? null : createHash("sha256").update(body).digest("hex");
+      const type = r.headers.get("content-type");
+      videos.push({ path: e.path, status: r.status, content_type: type, bytes: body?.length ?? 0, sha256, expected_sha256: e.sha256 });
+      if (r.status !== 200) problems.push(`${base}${e.path}: HTTP ${r.status}`);
+      else if (type !== "video/mp4") problems.push(`${base}${e.path}: content type ${type ?? "none"}, expected video/mp4`);
+      else if (e.sha256 !== null && sha256 !== e.sha256) problems.push(`${base}${e.path}: sha256 ${sha256 ?? "none"} differs from the certified ${e.sha256}`);
+    }
+  } finally {
+    await new Promise<void>((ok) => server.close(() => { ok(); }));
+  }
+  return { videos, problems };
+}
+
 /** Serves `root` locally and checks the given routes (relative to the base, for example `` and `console/`). */
 export async function checkSite(root: string, routes: string[], base = PLANNED_BASE): Promise<SiteReport> {
   const { server, origin } = await serveSite(root, base);

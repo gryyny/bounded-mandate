@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assembleSite, checkCsp, checkSite, inlineBlocks, references, serveSite } from "../src/release/site.js";
+import { PLANNED_URLS } from "../src/evidence/journey.js";
+import { assembleSite, checkCsp, checkSite, checkVideos, inlineBlocks, PLANNED_BASE, PLANNED_ORIGIN, references, serveSite } from "../src/release/site.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -154,5 +155,31 @@ describe("site check over a local server", () => {
     } finally {
       server.close();
     }
+  });
+
+  it("checks every planned video URL: served as video/mp4 and, with a manifest, equal to the certified bytes", async () => {
+    const sha = (b: string): string => createHash("sha256").update(b, "utf8").digest("hex");
+    for (const url of [PLANNED_URLS.video, PLANNED_URLS.walkthrough]) expect(url.startsWith(`${PLANNED_ORIGIN}${PLANNED_BASE}video/`)).toBe(true);
+    const src = site(goodSite());
+    const videos = join(src, "videos");
+    mkdirSync(videos, { recursive: true });
+    writeFileSync(join(videos, "short.mp4"), "SYNTHETIC short cut");
+    writeFileSync(join(videos, "notes.txt"), "not a video");
+    const out = assembleSite({ page: join(src, "index.html"), console: join(src, "console"), video: videos, out: join(src, "with") });
+
+    const ok = await checkVideos(out, [{ path: "video/short.mp4", sha256: sha("SYNTHETIC short cut") }]);
+    expect(ok.problems).toEqual([]);
+    expect(ok.videos[0]).toMatchObject({ status: 200, content_type: "video/mp4", bytes: 19, sha256: sha("SYNTHETIC short cut") });
+
+    const bad = await checkVideos(out, [
+      { path: "video/absent.mp4", sha256: null },
+      { path: "video/short.mp4", sha256: sha("the certified cut") },
+      { path: "video/notes.txt", sha256: null },
+    ]);
+    expect(bad.problems).toEqual([
+      "/bounded-mandate/video/absent.mp4: HTTP 404",
+      `/bounded-mandate/video/short.mp4: sha256 ${sha("SYNTHETIC short cut")} differs from the certified ${sha("the certified cut")}`,
+      "/bounded-mandate/video/notes.txt: content type text/plain; charset=utf-8, expected video/mp4",
+    ]);
   });
 });
