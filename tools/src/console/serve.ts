@@ -43,6 +43,7 @@ const signer = await LocalSandboxSigner.start({
   rpcUrl: values.rpc,
   accountId: values.owner,
   key,
+  deployment: { mandate_id: values.mandate, verifier_id: values.verifier },
   port: Number(values.port),
   page: () => renderConsoleHtml(evidence, { profiles: [profile], localSigner: "" }),
 });

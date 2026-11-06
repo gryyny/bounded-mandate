@@ -2,12 +2,14 @@
 // against a local sandbox. It holds a sandbox owner key in this process (never in the browser), serves the console
 // page from its own origin and signs exactly the one function call the page's intent describes. It refuses to start
 // or sign for anything but its own sandbox chain (chain id and genesis pinned at start, loopback RPC only), accepts
-// requests only from its own origin and Host, and signs only the owner methods the console offers. It is not a wallet
-// and its use proves nothing about any external wallet.
+// requests only from its own origin and Host, refuses to be framed, and signs only the owner calls the console offers,
+// each bound to its receiver in the served deployment (mandate, verifier, the mandate's two token contracts) and to
+// this signer's own account as beneficiary. It is not a wallet and its use proves nothing about any external wallet.
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { JsonRpcProvider, actions, baseEncode, encodeTransaction, type KeyPair } from "near-api-js";
+import { z } from "zod";
 import { NearClient } from "../near/client.js";
 import { MAINNET_GENESIS_HASH } from "../page/verify.js";
 import { signableOf, type Signable } from "./intent.js";
@@ -16,6 +18,10 @@ export const TEST_SIGNER_LABEL = "LOCAL SANDBOX TEST SIGNER (not a wallet)";
 
 /** The only calls the console offers; anything else is refused. */
 const ALLOWED_METHODS = new Set(["revoke", "recover", "ft_withdraw", "storage_deposit"]);
+const DECIMAL = /^(0|[1-9][0-9]*)$/;
+const MandateTokens = z.object({ usdc: z.object({ token: z.string() }).loose(), wnear: z.object({ token: z.string() }).loose() }).loose();
+/** Sent with every response: the page and the signer's answers may not be framed by another origin. */
+const SECURITY_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Content-Security-Policy": "frame-ancestors 'none'" };
 const MAX_DEPOSIT = 10n ** 22n; // 0.01 NEAR: one storage registration at most
 const MAX_BODY = 64 * 1024;
 const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?\/?$/;
@@ -27,6 +33,11 @@ export interface SignerOptions {
   rpcUrl: string;
   accountId: string;
   key: KeyPair;
+  /**
+   * The served deployment every call is bound to: revoke/recover go only to the mandate, ft_withdraw only to the
+   * verifier, storage_deposit only to the mandate's two token contracts (read from its get_config when signing).
+   */
+  deployment: { mandate_id: string; verifier_id: string };
   /** The console page served at GET /; receives this helper's origin. */
   page?: (origin: string) => string;
   port?: number;
@@ -47,7 +58,7 @@ export interface SignRequestLog {
 }
 
 const json = (res: ServerResponse, code: number, body: unknown): void => {
-  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  res.writeHead(code, { "Content-Type": "application/json", ...SECURITY_HEADERS });
   res.end(JSON.stringify(body));
 };
 
@@ -144,7 +155,7 @@ export class LocalSandboxSigner {
         json(res, 404, { error: "no page" });
         return;
       }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
       res.end(this.opts.page(this.origin));
       return;
     }
@@ -190,6 +201,8 @@ export class LocalSandboxSigner {
     const a = intent.actions[0];
     if (intent.actions.length !== 1 || a === undefined || !ALLOWED_METHODS.has(a.method)) return refuse("the test signer signs only revoke, recover, ft_withdraw and storage_deposit");
     if (BigInt(a.deposit) > MAX_DEPOSIT) return refuse("deposit above the test signer's 0.01 NEAR bound");
+    const unbound = await this.bindingProblem(intent.receiver_id, a.method, a.args);
+    if (unbound !== null) return refuse(unbound);
     const decision = (await this.opts.decide?.(intent)) ?? "approve";
     if (decision === "cancel") {
       log.status = "cancelled";
@@ -232,5 +245,24 @@ export class LocalSandboxSigner {
     }
     log.status = "submitted";
     return { status: "submitted", ...record };
+  }
+
+  /** Why this call is not one the console offers on the served deployment for this account; null when it is. */
+  private async bindingProblem(receiver: string, method: string, args: Record<string, unknown>): Promise<string | null> {
+    const { mandate_id: mandate, verifier_id: verifier } = this.opts.deployment;
+    const self = this.opts.accountId;
+    if (method === "revoke" || method === "recover") return receiver === mandate ? null : `${method} is signed only for the mandate ${mandate}, not ${receiver}`;
+    if (method === "ft_withdraw" && receiver !== verifier) return `ft_withdraw is signed only for the verifier ${verifier}, not ${receiver}`;
+    if (method === "storage_deposit" && args.account_id !== self) return `storage_deposit registers only this signer's account ${self}, not ${JSON.stringify(args.account_id ?? null)}`;
+    if (method === "ft_withdraw") {
+      if (args.receiver_id !== self) return `ft_withdraw pays only this signer's account ${self}, not ${JSON.stringify(args.receiver_id ?? null)}`;
+      if ("account_id" in args && args.account_id !== self) return `ft_withdraw names account ${JSON.stringify(args.account_id)}, not this signer's account ${self}`;
+      if (typeof args.amount !== "string" || !DECIMAL.test(args.amount)) return `ft_withdraw amount ${JSON.stringify(args.amount ?? null)} is not an integer`;
+    }
+    const cfg = await this.client.tryView(mandate, "get_config", {}, MandateTokens);
+    if (!cfg.ok) return `the mandate's token contracts could not be read: ${cfg.error}`;
+    const tokens = [cfg.value.usdc.token, cfg.value.wnear.token];
+    if (method === "storage_deposit") return tokens.includes(receiver) ? null : `storage_deposit is signed only for the mandate's token contracts ${tokens.join(", ")}, not ${receiver}`;
+    return typeof args.token === "string" && tokens.includes(args.token) ? null : `ft_withdraw is signed only for the mandate's tokens ${tokens.join(", ")}, not ${JSON.stringify(args.token ?? null)}`;
   }
 }

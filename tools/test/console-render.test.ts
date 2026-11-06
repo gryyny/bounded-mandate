@@ -16,6 +16,8 @@ interface Client {
   renderLive(doc: Doc, profile: NetworkProfile, live: LiveState): El;
   ownerGate(profile: NetworkProfile, live: LiveState | null, signer: SignerInfo | null): string[];
   buildIntent(kind: ActionKind, asset: "usdc" | "wnear" | null, profile: NetworkProfile, live: LiveState, signer: SignerInfo): Intent | null;
+  actionGate(kind: ActionKind, asset: "usdc" | "wnear" | null, live: LiveState, records: PendingRecord[]): { reasons: string[]; notes: string[] };
+  endState(r: PendingRecord, live: LiveState, outcome: "success" | "failure"): { settled: boolean; text: string };
   fromRunner(o: Record<string, unknown>, live: LiveState | null): { view: Intent; stem: string } | { error: string };
   intentDiff(a: Intent, b: Intent): string[];
   cliCommand(intent: Intent, profile: NetworkProfile): string;
@@ -33,7 +35,7 @@ interface Client {
 /** The exact inline script of the page, evaluated with no document elements, so its bootstrap wires nothing. */
 function client(): Client {
   const emptyDoc = { getElementById: () => null, createElement: () => null };
-  const names = ["readLive", "renderLive", "ownerGate", "buildIntent", "fromRunner", "intentDiff", "cliCommand", "txProblems", "handoffOf", "sha256Hex", "canonicalJson", "fmtUnits", "fmtShort", "loadRecords", "saveRecord", "rpcCall"];
+  const names = ["readLive", "renderLive", "ownerGate", "buildIntent", "actionGate", "endState", "fromRunner", "intentDiff", "cliCommand", "txProblems", "handoffOf", "sha256Hex", "canonicalJson", "fmtUnits", "fmtShort", "loadRecords", "saveRecord", "rpcCall"];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const factory = new Function("document", "fetch", "window", `${consoleScript()}\nreturn { ${names.join(", ")} };`) as (d: unknown, f: unknown, w: unknown) => Client;
   return factory(emptyDoc, () => {
@@ -138,6 +140,9 @@ describe("static rendering", () => {
   it("states that external wallets are untested and the test signer is not a wallet", () => {
     expect(html).toContain("External wallets are untested.");
     expect(html).toContain("not a wallet and proves no wallet compatibility");
+    const about = html.slice(html.indexOf('id="about"'));
+    expect(about).toContain("The local sandbox test signer is a local sandbox adapter, not a wallet.");
+    expect(about).toContain("External wallets are untested.");
   });
 
   it("offers the local test signer only when served by it", () => {
@@ -258,6 +263,32 @@ describe("runner intents and the handoff export", () => {
     const evil = Buffer.from(JSON.stringify({ token: "usdc.synthetic", receiver_id: "evil.synthetic", amount: "1234500" })).toString("base64");
     const bad = { transaction: { ...tx.transaction, actions: [{ FunctionCall: { method_name: "ft_withdraw", args: evil, gas: 100_000_000_000_000, deposit: "2" } }] } };
     expect(c.txProblems(bad, w, hash)).toEqual([expect.stringContaining("action 0: arguments"), "action 0: deposit 2 is not 1"]);
+  });
+
+  it("disables a withdrawal whose balance read failed and never builds a non-integer amount", async () => {
+    const live = await c.readLive(synthCall(GENESIS).call, profile, "http://127.0.0.1:1", "mandate.synthetic");
+    const usdc = live.tokens.usdc;
+    if (usdc === undefined) throw new Error("no usdc state");
+    expect(c.actionGate("withdraw", "usdc", live, []).reasons).toEqual([]);
+    // mt_balance_of failed: readLive reports "unknown", which is not a zero balance and not an amount.
+    const unread: LiveState = { ...live, tokens: { ...live.tokens, usdc: { ...usdc, owner_intents: "unknown" } } };
+    expect(c.actionGate("withdraw", "usdc", unread, []).reasons).toEqual(["the owner's Intents balance of this asset could not be read (unknown valuation is not zero)"]);
+    expect(() => c.buildIntent("withdraw", "usdc", profile, unread, signer)).toThrow(/non-integer amount "unknown"/);
+    const zero: LiveState = { ...live, tokens: { ...live.tokens, usdc: { ...usdc, owner_intents: "0" } } };
+    expect(c.actionGate("withdraw", "usdc", zero, []).reasons).toEqual(["the owner's Intents balance of this asset is 0"]);
+  });
+
+  it("confirms a revocation only when the verifier read shows the key absent", async () => {
+    const live = await c.readLive(synthCall(GENESIS).call, profile, "http://127.0.0.1:1", "mandate.synthetic");
+    const intent = c.buildIntent("revoke", null, profile, live, signer);
+    if (intent === null) throw new Error("no revoke preview");
+    const rec: PendingRecord = { v: 1, intent_sha256: "e".repeat(64), intent, source: "console", stem: null, adapter: "local", rpc_url: "", mandate_id: "mandate.synthetic", profile_id: profile.id, phase: "submitted", tx_hash: txHash(`${SYN} revoke`), public_key: OWNER_KEY, baseline: { epoch: 1, attempts: null, recovered: null, intents: null, wallet: null, amount: null }, started_at: "", note: "", outcome: null, end_state: null, problems: [] };
+    expect(live.key_registered).toBe(false);
+    expect(c.endState(rec, live, "success")).toEqual({ settled: true, text: "revoked (epoch 1): removal confirmed, the grant key is absent on the verifier" });
+    const unread = c.endState(rec, { ...live, key_registered: null }, "success");
+    expect(unread).toEqual({ settled: false, text: "revoked (epoch 1): key removal unknown, not verified (the verifier's key could not be read)" });
+    expect(unread.text).not.toContain("confirmed");
+    expect(c.endState(rec, { ...live, key_registered: true }, "success").text).toContain("removal not confirmed");
   });
 
   it("persists pending records keyed by intent sha256, and survives a broken storage", () => {

@@ -438,7 +438,10 @@ export function buildIntent(kind: ActionKind, asset: AssetKey | null, profile: N
   if (kind === "revoke") return call(live.mandate_id, "revoke", {}, "0");
   if (asset === null || side === undefined) return null;
   if (kind === "recover") return call(live.mandate_id, "recover", { asset }, "0");
-  if (kind === "withdraw") return call(verifier, "ft_withdraw", { token: side.token, receiver_id: owner, amount: side.owner_intents }, "1");
+  if (kind === "withdraw") {
+    if (!/^(0|[1-9][0-9]*)$/.test(side.owner_intents)) throw new Error(`refusing to build a withdrawal of a non-integer amount ${JSON.stringify(side.owner_intents)}`);
+    return call(verifier, "ft_withdraw", { token: side.token, receiver_id: owner, amount: side.owner_intents }, "1");
+  }
   if (side.storage_min === null) return null;
   return call(side.token, "storage_deposit", { account_id: owner, registration_only: true }, side.storage_min);
 }
@@ -497,7 +500,8 @@ export function actionGate(kind: ActionKind, asset: AssetKey | null, live: LiveS
   }
   if (kind === "recover" && status !== null && status !== "revoked") notes.push(`recovery requires a revoked grant (now ${status}); the contract refuses it otherwise`);
   if (kind === "withdraw" && side !== undefined) {
-    if (side.owner_intents === "0") reasons.push("the owner's Intents balance of this asset is 0");
+    if (!/^(0|[1-9][0-9]*)$/.test(side.owner_intents)) reasons.push("the owner's Intents balance of this asset could not be read (unknown valuation is not zero)");
+    else if (side.owner_intents === "0") reasons.push("the owner's Intents balance of this asset is 0");
     if (side.owner_registered === false) reasons.push("the owner is not registered on this token: register it first");
   }
   if (kind === "register" && side?.owner_registered !== false) reasons.push("the owner is already registered on this token");
@@ -567,7 +571,8 @@ export function endState(r: PendingRecord, live: LiveState, outcome: "success" |
     const g = live.grant;
     if (g === null) return { settled: false, text: "grant not readable" };
     if (g.key_op_in_flight === true) return { settled: false, text: `${String(g.status)}: key removal in flight` };
-    if (g.status === "revoked" && live.key_registered !== true) return { settled: true, text: `revoked (epoch ${String(g.epoch)}): removal confirmed, the grant key is absent on the verifier` };
+    if (g.status === "revoked" && live.key_registered === false) return { settled: true, text: `revoked (epoch ${String(g.epoch)}): removal confirmed, the grant key is absent on the verifier` };
+    if (g.status === "revoked" && live.key_registered === null) return { settled: false, text: `revoked (epoch ${String(g.epoch)}): key removal unknown, not verified (the verifier's key could not be read)` };
     return { settled: true, text: `${String(g.status)}: removal not confirmed; revoke again to retry the removal` };
   }
   const side = i.asset === null ? undefined : live.tokens[i.asset];
@@ -1012,7 +1017,13 @@ export function install(env: Env): void {
         say(`Refused: ${gate.join("; ")}`);
         return;
       }
-      const preview = buildIntent(kind, asset, p, live, signer);
+      let preview: Intent | null;
+      try {
+        preview = buildIntent(kind, asset, p, live, signer);
+      } catch (e) {
+        say(`Refused: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
       if (preview === null) {
         say("Refused: the action cannot be built from the live state.");
         return;
@@ -1245,7 +1256,7 @@ export function install(env: Env): void {
     const found = res.ok ? res.value : null;
     const hash = asString(found?.tx_hash);
     if (found === null || hash === null) {
-      saveRecord(env.store, { ...r, note: `no transaction hash: ${res.ok ? (asString(res.value.error) ?? "the signer has no record") : res.error}. Nothing is resubmitted; dismiss this record or paste the hash after checking your signer.` });
+      saveRecord(env.store, { ...r, note: `unresolved, no transaction hash: ${res.ok ? (asString(res.value.error) ?? "the signer has no record") : res.error}. Nothing is resubmitted. If the signer was still asking for confirmation, ask it for its record again once it has answered; otherwise dismiss this record.` });
       renderActivity();
       return;
     }

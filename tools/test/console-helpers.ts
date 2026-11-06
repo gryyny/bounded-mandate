@@ -40,9 +40,14 @@ export async function worldProfile(world: World): Promise<NetworkProfile> {
   });
 }
 
-/** A test signer serving the console; `profiles` is read on every page load so a test can swap expectations. */
-export async function serveConsole(opts: Omit<SignerOptions, "page">, profiles: () => NetworkProfile[], evidence: Evidence = consoleEvidence()): Promise<LocalSandboxSigner> {
-  return LocalSandboxSigner.start({ ...opts, page: () => renderConsoleHtml(evidence, { profiles: profiles(), localSigner: "", pollMs: POLL_MS, timeoutMs: 15_000 }) });
+/**
+ * A test signer serving the console; `profiles` is read on every page load so a test can swap expectations. The
+ * signer is bound to the first profile's deployment at start unless `deployment` is given.
+ */
+export async function serveConsole(opts: Omit<SignerOptions, "page" | "deployment"> & Partial<Pick<SignerOptions, "deployment">>, profiles: () => NetworkProfile[], evidence: Evidence = consoleEvidence()): Promise<LocalSandboxSigner> {
+  const deployment = opts.deployment ?? profiles()[0]?.deployment;
+  if (deployment === undefined || deployment === null) throw new Error("the test signer needs a deployment to bind its receivers to");
+  return LocalSandboxSigner.start({ ...opts, deployment, page: () => renderConsoleHtml(evidence, { profiles: profiles(), localSigner: "", pollMs: POLL_MS, timeoutMs: 15_000 }) });
 }
 
 export const launch = (): Promise<Browser> => chromium.launch();
