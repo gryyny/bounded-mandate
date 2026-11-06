@@ -224,7 +224,7 @@ describe("rehearsal record", () => {
       const rec = await rehearse(input(), synthetic(proposeJson("usdc", 150n * USDC)));
       expect(rec.inventory.planned).toEqual({ source: "synthetic approval", units: { usdc: PLANNED.usdc.toString(), wnear: PLANNED.wnear.toString() } });
       expect(rec.inventory.observed).toEqual({
-        source: "mandate verifier balances in the given chain observations",
+        source: "mandate verifier balances as given in the input state file (not read from chain by the rehearsal)",
         block: { height: 77, hash: "synthetic-block-hash" },
         units: { usdc: (1_000n * USDC).toString(), wnear: (200n * WNEAR).toString() },
       });
