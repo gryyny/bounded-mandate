@@ -1,0 +1,61 @@
+{
+  "schema": "bounded-mandate/site-check/v1",
+  "base": "/bounded-mandate/",
+  "routes": [
+    "",
+    "console/"
+  ],
+  "pages": [
+    {
+      "route": "/bounded-mandate/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "csp": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-iRNaeM01HdB60h1S9IFYEKZsp9cOiPltvsOWdDCgncY='; connect-src https:; form-action 'none'; base-uri 'none'",
+      "inline_scripts": 1,
+      "script_hashes": [
+        "'sha256-iRNaeM01HdB60h1S9IFYEKZsp9cOiPltvsOWdDCgncY='"
+      ],
+      "references": 42
+    },
+    {
+      "route": "/bounded-mandate/console/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "csp": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-3X+fS3RfTX4HedrW+N7KiZ2q3oCio8VgL5cN3Tuf6Sk='; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; form-action 'none'; base-uri 'none'",
+      "inline_scripts": 1,
+      "script_hashes": [
+        "'sha256-3X+fS3RfTX4HedrW+N7KiZ2q3oCio8VgL5cN3Tuf6Sk='"
+      ],
+      "references": 1
+    }
+  ],
+  "assets": [],
+  "external_links": [],
+  "problems": [],
+  "passed": true,
+  "page": "evidence/f5e34f9/page/index.html",
+  "console": "evidence/f5e34f9/console",
+  "video": {
+    "dir": "evidence/f5e34f9/video (local copy of out/video-f5e34f9, mp4 not committed)",
+    "manifest": "evidence/f5e34f9/video.json",
+    "videos": [
+      {
+        "path": "video/bounded-mandate-short.mp4",
+        "status": 200,
+        "content_type": "video/mp4",
+        "bytes": 2043642,
+        "sha256": "3b830e1b5c3d2dd032a53d3a0ba794919a6a34ef79cedba55fc9413851467afd",
+        "expected_sha256": "3b830e1b5c3d2dd032a53d3a0ba794919a6a34ef79cedba55fc9413851467afd"
+      },
+      {
+        "path": "video/bounded-mandate-demo.mp4",
+        "status": 200,
+        "content_type": "video/mp4",
+        "bytes": 5660009,
+        "sha256": "e2f262f48f1c732aa2c5c4107c4e0461d2cb401596fe01decbd517a15cf1df81",
+        "expected_sha256": "e2f262f48f1c732aa2c5c4107c4e0461d2cb401596fe01decbd517a15cf1df81"
+      }
+    ],
+    "problems": []
+  }
+}

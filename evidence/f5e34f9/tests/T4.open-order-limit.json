@@ -1,0 +1,69 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T4",
+  "case": "open-order-limit",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261106T201821422Z-4d1bf9e7552e",
+  "source": {
+    "revision": "f5e34f908dc0c3778bb576a1434075141208b56a",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "60e2c68df57638ebb048c20637ae397f22b0f9eb8ce5489ecced76ec15a51c3e",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "target/debug/deps/t4_recovery-4c89a80cdb726e52",
+  "generated_at_unix": 1793997372,
+  "data": {
+    "open_orders": 32,
+    "states_before_revoke": {
+      "signed": 20,
+      "signing": 12
+    },
+    "held_orders_confirmed_signing": 12,
+    "mpc_requests_pending_at_revoke": 12,
+    "thirty_third_refused": true,
+    "failed_removal": {
+      "grant_status": "revoking",
+      "callbacks": [
+        {
+          "method": "on_key_removed",
+          "attached_gas": 198307125580638,
+          "gas_burnt": 2339869481756,
+          "attached_note": "prepaid gas of the receipt: static gas plus its share of unused gas",
+          "burnt_share_of_attached": 0.011799220400703829,
+          "succeeded": true
+        },
+        {
+          "method": "on_key_presence",
+          "attached_gas": 117539467497302,
+          "gas_burnt": 1660883153916,
+          "attached_note": "prepaid gas of the receipt: static gas plus its share of unused gas",
+          "burnt_share_of_attached": 0.014130429457272503,
+          "succeeded": true
+        }
+      ]
+    },
+    "successful_removal": {
+      "grant_status": "revoked",
+      "callbacks": [
+        {
+          "method": "on_key_removed",
+          "attached_gas": 198346277628215,
+          "gas_burnt": 14090423615328,
+          "attached_note": "prepaid gas of the receipt: static gas plus its share of unused gas",
+          "burnt_share_of_attached": 0.07103951626326674,
+          "succeeded": true
+        }
+      ]
+    },
+    "released_key_removed": 32,
+    "withheld_relay_after_removal_executed": false,
+    "recovered_all_units": true
+  }
+}

@@ -1,0 +1,91 @@
+1
+00:00:00,000 --> 00:00:09,000
+Claim: the contract builds and signs every trade; after confirmed key removal, withheld orders fail and the owner recovers without agent, oracle or signer.
+
+2
+00:00:09,000 --> 00:00:18,000
+Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM.
+
+3
+00:00:18,000 --> 00:00:27,000
+The owner grants the mandate. Initial reference value: $1,899.80. Limits are fixed for the grant; the agent cannot change them.
+
+4
+00:00:27,000 --> 00:00:36,000
+In the console, read from the sandbox, the owner sees the grant active, its key registered on the verifier, and limits as granted.
+
+5
+00:00:36,000 --> 00:00:44,800
+Recorded genuine model output, claude-haiku-5-5: sell 49.90 USDC for wNEAR, at most 50 bps concession. The contract signs it.
+
+6
+00:00:44,800 --> 00:00:53,800
+Our filler fills it on the pinned mainnet verifier WASM: the mandate pays 49.90 USDC and receives 16.5468 wNEAR, exactly as signed.
+
+7
+00:00:53,800 --> 00:01:02,233
+A scripted second order, 1, is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.
+
+8
+00:01:02,233 --> 00:01:08,233
+Local validation: 10 hostile requests refused, each with no state change.
+
+9
+00:01:08,233 --> 00:01:14,333
+Contract method check: 14 hostile requests refused, each with no state change.
+
+10
+00:01:14,333 --> 00:01:20,333
+Policy validation: 4 hostile requests refused, each with no state change.
+
+11
+00:01:20,333 --> 00:01:26,433
+Agent key permission: 10 hostile requests refused, each with no state change.
+
+12
+00:01:26,433 --> 00:01:32,433
+Verifier: 1 hostile request refused, each with no state change.
+
+13
+00:01:32,433 --> 00:01:41,433
+In the console, after an exact preview, the owner revokes via the local sandbox test signer (not a wallet); the key's removal is confirmed.
+
+14
+00:01:41,433 --> 00:01:50,433
+Another account relays the withheld order 48 s before its deadline. The verifier rejects it: the key no longer exists.
+
+15
+00:01:50,433 --> 00:01:59,433
+With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR into its Intents account through ordinary recovery.
+
+16
+00:01:59,433 --> 00:02:08,433
+Separately, outside recovery, the owner withdraws 950.10 USDC and 316.5468 wNEAR to its NEAR account, registering storage only where needed.
+
+17
+00:02:08,433 --> 00:02:14,433
+33 of 33 required cases passed, certified for this demo.
+
+18
+00:02:14,433 --> 00:02:20,933
+The emergency owner-key rescue is reported separately; it never counts as ordinary recovery.
+
+19
+00:02:20,933 --> 00:02:29,733
+T5 runs the same threats against our own re-implementation of the pinned Claw Guard design, not the deployed product:
+
+20
+00:02:29,733 --> 00:02:35,733
+3 of 11 cases executed as successful attacks.
+
+21
+00:02:35,733 --> 00:02:44,733
+Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; the model step is a replay.
+
+22
+00:02:44,733 --> 00:02:50,733
+No guarantee of profit or a maximum loss.
+
+23
+00:02:50,733 --> 00:02:59,733
+Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM.
