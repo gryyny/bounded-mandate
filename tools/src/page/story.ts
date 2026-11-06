@@ -1,11 +1,14 @@
-// The revocation story in seven stages, each bound to the demo evidence it shows. The page's opening sequence
-// and the short video both read it. Every value comes from one run's assertions and receipts; a stage whose
-// evidence is absent lists what is missing and shows no numbers. A stage whose check did not hold, or whose evidence
-// is inconclusive, narrates that outcome instead of its success sentence; acceptance certification is separate.
+// The demo journey in nine stages, each bound to the demo evidence it shows: console review, grant, bounded proposal and
+// trade, withheld order, hostile requests, revocation, rejected relay, recovery, and the owner's separate withdrawal.
+// The page's opening sequence and both video cuts read it. Every value comes from one run's assertions, receipts and
+// recorded step states; a stage whose evidence is absent lists what is missing and shows no numbers. A stage whose check
+// did not hold, or whose evidence is inconclusive, narrates that outcome instead of its success sentence; acceptance
+// certification is separate.
 import { z } from "zod";
 import { SYSTEM_PROMPT } from "../agent/prompt.js";
 import { VALUE_DECIMALS, formatPrice, valueUnits } from "../agent/snapshot.js";
 import { DECIMALS } from "../demo/market.js";
+import { AttackLogFields, ConsoleReview, OwnerWithdrawal, PLANNED_LABEL, demoSteps, enforcementLayer, type StepState } from "../evidence/journey.js";
 import { Policy, Reference, type Evidence, type Receipt } from "../types.js";
 
 /** Decimal string of integer units with `decimals`, rounded down to `places`. */
@@ -57,7 +60,7 @@ export const offBalance = (s: Split): string => share(s.usdcShare >= 5_000n ? s.
 export const priceText = (ref: Reference): string => `USDC $${formatPrice(ref.usdc)}, wNEAR $${formatPrice(ref.wnear)}`;
 
 
-export type StageKey = "balances" | "limits" | "trade" | "withheld" | "revoked" | "rejected" | "recovered";
+export type StageKey = "console" | "limits" | "trade" | "withheld" | "attacks" | "revoked" | "rejected" | "recovered" | "withdrawn";
 
 export interface StageCheck {
   id: string;
@@ -83,7 +86,12 @@ export interface Stage {
   /** Narration with this run's numbers, or of the failure/inconclusive outcome; null when evidence is missing. */
   caption: string | null;
   missing: string[];
+  /** Chain state recorded at the end of the demo step this stage ends in; null when the evidence records none. */
+  state: StepState | null;
 }
+
+/** Stage fields a stage builder supplies; `failure` replaces the generic sentence when a check did not hold. */
+type Built = Pick<Stage, "headline" | "facts" | "labels" | "caption"> & { failure?: string };
 
 const dec = z.string().regex(/^-?(0|[1-9][0-9]*)$/);
 const Pair = z.object({ usdc: dec, wnear: dec });
@@ -97,6 +105,8 @@ const SHAPES = {
   "agent-one-restricted-key": z.array(z.object({ permission: z.object({ FunctionCall: z.object({ method_names: z.array(z.string()), receiver_id: z.string() }) }) })),
   "model-proposal-on-chain": z.object({ mode: z.string(), decision: z.object({ model: z.string() }).nullable(), order: OrderLike.extend({ concession_bps: z.number() }).nullable() }),
   revoked: z.object({ status: z.string().optional(), key_registered: z.boolean(), grant_public_key: z.string().nullable().optional() }),
+  "console-review": ConsoleReview,
+  "owner-withdrawal": OwnerWithdrawal,
   "withheld-released": z.object({ state: z.string(), reason: z.string().optional() }),
   "withheld-rejected": z.object({
     error: z.string(),
@@ -110,7 +120,7 @@ const SHAPES = {
     bundle_sha256: z.string().optional(),
     verifier_receipt: z.object({ id: z.string(), block_hash: z.string(), block_time_ns: dec }).nullable().optional(),
   }),
-  recovered: z.object({ recovered: Pair, mandate_final: Pair }),
+  recovered: z.object({ recovered: Pair, mandate_final: Pair, destination: z.string().optional() }),
 } as const;
 type Shape<K extends keyof typeof SHAPES> = z.infer<(typeof SHAPES)[K]>;
 
@@ -160,6 +170,8 @@ class Binder {
   readonly checks: StageCheck[] = [];
   readonly receipts: { index: number; receipt: Receipt }[] = [];
   readonly inconclusive: string[] = [];
+  /** Indices of the assertions this stage checked. */
+  readonly assertionIndices: number[] = [];
 
   constructor(
     private readonly ev: Evidence,
@@ -174,6 +186,7 @@ class Binder {
       return null;
     }
     this.checks.push({ id, description: a.description, held: a.passed });
+    this.assertionIndices.push(this.ev.assertions.indexOf(a));
     return a.passed;
   }
 
@@ -200,12 +213,90 @@ class Binder {
 const verifierReason = (error: string): string =>
   (/ExecutionError\\?":\\?"([^"\\]+)/.exec(error)?.[1] ?? error).replace(/^Smart contract panicked: /, "");
 
-/** The seven stages of the revocation story, in order, from one run's evidence. */
+/** One line of chain state: grant status, key, open orders and balances. */
+export function stateLine(st: StepState): string {
+  const key = st.key_present === null ? "no grant key" : st.key_present ? "key registered" : "key removed";
+  return `grant ${st.grant_status} · ${key} · open orders ${String(st.open_orders)} · mandate ${usdc(st.mandate.usdc)} + ${wnear(st.mandate.wnear)} · owner Intents ${usdc(st.owner_intents.usdc)} + ${wnear(st.owner_intents.wnear)} · owner NEAR ${usdc(st.owner_near.usdc)} + ${wnear(st.owner_near.wnear)}`;
+}
+
+/** Index of the demo step containing a receipt or assertion index, from the recorded step offsets. */
+const stepAt = (starts: readonly number[], index: number): number => {
+  let found = -1;
+  starts.forEach((start, i) => {
+    if (start <= index) found = i;
+  });
+  return found;
+};
+
+const ASSET_NAME: Record<string, string> = { usdc: "USDC", wnear: "wNEAR" };
+
+/** The attack-* assertions with their enforcement layer, derived from the boundary each attack actually reached. */
+export interface AttackRow {
+  index: number;
+  id: string;
+  description: string;
+  passed: boolean;
+  origin: string | null;
+  observed: string;
+  layer: string;
+  where: string;
+  contained: boolean | null;
+  reason: string | null;
+  source: { file: string; line: number; excerpt: string } | null;
+  submitted: boolean | null;
+  tx_hash: string | null;
+  model_output: string | null;
+}
+
+export function attackRows(ev: Evidence): AttackRow[] {
+  return ev.assertions.flatMap((a, index) => {
+    if (!a.id.startsWith("attack-")) return [];
+    const o = AttackLogFields.safeParse(a.observed);
+    const origin = /\((injected-request|scripted-direct)\)\s*$/.exec(a.description)?.[1] ?? null;
+    const observed = o.success ? o.data.observed : "unclassified";
+    const layer = enforcementLayer(observed);
+    return [
+      {
+        index,
+        id: a.id,
+        description: a.description.replace(/ -> stopped by [a-z-]+ \((injected-request|scripted-direct)\)$/, ""),
+        passed: a.passed,
+        origin: o.success ? (o.data.origin ?? origin) : origin,
+        observed,
+        layer: layer.layer,
+        where: layer.where,
+        contained: o.success ? o.data.contained : null,
+        reason: o.success ? (o.data.reason ?? null) : null,
+        source: o.success ? (o.data.source ?? null) : null,
+        submitted: o.success ? (o.data.submitted ?? null) : null,
+        tx_hash: o.success ? (o.data.tx_hash ?? null) : null,
+        model_output: o.success ? (o.data.model_output ?? null) : null,
+      },
+    ];
+  });
+}
+
+/** Attacks refused per enforcement layer, in order of first appearance. */
+export const layerCounts = (rows: readonly AttackRow[]): [string, number][] => {
+  const counts = new Map<string, number>();
+  for (const r of rows) if (r.passed) counts.set(r.layer, (counts.get(r.layer) ?? 0) + 1);
+  return [...counts.entries()];
+};
+
+/** The nine journey stages, in order, from one run's evidence. */
 export function revocationStory(ev: Evidence): Stage[] {
   const claimed = new Set<number>();
-  const stage = (key: StageKey, title: string, build: (b: Binder) => Omit<Stage, "key" | "title" | "outcome" | "receipts" | "checks" | "missing">): Stage => {
+  const steps = demoSteps(ev.environment);
+  const stateOf = (b: Binder): StepState | null => {
+    if (steps === null) return null;
+    const r = b.receipts.length === 0 ? -1 : stepAt(steps.map((s) => s.first_receipt), Math.max(...b.receipts.map((x) => x.index)));
+    const a = b.assertionIndices.length === 0 ? -1 : stepAt(steps.map((s) => s.first_assertion), Math.max(...b.assertionIndices));
+    const i = Math.max(r, a);
+    return i < 0 ? null : (steps[i]?.state ?? null);
+  };
+  const stage = (key: StageKey, title: string, build: (b: Binder) => Built): Stage => {
     const b = new Binder(ev, claimed);
-    const built = build(b);
+    const { failure, ...built } = build(b);
     const failed = b.checks.filter((c) => c.held === false);
     const outcome: StageOutcome = b.missing.length > 0 ? "missing" : b.inconclusive.length > 0 ? "inconclusive" : failed.length > 0 ? "not-held" : "held";
     const notHeld = failed.map((c) => `"${c.description}" (${c.id})`).join("; ");
@@ -219,10 +310,10 @@ export function revocationStory(ev: Evidence): Stage[] {
       },
       "not-held": {
         headline: `did not hold: ${failed.map((c) => c.id).join(", ")}`,
-        caption: `${title}: in this run, check ${notHeld} did not hold. This stage is not shown as evidence.`,
+        caption: failure === undefined ? `${title}: in this run, check ${notHeld} did not hold. This stage is not shown as evidence.` : `${failure} This stage is not shown as evidence.`,
       },
     };
-    return { key, title, outcome, ...built, ...narration[outcome], receipts: b.receipts, checks: b.checks, missing: b.missing };
+    return { key, title, outcome, ...built, ...narration[outcome], receipts: b.receipts, checks: b.checks, missing: b.missing, state: stateOf(b) };
   };
   const mandate = ev.identifiers.mandate ?? "the mandate";
   const owner = ev.identifiers.owner ?? "the owner";
@@ -230,28 +321,38 @@ export function revocationStory(ev: Evidence): Stage[] {
   const grantKey = SHAPES["grant-active"].safeParse(ev.assertions.find((a) => a.id === "grant-active")?.observed);
 
   return [
-    stage("balances", "Balances", (b) => {
-      const trade = b.observed("trade-executed");
-      const value = b.observed("grant-initial-value");
-      return {
-        headline: trade === null ? null : `${usdc(trade.before.usdc)} + ${wnear(trade.before.wnear)}`,
-        facts: [
-          ["Held by", `${mandate} (its Intents account)`],
-          ...(value === null ? [] : [["Reference value", usd(value.contract)] as [string, string]]),
-        ],
-        labels: [],
-        caption:
-          trade === null || value === null
-            ? null
-            : `Starting balances: the mandate's Intents account holds ${usdc(trade.before.usdc)} and ${wnear(trade.before.wnear)}, ${usd(value.contract)} at reference prices.`,
-      };
-    }),
-    stage("limits", "Trading limits", (b) => {
-      b.tx(/^owner grant$/);
-      const grant = b.observed("grant-active");
+    stage("console", "Reviewed in the console", (b) => {
+      const review = b.observed("console-review");
       const keys = b.observed("agent-one-restricted-key");
       b.check("mandate-no-keys");
       const methods = keys?.map((k) => k.permission.FunctionCall.method_names.join(", ")).join("; ") ?? "";
+      const st = review?.state;
+      const view = review?.view;
+      return {
+        headline: st === undefined ? null : `${usdc(st.mandate.usdc)} + ${wnear(st.mandate.wnear)}`,
+        facts:
+          review === null
+            ? []
+            : [
+                ["Held by", `${mandate} (its Intents account)`],
+                ["Fixed owner", review.config.owner],
+                ["Agent's only key", methods === "" ? "not recorded" : `${methods} on ${mandate}`],
+                ["Console view", view?.local_path ?? "not rendered by this run; the values here are the chain state it reads"],
+                ["Console URL", `${view?.planned_url ?? ""} (${PLANNED_LABEL})`],
+                ["Mandate account keys", "none: only its contract acts for it"],
+                ["Tokens", `${review.config.usdc_token}, ${review.config.wnear_token}`],
+              ],
+        labels: ["read-only console view"],
+        caption:
+          st === undefined || methods === ""
+            ? null
+            : `The owner reviews the mandate in the console: ${usdc(st.mandate.usdc)} and ${wnear(st.mandate.wnear)}, and an agent key limited to ${methods}.`,
+      };
+    }),
+    stage("limits", "Grant and limits", (b) => {
+      b.tx(/^owner grant$/);
+      const grant = b.observed("grant-active");
+      const value = b.observed("grant-initial-value");
       const p = grant?.policy;
       const cap = (bps: number): string => (initial.success ? ` (${usd(((BigInt(initial.data.contract) * BigInt(bps)) / 10_000n).toString())})` : "");
       return {
@@ -260,21 +361,21 @@ export function revocationStory(ev: Evidence): Stage[] {
           p === undefined || grant === null
             ? []
             : [
+                ...(value === null ? [] : [["Reference value", usd(value.contract)] as [string, string]]),
                 ["Per-order cap", `${pct(p.per_order_cap_bps)} of initial value${cap(p.per_order_cap_bps)}`],
                 ["Outstanding cap", `${pct(p.outstanding_cap_bps)}${cap(p.outstanding_cap_bps)}`],
                 ["Turnover cap", pct(p.turnover_cap_bps)],
                 ["Order deadline", `${String(p.order_ttl_sec)} s`],
-                ["Agent's only key", methods],
                 ["Grant key path", grant.path],
               ],
         labels: [],
         caption:
-          p === undefined
+          p === undefined || value === null
             ? null
-            : `The owner grants on-chain limits: at most ${pct(p.per_order_cap_bps)}${cap(p.per_order_cap_bps)} per order and ${pct(p.max_concession_bps)} price concession. The agent can only call ${methods}.`,
+            : `The owner grants fixed limits on ${usd(value.contract)}: at most ${pct(p.per_order_cap_bps)}${cap(p.per_order_cap_bps)} per order and ${pct(p.max_concession_bps)} price concession.`,
       };
     }),
-    stage("trade", "Successful trade", (b) => {
+    stage("trade", "Bounded proposal and trade", (b) => {
       b.tx(/propose_order \(order 1\)/);
       b.tx(/execute_intents order/);
       b.tx(/^settle_order/);
@@ -282,6 +383,7 @@ export function revocationStory(ev: Evidence): Stage[] {
       const trade = b.observed("trade-executed");
       b.check("settled-release");
       const modelName = model !== null && model.mode === "recorded-model" && model.decision !== null ? model.decision.model : null;
+      const reason = modelReason(ev);
       const s = trade?.signed;
       const alloc = allocation(ev);
       const moved = alloc.ok ? `${share(alloc.value.before.usdcShare)} → ${share(alloc.value.after.usdcShare)}` : null;
@@ -292,6 +394,7 @@ export function revocationStory(ev: Evidence): Stage[] {
             ? []
             : [
                 ["Proposed by", modelName === null ? "a scripted proposal" : `recorded output of ${modelName}`],
+                ...(modelName === null || reason === null ? [] : [["Agent's reason (recorded)", reason.length > 220 ? `${reason.slice(0, 217)}…` : reason] as [string, string]]),
                 ...(model.order === null ? [] : [["Order id", `${model.order.id}, concession ≤ ${String(model.order.concession_bps)} bps`] as [string, string]]),
                 ["Mandate after", `${usdc(trade.after.usdc)} + ${wnear(trade.after.wnear)}`],
                 ...(moved === null ? [] : [["USDC share of value", `${moved} (target 50%, at the grant's reference prices)`] as [string, string]]),
@@ -306,7 +409,7 @@ export function revocationStory(ev: Evidence): Stage[] {
                 `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal`} sells ${amount(s.sell, s.sell_amount)} for ${amount(s.buy, s.buy_amount)}, signed by the contract and filled exactly. USDC share: ${moved.replace(" → ", " to ")}, target 50%.`,
       };
     }),
-    stage("withheld", "Signed pending order", (b) => {
+    stage("withheld", "Signed order withheld", (b) => {
       const [r] = b.tx(/scripted, withheld/);
       const executable = b.check("withheld-executable");
       const detail = Events.safeParse(r?.detail);
@@ -339,10 +442,30 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           o === null || o.buy_amount === null
             ? null
-            : `A second order, ${amount(o.sell, o.sell_amount)} for ${amount(o.buy, o.buy_amount)}, is signed but withheld. Before revocation, the verifier would still accept it.`,
+            : `A second order, ${amount(o.sell, o.sell_amount)} for ${amount(o.buy, o.buy_amount)}, is signed but withheld. The verifier would still accept it.`,
       };
     }),
-    stage("revoked", "Confirmed revocation", (b) => {
+    stage("attacks", "Hostile requests", (b) => {
+      const rows = attackRows(ev);
+      if (rows.length === 0) b.missing.push("attack-* assertions");
+      for (const r of rows) b.check(r.id);
+      const injected = ev.assertions.some((a) => a.id === "injection-recording") ? b.check("injection-recording") : null;
+      const refused = rows.filter((r) => r.passed);
+      const counts = layerCounts(rows);
+      const notContained = rows.filter((r) => r.contained === false).length;
+      if (rows.length > 0 && rows.some((r) => r.contained === null)) b.inconclusive.push("this evidence does not record whether each attack changed state");
+      return {
+        headline: rows.length === 0 ? null : `${String(refused.length)} of ${String(rows.length)} refused · state unchanged${notContained > 0 ? ` except ${String(notContained)}` : ""}`,
+        facts: [...counts.map(([layer, n]): [string, string] => [sentenceStart(layer), `${String(n)} refused`]), ...(injected === null ? [] : [["Injected prompt", "a recorded genuine model response to it left the adapter only as a strict proposal or a decline"] as [string, string]])],
+        labels: ["scripted attacks", ...(injected === null ? [] : ["recorded genuine model output"])],
+        caption:
+          rows.length === 0
+            ? null
+            : `${String(refused.length)} of ${String(rows.length)} scripted hostile requests refused, nothing changed: ${counts.map(([l, n]) => `${l} ${String(n)}`).join(", ")}.`,
+        failure: `Hostile requests: in this run ${String(rows.length - refused.length)} of ${String(rows.length)} were not refused at their expected layer with no state change.`,
+      };
+    }),
+    stage("revoked", "Owner revocation", (b) => {
       b.tx(/^owner revoke/);
       const revoked = b.observed("revoked");
       const released = b.observed("withheld-released");
@@ -354,20 +477,28 @@ export function revocationStory(ev: Evidence): Stage[] {
           ...(released === null ? [] : [["Withheld order", `${released.state}${released.reason === undefined ? "" : ` (${released.reason})`}`] as [string, string]]),
         ],
         labels: [],
-        caption: revoked === null ? null : "The owner revokes the entire grant. The verifier confirms the grant key is removed, and the withheld order's reservation is released.",
+        caption: revoked === null ? null : "The owner revokes the grant. The verifier confirms its key is removed; only then is the withheld reservation released.",
       };
     }),
-    stage("rejected", "Rejected execution", (b) => {
+    stage("rejected", "Withheld order relayed", (b) => {
       const [r] = b.tx(/withheld order after revocation/);
       const rej = b.observed("withheld-rejected");
       const relayer = Events.safeParse(r?.detail);
       // The failed verifier receipt's block time when recorded; older evidence has only the block time read just before the relay.
       const atNs = rej?.verifier_receipt?.block_time_ns ?? rej?.relay_block_time_ns ?? null;
       const leftNs = rej?.order_deadline_ns == null || atNs === null ? null : BigInt(rej.order_deadline_ns) - BigInt(atNs);
+      const broadcastNs = rej?.order_deadline_ns == null ? null : BigInt(rej.order_deadline_ns) - BigInt(rej.relay_block_time_ns);
       const secondsLeft = leftNs === null ? null : Number(leftNs / 1_000_000_000n);
       if (rej !== null && leftNs === null) b.inconclusive.push("the withheld order's deadline is not recorded");
-      // A relay after the deadline fails for expiry whatever the key state, so it cannot show revocation's effect.
-      if (leftNs !== null && leftNs < 0n) b.inconclusive.push(`the withheld order was relayed ${units((-leftNs).toString(), 9, 1)} s after its deadline, so its rejection does not show the effect of revocation`);
+      // A relay at or after the deadline fails for expiry whatever the key state, so it cannot show revocation's effect.
+      if (leftNs !== null && leftNs <= 0n) {
+        b.inconclusive.push(
+          leftNs === 0n
+            ? "the withheld order was relayed at its deadline, so its rejection does not show the effect of revocation"
+            : `the withheld order was relayed ${units((-leftNs).toString(), 9, 1)} s after its deadline, so its rejection does not show the effect of revocation`,
+        );
+      }
+      if (broadcastNs !== null && broadcastNs <= 0n && (leftNs === null || leftNs > 0n)) b.inconclusive.push("the withheld order had no lifetime left when the relay was broadcast");
       const key = rej?.revoked_key ?? (grantKey.success ? grantKey.data.public_key : null);
       const id = withheldIdentity(ev);
       if (rej !== null && key === null) b.inconclusive.push("the removed signing key is not recorded");
@@ -384,6 +515,7 @@ export function revocationStory(ev: Evidence): Stage[] {
             : [
                 ["Relayed by", rej.relayer ?? (relayer.success && relayer.data.signer_id !== undefined ? relayer.data.signer_id : "another account")],
                 ["Verifier error", verifierReason(rej.error)],
+                ...(broadcastNs === null ? [] : [["Lifetime left at broadcast", `${units(broadcastNs.toString(), 9, 1)} s`] as [string, string]]),
                 ...(rej.order_deadline_ns === null ? [] : [["Deadline", isoNs(rej.order_deadline_ns)] as [string, string]]),
                 receipt === null
                   ? ["Block time before relay", isoNs(rej.relay_block_time_ns)]
@@ -396,18 +528,18 @@ export function revocationStory(ev: Evidence): Stage[] {
           secondsLeft === null ? null : `Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the signing key no longer exists.`,
       };
     }),
-    stage("recovered", "Recovered balances", (b) => {
+    stage("recovered", "Recovery to the owner's Intents account", (b) => {
       b.tx(/set_fail|set_mode|propose_order after revocation/);
-      b.tx(/recover/);
+      b.tx(/^owner recover/);
       const rec = b.observed("recovered");
       b.check("agent-stopped");
       return {
-        headline: rec === null ? null : `${usdc(rec.recovered.usdc)} + ${wnear(rec.recovered.wnear)} to the owner`,
+        headline: rec === null ? null : `${usdc(rec.recovered.usdc)} + ${wnear(rec.recovered.wnear)} to the owner's Intents account`,
         facts:
           rec === null
             ? []
             : [
-                ["Destination", `${owner} (owner's Intents account)`],
+                ["Destination", `${owner} (owner's Intents account, not an external wallet)`],
                 ["Mandate left", `${usdc(rec.mandate_final.usdc)} + ${wnear(rec.mandate_final.wnear)}`],
                 ["Without", "agent (rejected), oracle (failing), MPC test double (on hold)"],
               ],
@@ -415,10 +547,59 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           rec === null
             ? null
-            : `With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)}. The mandate holds zero.`,
+            : `With the oracle failing and the MPC double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} into its Intents account.`,
+      };
+    }),
+    stage("withdrawn", "Owner withdrawal to NEAR", (b) => {
+      b.tx(/^owner storage_deposit|^owner ft_withdraw/);
+      const w = b.observed("owner-withdrawal");
+      const done = w?.assets.filter((a) => a.outcome === "withdrawn") ?? [];
+      const failed = w?.assets.filter((a) => a.outcome === "failed") ?? [];
+      const reg = (a: (typeof done)[number]): string =>
+        a.registration.registered_before ? "already registered" : a.registration.storage_deposit_tx === null ? "not registered" : `registered first (tx ${shortHash(a.registration.storage_deposit_tx)})`;
+      const amountOf = (a: (typeof done)[number]): string => amount(a.asset, a.amount);
+      const failedText = failed
+        .map((a) => `${ASSET_NAME[a.asset] ?? a.asset} withdrawal failed after ${String(a.attempts.length)} attempt${a.attempts.length === 1 ? "" : "s"} (${a.attempts.at(-1)?.error ?? "not registered on the token, so not attempted"}); ${amount(a.asset, a.attempts.at(-1)?.intents_after ?? a.intents_before)} stays in the owner's Intents account`)
+        .join(". ");
+      return {
+        headline: w === null || done.length === 0 ? null : `${done.map(amountOf).join(" + ")} to ${w.owner}'s NEAR account`,
+        facts:
+          w === null
+            ? []
+            : [
+                ...w.assets.map((a): [string, string] => [
+                  ASSET_NAME[a.asset] ?? a.asset,
+                  a.outcome === "withdrawn"
+                    ? `${amountOf(a)} withdrawn; ${reg(a)}; NEAR balance ${amount(a.asset, a.near_before)} → ${amount(a.asset, a.attempts.at(-1)?.near_after ?? "0")}`
+                    : a.outcome === "failed"
+                      ? `failed: ${a.attempts.at(-1)?.error ?? "not attempted"}`
+                      : "nothing to withdraw",
+                ]),
+                ["Scope", "the owner's own ft_withdraw on the verifier, outside the mandate contract and every recovery claim"],
+              ],
+        labels: ["owner action, outside recovery claims"],
+        caption:
+          w === null || done.length === 0
+            ? null
+            : `Separately, outside recovery, the owner withdraws ${done.map(amountOf).join(" and ")} to its NEAR account, registering storage only where needed.`,
+        failure: `Owner withdrawal: ${failedText === "" ? "the withdrawal did not complete as recorded" : failedText}.`,
       };
     }),
   ];
+}
+
+const sentenceStart = (t: string): string => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
+
+/** The recorded model's stated reason for its proposal, from the decision text; null when not recorded. */
+export function modelReason(ev: Evidence): string | null {
+  const o = z.object({ decision: z.object({ decision_text: z.string() }).nullable() }).safeParse(ev.assertions.find((a) => a.id === "model-proposal-on-chain")?.observed);
+  if (!o.success || o.data.decision === null) return null;
+  try {
+    const parsed = z.object({ reason: z.string() }).safeParse(JSON.parse(o.data.decision.decision_text));
+    return parsed.success ? parsed.data.reason : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Labels of receipts no stage is bound to. */

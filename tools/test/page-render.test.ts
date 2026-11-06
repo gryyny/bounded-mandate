@@ -11,7 +11,9 @@ import { LIVE_MAINNET_PATH, isTxHash, loadLive } from "../src/page/mainnet.js";
 import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/page/render.js";
 import { clientScript, scriptHash } from "../src/page/verify.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
-import { STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
+import { ATTACKS, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
+import { PLANNED_LABEL, PLANNED_URLS } from "../src/evidence/journey.js";
+import { revocationStory } from "../src/page/story.js";
 
 const REV = "a".repeat(40);
 const FIXTURES = { "verifier/defuse-0.4.5.wasm": "e".repeat(64) };
@@ -324,9 +326,9 @@ describe("evidence page: historical v1 bundle", () => {
 describe("evidence page: revocation story", () => {
   const stages = (html: string): string[] => [...html.matchAll(/<li class="stage ([a-z]+) ([a-z]+)"/g)].map((m) => `${m[1] ?? ""} ${m[2] ?? ""}`);
 
-  it("shows the seven stages in order with values bound to the evidence", () => {
+  it("shows the nine journey stages in order with values bound to the evidence", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
-    expect(stages(html)).toEqual(["balances held", "limits held", "trade held", "withheld held", "revoked held", "rejected held", "recovered held"]);
+    expect(stages(html)).toEqual(["console held", "limits held", "trade held", "withheld held", "attacks held", "revoked held", "rejected held", "recovered held", "withdrawn held"]);
     // Expected text derived from the SYNTHETIC raw inputs (6 USDC decimals, 24 wNEAR decimals, 12 value decimals).
     const s = STORY;
     expect(s.before.usdc).toBe(2_000n * 10n ** 6n);
@@ -339,10 +341,13 @@ describe("evidence page: revocation story", () => {
       "order id 7: 5.0000 wNEAR → 14.99 USDC",
       "grant revoked · key registered: no",
       "rejected 37 s before its deadline",
-      "1,987.66 USDC + 104.0000 wNEAR to the owner",
+      "1,987.66 USDC + 104.0000 wNEAR to the owner's Intents account",
+      `${String(ATTACKS.length)} of ${String(ATTACKS.length)} refused · state unchanged`,
+      "1,987.66 USDC + 104.0000 wNEAR to owner.synthetic's NEAR account",
     ]) expect(html).toContain(escapeHtml(text));
     const at = (needle: string) => html.indexOf(needle);
-    expect(at('id="stage-balances"')).toBeLessThan(at('id="stage-recovered"'));
+    expect(at('id="stage-console"')).toBeLessThan(at('id="stage-recovered"'));
+    expect(at('id="stage-recovered"')).toBeLessThan(at('id="stage-withdrawn"'));
     expect(at('id="story"')).toBeLessThan(at('id="paths"'));
     expect(at('id="paths"')).toBeLessThan(at('id="mainnet"'));
     expect(at('id="mainnet"')).toBeLessThan(at('id="demo"'));
@@ -353,7 +358,7 @@ describe("evidence page: revocation story", () => {
     const html = renderHtml(ev, { acceptance: null, live: null });
     expect(html).toContain('<span class="mode recorded-model">recorded genuine model output</span>');
     expect(html).toContain('<span class="mode label">scripted proposal</span>');
-    expect(html.match(/<p class="stage-modes"><span class="mode sandbox"/g)).toHaveLength(7);
+    expect(html.match(/<p class="stage-modes"><span class="mode sandbox"/g)).toHaveLength(9);
     ev.receipts.forEach((_, i) => {
       expect(html).toContain(`href="#tx-${String(i)}"`);
       expect(html).toContain(`id="tx-${String(i)}"`);
@@ -363,7 +368,8 @@ describe("evidence page: revocation story", () => {
   it("shows no numbers for a stage whose evidence is missing, and a failed check as not held", () => {
     const bare = renderHtml(specimen(), { acceptance: null, live: null });
     expect(stages(bare).every((s) => s.endsWith(" missing"))).toBe(true);
-    expect(bare).toContain("Not in this evidence: assertion trade-executed");
+    expect(bare).toContain("Not in this evidence: assertion console-review");
+    expect(bare).toContain("Not in this evidence: receipt matching /^owner grant$/; assertion grant-active");
     const ev = storyEvidence();
     const failed = { ...ev, assertions: ev.assertions.map((a) => (a.id === "withheld-rejected" ? { ...a, passed: false } : a)) };
     const html = renderHtml(failed, { acceptance: null, live: null });
@@ -628,5 +634,117 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
     expect(h).toContain(`: ${String(after.filter((r) => r.executed).length)} executions.`);
     expect(h).not.toContain("not shown as evidence");
     expect(h.match(/recorded result: <span class="status success">passed<\/span>/g)).toHaveLength(3);
+  });
+});
+
+describe("evidence page: journey, attack log, withdrawal and planned URLs", () => {
+  const stages = (h: string): string[] => [...h.matchAll(/<li class="stage ([a-z]+) ([a-z-]+)"/g)].map((m) => `${m[1] ?? ""} ${m[2] ?? ""}`);
+  const stageHtml = (html: string, key: string): string => {
+    const start = html.indexOf(`id="stage-${key}"`);
+    return html.slice(start, html.indexOf("</li>", start));
+  };
+  const section = (html: string, id: string): string => {
+    const start = html.indexOf(`id="${id}"`);
+    return html.slice(start, html.indexOf("</section>", start));
+  };
+
+  it("opens the journey with the console review, showing the console view's state and its planned URL as planned", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    const card = stageHtml(html, "console");
+    for (const text of ["2,000.00 USDC + 100.0000 wNEAR", "owner.synthetic", "propose_order on mandate.synthetic", "not rendered by this run", `${PLANNED_URLS.console} (${PLANNED_LABEL})`, "read-only console view"]) {
+      expect(card).toContain(escapeHtml(text));
+    }
+    expect(card).toContain("grant none · no grant key · open orders 0");
+  });
+
+  it("separates the owner's withdrawal from recovery, with registration only where it was needed", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    const recovered = stageHtml(html, "recovered");
+    const withdrawn = stageHtml(html, "withdrawn");
+    expect(recovered).toContain("ordinary recovery (not the owner-key rescue)");
+    expect(recovered).not.toContain("ft_withdraw");
+    expect(recovered).toContain(escapeHtml("owner.synthetic (owner's Intents account, not an external wallet)"));
+    expect(withdrawn).toContain("owner action, outside recovery claims");
+    expect(withdrawn).toContain(escapeHtml("outside the mandate contract and every recovery claim"));
+    expect(withdrawn).toContain("1,987.66 USDC withdrawn; already registered");
+    expect(withdrawn).toContain(`104.0000 wNEAR withdrawn; registered first (tx ${escapeHtml(txHash("owner storage_deposit on wnear token").slice(0, 6))}`);
+    // The withdrawal receipts bind to the withdrawal stage, never to recovery.
+    const ev = storyEvidence();
+    const ft = ev.receipts.findIndex((r) => r.label.startsWith("owner ft_withdraw"));
+    expect(withdrawn).toContain(`href="#tx-${String(ft)}"`);
+    expect(recovered).not.toContain(`href="#tx-${String(ft)}"`);
+  });
+
+  it("narrates a failed withdrawal as failed, with the balance it left in the owner's Intents account", () => {
+    const ev = storyEvidence();
+    const failed: Evidence = {
+      ...ev,
+      assertions: ev.assertions.map((a) => {
+        if (a.id !== "owner-withdrawal") return a;
+        const o = a.observed as { assets: Record<string, unknown>[] };
+        const wnearFailed = { ...o.assets[1], attempts: [1, 2].map((n) => ({ tx_hash: `SYNTHETICfail${String(n)}`, success: false, returned: "0", intents_after: (STORY.before.wnear + STORY.buy).toString(), near_after: "0", error: "SYNTHETIC refunded" })), outcome: "failed" };
+        return { ...a, passed: false, observed: { ...o, assets: [o.assets[0], wnearFailed] } };
+      }),
+    };
+    const html = renderHtml(failed, { acceptance: null, live: null });
+    expect(stages(html)).toContain("withdrawn failure");
+    const card = stageHtml(html, "withdrawn");
+    expect(card).toContain("did not hold: owner-withdrawal");
+    expect(card).toContain("failed: SYNTHETIC refunded");
+    expect(card).not.toContain(escapeHtml("to owner.synthetic's NEAR account"));
+    const caption = revocationStory(failed).find((st) => st.key === "withdrawn")?.caption ?? "";
+    expect(caption).toContain("wNEAR withdrawal failed after 2 attempts (SYNTHETIC refunded); 104.0000 wNEAR stays in the owner's Intents account");
+    expect(caption).not.toContain("the owner withdraws");
+  });
+
+  it("lists each hostile request under the enforcement layer it actually reached, with its returned text and source", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    const log = section(html, "attacks");
+    for (const [layer, n] of [["Local validation", 1], ["Agent key permission", 1], ["Contract method check", 1], ["Policy validation", 1], ["Verifier", 1]] as const) {
+      expect(log).toContain(`<h3>${layer}: ${String(n)} of ${String(n)} refused`);
+    }
+    expect(log).toContain("contract/src/lib.rs:905");
+    expect(log).toContain("per-order cap exceeded");
+    expect(log).toContain("sandbox tx <code class=\"mono\">SYNTHETICattacktx3</code>");
+    expect(log).toContain("no transaction: refused before inclusion");
+    expect(log).toContain("synthetic injected request");
+    expect(log).toContain("recorded genuine model output");
+    // The layer comes from the observed boundary, not from the expectation in the description.
+    const ev = storyEvidence();
+    const moved = { ...ev, assertions: ev.assertions.map((a) => (a.id === "attack-direct-over-cap" ? { ...a, passed: false, observed: { ...(a.observed as object), observed: "not-stopped", contained: false } } : a)) };
+    const movedLog = section(renderHtml(moved, { acceptance: null, live: null }), "attacks");
+    expect(movedLog).toContain("<h3>Not stopped: 0 of 1 refused");
+    expect(movedLog).toContain("state changed");
+    expect(movedLog).not.toContain("<h3>Policy validation");
+    expect(stages(renderHtml(moved, { acceptance: null, live: null }))).toContain("attacks failure");
+  });
+
+  it("derives the attack log from older evidence without the new fields, and says what is not recorded", () => {
+    const ev = storyEvidence();
+    const older = { ...ev, assertions: ev.assertions.map((a) => (a.id.startsWith("attack-") ? { ...a, observed: { observed: (a.observed as { observed: string }).observed, contained: true } } : a)) };
+    const log = section(renderHtml(older, { acceptance: null, live: null }), "attacks");
+    expect(log).toContain("<h3>Policy validation: 1 of 1 refused");
+    expect(log).toContain("not recorded");
+  });
+
+  it("uses no verified or live wording for sandbox data in the journey and the attack log", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    for (const part of [section(html, "story"), section(html, "attacks")]) expect(part).not.toMatch(/\bverified\b|\blive\b|\bmainnet receipt/i);
+  });
+
+  it("shows the planned URLs as text labelled planned and unpublished, never as links", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    expect(html).toContain(`${PLANNED_LABEL}</span> Page <code>${PLANNED_URLS.page}</code>`);
+    expect(html).not.toContain(`href="${PLANNED_URLS.page}`);
+    for (const m of html.matchAll(/gryyny\.github\.io[^<"]*/g)) {
+      const around = html.slice(Math.max(0, m.index - 200), m.index + 200);
+      expect(around).toContain(PLANNED_LABEL);
+    }
+  });
+
+  it("labels TypeScript unit-test case reports honestly", () => {
+    const cases = allCases().map((c) => (c.gate === "AGENT" ? { ...c, mode: "unit" } : c));
+    const html = page(acceptance({ cases }));
+    expect(html).toContain("TypeScript unit test (no VM, chain or model)");
   });
 });

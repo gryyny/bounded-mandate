@@ -43,7 +43,17 @@ export function loadWorldWasm(): World["wasm"] {
   };
 }
 
-export async function setupWorld(net: LocalNetwork, opts: { fillerDeposits?: boolean } = {}): Promise<World> {
+export interface WorldOptions {
+  fillerDeposits?: boolean;
+  /**
+   * Tokens on which the owner holds no storage registration after its deposit (its NEAR-side balance is zero then),
+   * as for an owner who funded through another account. The demo uses this so the owner's withdrawal exercises
+   * registration; the default leaves the owner registered on both tokens.
+   */
+  ownerUnregistered?: readonly Asset[];
+}
+
+export async function setupWorld(net: LocalNetwork, opts: WorldOptions = {}): Promise<World> {
   const wasm = loadWorldWasm();
   const client = net.client;
   const root = net.root.id;
@@ -142,6 +152,9 @@ export async function setupWorld(net: LocalNetwork, opts: { fillerDeposits?: boo
   for (const asset of ["usdc", "wnear"] as const) {
     await mintAndDeposit(world, owner, asset, DEPOSITS[asset], mandateId);
     if (opts.fillerDeposits !== false) await mintAndDeposit(world, filler, asset, FILLER_DEPOSITS[asset], filler.id);
+  }
+  for (const asset of opts.ownerUnregistered ?? []) {
+    requireSuccess(await client.call(`owner storage_unregister on ${asset} token`, owner.account, tokens[asset], "storage_unregister", { force: false }, { gas: 30n * TGAS, deposit: ONE_YOCTO }));
   }
   requireSuccess(await world.verifier.addPublicKey(filler.account, fillerKey(world).getPublicKey().toString()));
   return world;

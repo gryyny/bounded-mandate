@@ -1,5 +1,6 @@
-// Builds two captioned videos from the files of one actual run: a short cut (45-75 s) telling the revocation story
-// in seven stages, and the longer technical walkthrough. Not part of make test, make demo or CI.
+// Builds two captioned videos from the files of one actual run: a short cut (45-90 s) that cold-opens on the rejected
+// relay and tells the nine-stage journey with a state strip, and the longer technical walkthrough with an attack-log
+// segment. Captions only; any narration is added later by the owner. Not part of make test, make demo or CI.
 //
 // Usage (from the repository root):
 //   make demo 2>&1 | tee out/video/demo.log        # the demo log must come from the run that wrote demo.json
@@ -29,7 +30,8 @@ import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js"
 import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
 import { GATE_LABEL, HEADLINE, SUBTITLE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
-import { AGENT_OBJECTIVE, allocation, isoNs, priceText, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type Stage, type StageKey } from "../page/story.js";
+import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, modelReason, priceText, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type Stage, type StageKey } from "../page/story.js";
+import { ConsoleReview, PLANNED_LABEL, PLANNED_URLS, demoSteps, type StepState } from "../evidence/journey.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
@@ -85,6 +87,10 @@ interface Scene {
   title: string;
   body: string;
   captions: string[];
+  /** State strip in the lower half: the recorded chain state (null: not recorded); absent: no strip. */
+  strip?: StepState | null;
+  /** Stage label shown in the strip. */
+  stage?: string;
 }
 
 const list = (items: string[]): string => `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
@@ -120,18 +126,26 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     if (s === undefined) throw new Error(`demo log lacks step "${prefix}"`);
     return s;
   };
+  const recorded = demoSteps(ev.environment) ?? [];
+  /** Chain state recorded at the end of the demo step with this title prefix. */
+  const stateAfter = (prefix: string): StepState | null => recorded.find((s) => s.step.startsWith(prefix))?.state ?? null;
   const checks = (s: LogStep): string => list(s.lines.map((l) => `<span class="${l.ok ? "ok" : "bad"}">${l.ok ? "ok" : "FAIL"}</span> <code>[${esc(l.gate)}]</code> ${esc(l.text)}`));
   const status = certification(binding);
   // A scene narrates success only when its story stage held; otherwise it narrates the stage's outcome.
   const story = new Map(revocationStory(ev).map((s) => [s.key, s]));
   const held = (key: StageKey): boolean => story.get(key)?.outcome === "held";
   const narrate = (key: StageKey, success: string): string => (held(key) ? success : (story.get(key)?.caption ?? `${key}: not in this evidence.`));
+  /** The success title only when the stage held; otherwise a neutral title with the stage's outcome. */
+  const outcomeTitle = (key: StageKey, n: string, success: string, neutral: string): string => (held(key) ? `${n} · ${success}` : `${n} · ${neutral}: ${story.get(key)?.outcome ?? "missing"}`);
 
-  const roles = stepOf("Roles and limits");
+  const consoleStep = stepOf("Mandate reviewed in the console");
+  const review = ConsoleReview.safeParse(obs("console-review"));
+  const grantStep = stepOf("Grant and limits");
   const initial = (obs("grant-initial-value") as { contract: string }).contract;
-  const model = stepOf("Genuine model proposal");
+  const model = stepOf("Bounded agent proposal");
   const decision = (obs("model-proposal-on-chain") as { decision: { decision_text: string; prompt_sha256: string; raw_output_sha256: string } }).decision;
   const proposal = (JSON.parse(decision.decision_text) as { proposal: { sell: string; sell_amount: string; max_concession_bps: number } }).proposal;
+  const reason = modelReason(ev);
   const fill = stepOf("Filler fills");
   const trade = (obs("trade-executed") as { signed: { sell_amount: string; buy_amount: string }; before: Record<string, string>; after: Record<string, string> });
   const alloc = allocation(ev);
@@ -154,24 +168,21 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
           ["Bundle sha256", identity.bundle_sha256],
           ["simulate_intents", identity.simulation],
         ];
-  const attacks = stepOf("Malicious requests");
-  const attackRows = ev.assertions.filter((a) => a.id.startsWith("attack-"));
-  const byBoundary = new Map<string, number>();
-  for (const a of attackRows) {
-    const b = /stopped by ([a-z-]+)/.exec(a.description)?.[1] ?? "unclassified";
-    byBoundary.set(b, (byBoundary.get(b) ?? 0) + 1);
-  }
-  const attacksStopped = attackRows.filter((a) => a.passed).length;
+  const rows = attackRows(ev);
+  const layers = [...new Set(rows.map((r) => r.layer))];
   const revoke = stepOf("Owner revokes");
   const relay = stepOf("Withheld order relayed");
   const rejected = (obs("withheld-rejected") as { error: string; relay_block_time_ns: string; order_deadline_ns: string; nonce_used: boolean; verifier_receipt?: { block_time_ns: string } | null });
   // The failed verifier receipt's block time when recorded, as on the page.
   const rejectedAt = rejected.verifier_receipt?.block_time_ns ?? rejected.relay_block_time_ns;
   const secondsLeft = Number((BigInt(rejected.order_deadline_ns) - BigInt(rejectedAt)) / 1_000_000_000n);
-  const reason = /ExecutionError\\?":\\?"([^"\\]+)/.exec(rejected.error)?.[1] ?? rejected.error;
+  const atBroadcast = units((BigInt(rejected.order_deadline_ns) - BigInt(rejected.relay_block_time_ns)).toString(), 9, 1);
+  const rejectReason = /ExecutionError\\?":\\?"([^"\\]+)/.exec(rejected.error)?.[1] ?? rejected.error;
   const disabled = stepOf("Agent, oracle and MPC disabled");
   const recovery = stepOf("Recovery to the owner");
   const rec = (obs("recovered") as { recovered: { usdc: string; wnear: string }; mandate_final: { usdc: string; wnear: string } });
+  const withdrawalStep = stepOf("Owner withdrawal");
+  const withdrawal = story.get("withdrawn");
 
   // One pill per required case; a case the acceptance run did not evaluate (e.g. added later) is shown as such.
   const pill = (g: string, name: string): string => {
@@ -188,6 +199,27 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const t5 = acc?.baseline ?? null;
 
   const rescue = acc?.separate.find((c) => c.id === "RESCUE.owner-key");
+  const attackScenes = layers.map((layer, i): Scene => {
+    const of = rows.filter((r) => r.layer === layer);
+    const where = [...new Set(of.map((r) => r.where))].join("; ");
+    return {
+      kind: "demo",
+      labels: ["Scripted attacks"],
+      title: `5${String.fromCharCode(97 + i)} · Attack log: ${layer}, ${String(of.filter((r) => r.passed).length)} of ${String(of.length)} refused`,
+      // The chain state is unchanged across the attacks, so the log takes the strip's space.
+      body: `<p class="note">${esc(where)}</p><table class="log">${of
+        .map(
+          (r) =>
+            `<tr><td class="${r.passed && r.contained !== false ? "ok" : "bad"}">${r.passed && r.contained !== false ? "refused" : "NOT HELD"}</td><td>${esc(r.description)}</td><td><code>${esc((r.reason ?? "").slice(0, 70))}</code></td><td><code>${esc(r.source === null ? (r.tx_hash === null ? "no transaction" : `tx ${shortHash(r.tx_hash)}`) : `${r.source.file}:${String(r.source.line)}`)}</code></td></tr>`,
+        )
+        .join("")}</table>`,
+      captions: [
+        of.every((r) => r.passed && r.contained !== false)
+          ? `${sentenceCase(layer)}: ${String(of.length)} hostile ${of.length === 1 ? "request" : "requests"} refused, each with no state change.`
+          : `${sentenceCase(layer)}: ${String(of.filter((r) => !(r.passed && r.contained !== false)).length)} of ${String(of.length)} requests were not refused at their expected layer with no state change.`,
+      ],
+    };
+  });
   const out: Scene[] = [
     {
       kind: "summary",
@@ -198,25 +230,46 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     },
     {
       kind: "demo",
-      title: "1 · Grant and limits",
-      body: txs(/grant/) + checks(roles),
-      captions: [narrate("limits", `The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. The agent's only key can call propose_order.`)],
+      labels: ["Read-only console view"],
+      title: outcomeTitle("console", "1", "Mandate reviewed in the console", "Console review"),
+      body:
+        (review.success
+          ? kv([
+              ["Owner (fixed)", review.data.config.owner],
+              ["Agent", review.data.config.agent],
+              ["Verifier", review.data.config.verifier],
+              ["Tokens", `${review.data.config.usdc_token}, ${review.data.config.wnear_token}`],
+              ["Console view", review.data.view.local_path ?? "not rendered by this run (chain state shown instead)"],
+              ["Console URL", `${review.data.view.planned_url} (${review.data.view.planned_label})`],
+            ])
+          : "") + checks(consoleStep),
+      captions: [narrate("console", story.get("console")?.caption ?? "")],
+      strip: stateAfter("Mandate reviewed in the console"),
+    },
+    {
+      kind: "demo",
+      title: outcomeTitle("limits", "2", "Grant and limits", "Grant and limits"),
+      body: txs(/grant/) + checks(grantStep),
+      captions: [narrate("limits", `The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. Limits are fixed for the grant; the agent cannot change them.`)],
+      strip: stateAfter("Grant and limits"),
     },
     {
       kind: "demo",
       labels: ["Recorded genuine model output"],
-      title: `2 · Recorded genuine model output, ${modelName}`,
+      title: `3 · Recorded genuine model output, ${modelName}`,
       body: kv([
         ["Model", modelName],
         ["Proposal", `sell ${usdc(proposal.sell_amount)}, max concession ${String(proposal.max_concession_bps)} bps`],
+        ...(reason === null ? [] : [["Reason (recorded)", reason.length > 260 ? `${reason.slice(0, 257)}…` : reason] as [string, string]]),
         ["Prompt sha256", decision.prompt_sha256],
         ["Raw output sha256", decision.raw_output_sha256],
       ]) + txs(/propose_order \(order 1\)/) + checks(model),
       captions: [narrate("trade", `Recorded genuine model output, ${modelName}: sell ${usdc(proposal.sell_amount)} for wNEAR, at most ${String(proposal.max_concession_bps)} bps concession. The contract signs it.`)],
+      strip: stateAfter("Bounded agent proposal"),
     },
     {
       kind: "demo",
-      title: "3 · Trade on the real verifier WASM",
+      title: "3b · Trade on the real verifier WASM",
       body: kv([
         ["Signed sell", usdc(trade.signed.sell_amount)],
         ["Signed buy", wnear(trade.signed.buy_amount)],
@@ -225,6 +278,7 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
         ...allocRows,
       ]) + txs(/execute_intents order|settle_order/) + checks(fill),
       captions: [narrate("trade", `Our filler fills it on the pinned mainnet verifier WASM: the mandate pays ${usdc(trade.signed.sell_amount)} and receives ${wnear(trade.signed.buy_amount)}, exactly as signed.`)],
+      strip: stateAfter("Filler fills"),
     },
     {
       kind: "demo",
@@ -239,32 +293,41 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
             : `A scripted second order, ${identity.order_id}, is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.`,
         ),
       ],
+      strip: stateAfter("Second signed order withheld"),
     },
+    ...attackScenes,
     {
       kind: "demo",
-      labels: ["Scripted attacks"],
-      title: `5 · Scripted attacks: ${String(attacksStopped)} of ${String(attackRows.length)} stopped`,
-      body: kv([...byBoundary.entries()].map(([b, n]): [string, string] => [b, `${String(n)} stopped`])) + list(attacks.lines.filter((l) => !l.text.includes("stopped by")).map((l) => esc(l.text))),
-      captions: [`Scripted attacks: ${String(attacksStopped)} of ${String(attackRows.length)} injected or direct malicious requests stopped at their expected boundary, with no state change.`],
-    },
-    {
-      kind: "demo",
-      title: held("revoked") ? "6 · Owner revokes; key removal confirmed" : `6 · Owner revokes: ${story.get("revoked")?.outcome ?? "missing"}`,
+      title: outcomeTitle("revoked", "6", "Owner revokes; key removal confirmed", "Owner revokes"),
       body: txs(/^owner revoke/) + checks(revoke),
       captions: [narrate("revoked", "The owner revokes. The verifier confirms the grant key is removed; only then is the withheld order's reservation released.")],
+      strip: stateAfter("Owner revokes"),
     },
     {
       kind: "demo",
-      title: held("rejected") ? "7 · The withheld order is relayed and rejected" : `7 · The withheld order is relayed: ${story.get("rejected")?.outcome ?? "missing"}`,
-      body: kv([["Verifier error", reason], ["Time left before its deadline", `${String(secondsLeft)} s`], ["Nonce used", String(rejected.nonce_used)]]) + txs(/withheld order after revocation/) + checks(relay),
+      title: outcomeTitle("rejected", "7", "The withheld order is relayed and rejected", "The withheld order is relayed"),
+      body:
+        kv([["Verifier error", rejectReason], ["Lifetime left at broadcast", `${atBroadcast} s`], ["Time left at rejection", `${String(secondsLeft)} s`], ["Nonce used", String(rejected.nonce_used)]]) +
+        txs(/withheld order after revocation/) +
+        checks(relay),
       captions: [narrate("rejected", `Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the key no longer exists.`)],
+      strip: stateAfter("Withheld order relayed"),
     },
     {
       kind: "demo",
       labels: ["Ordinary recovery (not the owner-key rescue)"],
       title: "8 · Ordinary recovery with agent, oracle and MPC unavailable",
-      body: kv([["Recovered", `${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)}`], ["Destination", `${ev.identifiers.owner ?? "owner"} (owner's Intents account)`], ["Mandate left", `${usdc(rec.mandate_final.usdc)}, ${wnear(rec.mandate_final.wnear)}`]]) + txs(/set_fail|set_mode|after revocation/) + txs(/recover/) + checks(disabled) + checks(recovery),
-      captions: [narrate("recovered", `With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} through ordinary recovery.`)],
+      body: kv([["Recovered", `${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)}`], ["Destination", `${ev.identifiers.owner ?? "owner"} (owner's Intents account)`], ["Mandate left", `${usdc(rec.mandate_final.usdc)}, ${wnear(rec.mandate_final.wnear)}`]]) + txs(/set_fail|set_mode|after revocation/) + txs(/^owner recover/) + checks(disabled) + checks(recovery),
+      captions: [narrate("recovered", `With the oracle failing and the MPC test double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} into its Intents account through ordinary recovery.`)],
+      strip: stateAfter("Recovery to the owner"),
+    },
+    {
+      kind: "demo",
+      labels: ["Owner action, outside recovery claims"],
+      title: outcomeTitle("withdrawn", "9", "Owner withdrawal to its NEAR account", "Owner withdrawal"),
+      body: kv(withdrawal?.facts ?? []) + txs(/^owner storage_deposit|^owner ft_withdraw/) + checks(withdrawalStep),
+      captions: [withdrawal?.caption ?? "Owner withdrawal: not in this evidence."],
+      strip: stateAfter("Owner withdrawal"),
     },
     {
       kind: "summary",
@@ -300,6 +363,7 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
         ["Mandate WASM sha256", ev.source.contract_wasm_sha256],
         ["Verifier WASM sha256", ev.source.fixtures["verifier/defuse-0.4.5.wasm"] ?? "unknown"],
         ["Certification", binding.certified ? "certified for this demo" : `not certified for this demo: ${binding.reasons.join("; ")}`],
+        [`Page and console (${PLANNED_LABEL})`, `${PLANNED_URLS.page} · ${PLANNED_URLS.console}`],
       ]),
       captions: [status.sentence],
     },
@@ -315,7 +379,22 @@ function rail(stages: readonly Stage[], current: number): string {
   return `<ol class="rail">${stages.map((s, i) => `<li class="${i < current ? "past" : i === current ? "now" : ""}"><b>${String(i + 1)}</b> ${esc(s.title)}</li>`).join("")}</ol>`;
 }
 
-/** The short cut: position, the seven bound stages, and how to check. Throws when any stage lacks its evidence. */
+const stageBody = (stages: readonly Stage[], i: number): string => {
+  const s = stages[i];
+  if (s === undefined) return "";
+  const many = s.checks.length > 8;
+  const bound = [
+    ...s.receipts.map(({ receipt }) => `tx ${esc(shortHash(receipt.tx_hash ?? receipt.label))}${receipt.outcome === "failure" ? " (failed)" : ""}`),
+    ...(many ? [`${String(s.checks.filter((c) => c.held === true).length)} of ${String(s.checks.length)} checks held`] : []),
+    ...s.checks.filter((c) => !many || c.held !== true).map((c) => `${esc(c.id)} ${c.held === true ? "held" : "did not hold"}`),
+  ];
+  return `${rail(stages, i)}<p class="headline">${esc(s.headline ?? "")}</p>${kv(s.facts.slice(0, 5))}<p class="bound">Evidence: ${bound.join(" · ")}</p>`;
+};
+
+/**
+ * The short cut: a cold open on the rejected relay (only when revocation and rejection both held), the claim, the nine
+ * bound stages with a state strip, and how to check. Throws when any stage lacks its evidence.
+ */
 export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: boolean): Scene[] {
   const stages = revocationStory(ev);
   const missing = stages.flatMap((s) => s.missing.map((m) => `${s.title}: ${m}`));
@@ -328,24 +407,41 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   // The story outcome is the demo's; the certification sentence is the acceptance run's. Neither implies the other.
   const storyCaption = notShown.length === 0 ? "" : `In this run ${String(notShown.length)} of ${String(stages.length)} story stages are not shown as evidence: ${notShown.map((s) => `${s.title} (${s.outcome})`).join(", ")}. `;
   const mainnetCaption = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run pending approval; no mainnet transaction executed.";
+  const rejectedAt = stages.findIndex((s) => s.key === "rejected");
+  const rejected = stages[rejectedAt];
+  const revoked = stages.find((s) => s.key === "revoked");
+  // The cold open shows the key moment first, but only when it is evidence: revocation confirmed and rejection held.
+  const coldOpen: Scene[] =
+    rejected !== undefined && rejected.outcome === "held" && revoked?.outcome === "held" && rejected.headline !== null
+      ? [
+          {
+            kind: "demo",
+            title: "A withheld signed order, relayed after revocation",
+            body: stageBody(stages, rejectedAt),
+            captions: [`A signed order is ${rejected.headline}: the owner revoked the grant, and its signing key no longer exists.`],
+            strip: rejected.state,
+            stage: `cold open · ${String(rejectedAt + 1)} of ${String(stages.length)}`,
+          },
+        ]
+      : [];
   return [
+    ...coldOpen,
     {
       kind: "summary",
       labels: DEMO_LABELS,
       title: HEADLINE,
       body: `<p class="claim">${esc(SUBTITLE)}</p>${rail(stages, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">One sandbox run. Every number shown comes from out/evidence/demo.json.</p>`,
       // One caption frame: at most 24 words.
-      captions: ["Let an AI agent trade within limits a contract enforces. After a confirmed revocation, signed orders fail and the owner takes the assets back."],
+      captions: [coldOpen.length === 0 ? "Let an AI agent trade within limits a contract enforces. After a confirmed revocation, signed orders fail and the owner takes the assets back." : "How it got there: an AI agent trades within limits that a contract enforces."],
     },
     ...stages.map((s, i): Scene => ({
       kind: "demo",
       labels: s.labels.map(sentenceCase),
       title: `${String(i + 1)} · ${s.title}`,
-      body: `${rail(stages, i)}<p class="headline">${esc(s.headline ?? "")}</p>${kv(s.facts)}<p class="bound">Evidence: ${[
-        ...s.receipts.map(({ receipt }) => `tx ${esc(shortHash(receipt.tx_hash ?? receipt.label))}${receipt.outcome === "failure" ? " (failed)" : ""}`),
-        ...s.checks.map((c) => `${esc(c.id)} ${c.held === true ? "held" : "did not hold"}`),
-      ].join(" · ")}</p>`,
+      body: stageBody(stages, i),
       captions: [s.caption ?? ""],
+      strip: s.state,
+      stage: `${String(i + 1)} of ${String(stages.length)} · ${s.title}`,
     })),
     {
       kind: "summary",
@@ -354,8 +450,9 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
         "<b>Watch</b> this video, or read the evidence page: each stage links to its transactions and checks.",
         `<b>Inspect mainnet receipts:</b> ${esc(mainnet)}`,
         "<b>Run</b> <code>make demo</code> and <code>make test</code>: no funds or model key needed.",
+        `<b>Planned hosting (${esc(PLANNED_LABEL)}):</b> <code>${esc(PLANNED_URLS.page)}</code>, console <code>${esc(PLANNED_URLS.console)}</code>`,
       ])}<p class="note">${esc(status.sentence)}</p>`,
-      captions: [`Sandbox run with labelled test doubles. ${storyCaption}${mainnetCaption} Reproduce it with make demo and make test.`],
+      captions: [`Sandbox run with labelled test doubles. ${storyCaption}${mainnetCaption} Reproduce: make demo, make test.`],
     },
   ];
 }
@@ -368,37 +465,54 @@ const CSS = `
 .top { display: flex; gap: 12px; padding: 26px 48px 0; flex-wrap: wrap; align-items: center; }
 .chip { font: 600 20px/1 "SF Mono", Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 10px 14px; border: 2px solid #7fb6dc; color: #7fb6dc; border-radius: 4px; }
 .chip.model { border-color: #e6b450; color: #e6b450; } .chip.acc { margin-left: auto; border-color: #e0866f; color: #e0866f; } .chip.acc.ok { border-color: #6fcf9f; color: #6fcf9f; }
-h1 { font-size: 58px; line-height: 1.1; margin: 26px 48px 18px; }
-.body { margin: 0 48px; height: 690px; overflow: hidden; font-size: 28px; }
+h1 { font-size: 54px; line-height: 1.1; margin: 22px 48px 16px; }
+.body { margin: 0 48px; height: 690px; overflow: hidden; font-size: 28px; } .body.strip-on { height: 520px; }
 .body ul { margin: 8px 0; padding-left: 28px; } .body li { margin: 6px 0; }
 code { font: 22px "SF Mono", Menlo, monospace; color: #c9d6e3; }
 .ok { color: #6fcf9f; font-weight: 700; } .bad { color: #ff8a7a; font-weight: 700; }
-table.kv { border-collapse: collapse; margin-bottom: 14px; } table.kv th { text-align: left; color: #a39d8f; font-weight: 600; padding: 6px 28px 6px 0; vertical-align: top; white-space: nowrap; }
-table.kv td { font: 24px/1.4 "SF Mono", Menlo, monospace; word-break: break-all; padding: 6px 0; }
+table.kv { border-collapse: collapse; margin-bottom: 14px; } table.kv th { text-align: left; color: #a39d8f; font-weight: 600; padding: 4px 28px 4px 0; vertical-align: top; white-space: nowrap; }
+table.kv td { font: 24px/1.35 "SF Mono", Menlo, monospace; word-break: break-word; padding: 4px 0; }
+table.log { border-collapse: collapse; width: 100%; font-size: 22px; } table.log td { padding: 3px 18px 3px 0; vertical-align: top; border-bottom: 1px solid #2a3039; } table.log code { font-size: 19px; }
 table.cases th { text-align: left; padding: 3px 20px 3px 0; font: 700 22px "SF Mono", Menlo, monospace; vertical-align: top; white-space: nowrap; }
 .pill { display: inline-block; font: 600 17px "SF Mono", Menlo, monospace; padding: 4px 8px; margin: 2px; border-radius: 4px; border: 2px solid; }
 .pill.ok { color: #6fcf9f; } .pill.warn { color: #e6b450; } .pill.bad { color: #ff8a7a; } .pill.none { color: #9a958a; border-style: dashed; }
-.chip-line { font: 600 26px "SF Mono", Menlo, monospace; color: #e0866f; margin: 0 0 14px; }
 .reason { margin: 10px 48px 0; font: 600 20px/1.3 "SF Mono", Menlo, monospace; color: #e0866f; max-height: 54px; overflow: hidden; }
 .claim { font-size: 40px; line-height: 1.35; max-width: 1600px; }
 .note { font-size: 22px; color: #e6b450; margin: 4px 0 8px; } table.cases small { font: 500 15px -apple-system, sans-serif; color: #a39d8f; }
 img.shot { width: 100%; height: 690px; object-fit: contain; object-position: top center; border: 1px solid #2a3039; }
-ol.rail { list-style: none; display: flex; gap: 10px; padding: 0; margin: 0 0 26px; } ol.rail li { flex: 1; font: 600 18px/1.25 -apple-system, "Helvetica Neue", sans-serif; color: #6d6a62; border-top: 6px solid #2a3039; padding-top: 8px; }
+ol.rail { list-style: none; display: flex; gap: 10px; padding: 0; margin: 0 0 22px; } ol.rail li { flex: 1; font: 600 16px/1.25 -apple-system, "Helvetica Neue", sans-serif; color: #6d6a62; border-top: 6px solid #2a3039; padding-top: 8px; }
 ol.rail li b { font-family: "SF Mono", Menlo, monospace; } ol.rail li.past { color: #a39d8f; border-color: #6fcf9f; } ol.rail li.now { color: #ece6d8; border-color: #e0866f; }
 .objective { font-size: 26px; color: #c9d6e3; margin: 0 0 10px; }
-.headline { font-size: 64px; line-height: 1.12; font-weight: 600; margin: 0 0 22px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin-top: 12px; }
+.headline { font-size: 56px; line-height: 1.12; font-weight: 600; margin: 0 0 18px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin-top: 10px; }
+.strip { position: absolute; left: 48px; right: 48px; bottom: 166px; height: 150px; display: grid; grid-template-columns: 1.3fr .8fr .8fr .6fr 1.2fr 1.2fr 1.2fr; gap: 0;
+  border: 2px solid #3d4552; background: #151a20; font: 600 18px/1.3 -apple-system, "Helvetica Neue", sans-serif; }
+.strip > div { padding: 12px 14px; border-right: 1px solid #3d4552; overflow: hidden; } .strip > div:last-child { border-right: 0; }
+.strip .k { display: block; font: 700 14px/1.2 "SF Mono", Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; color: #a39d8f; margin-bottom: 8px; }
+.strip .v { font: 600 22px/1.3 "SF Mono", Menlo, monospace; color: #ece6d8; } .strip .v.small { font-size: 19px; }
+.strip .stage .v { font: 600 21px/1.25 -apple-system, "Helvetica Neue", sans-serif; color: #e0866f; }
+.strip .yes { color: #6fcf9f; } .strip .no { color: #ff8a7a; } .strip .none { color: #9a958a; }
 .caption { position: absolute; left: 0; right: 0; bottom: 0; min-height: 150px; padding: 24px 80px; background: rgba(0,0,0,.82); color: #fff;
   font: 500 36px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; text-align: center; display: flex; align-items: center; justify-content: center; }
 `;
 
+/** The state strip: stage, grant status, key, open orders and balances, all from the recorded step state. */
+function stripHtml(st: StepState | null, stage: string): string {
+  const cell = (k: string, v: string, cls = ""): string => `<div class="${cls}"><span class="k">${esc(k)}</span><span class="v${v.length > 18 ? " small" : ""}">${v}</span></div>`;
+  const two = (p: { usdc: string; wnear: string }): string => `${esc(units(p.usdc, 6, 2))} USDC<br>${esc(units(p.wnear, 24, 4))} wNEAR`;
+  if (st === null) return `<div class="strip">${cell("Stage", esc(stage), "stage")}<div><span class="k">State</span><span class="v small none">not recorded in this evidence</span></div></div>`;
+  const key = st.key_present === null ? `<span class="none">none</span>` : st.key_present ? `<span class="yes">registered</span>` : `<span class="no">removed</span>`;
+  return `<div class="strip">${cell("Stage", esc(stage), "stage")}${cell("Grant", esc(st.grant_status))}${cell("Grant key", key)}${cell("Open orders", String(st.open_orders))}${cell("Mandate (Intents)", two(st.mandate))}${cell("Owner (Intents)", two(st.owner_intents))}${cell("Owner (NEAR)", two(st.owner_near))}</div>`;
+}
+
 function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
   const labels = [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])];
-  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary)/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
+  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary|Owner action|Read-only)/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
   const status = certification(binding);
   const reason = binding.certified ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
+  const strip = s.strip === undefined ? "" : stripHtml(s.strip, s.stage ?? s.title);
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
 <div class="top">${chips}<span class="chip acc${binding.certified ? " ok" : ""}">${esc(status.chip)}</span></div>${reason}
-<h1>${esc(s.title)}</h1><div class="body">${s.body}</div><div class="caption">${esc(caption)}</div></body></html>`;
+<h1>${esc(s.title)}</h1><div class="body${strip === "" ? "" : " strip-on"}">${s.body}</div>${strip}<div class="caption">${esc(caption)}</div></body></html>`;
 }
 
 interface PwPage {
@@ -450,7 +564,7 @@ export const chunks = (caption: string): string[] => {
 const wholeFrames = (s: number): number => Math.round(s * FPS) / FPS;
 const walkthroughPace = (text: string): number => wholeFrames(Math.min(9, Math.max(6, text.split(" ").length / 2.6 + 1.5)));
 export const shortPace = (text: string): number => wholeFrames(Math.min(7.5, Math.max(5, text.split(" ").length / 3 + 0.8)));
-export const SHORT_RANGE_S: readonly [number, number] = [45, 75];
+export const SHORT_RANGE_S: readonly [number, number] = [45, 90];
 
 const srtTime = (s: number): string => {
   const ms = Math.round(s * 1000);

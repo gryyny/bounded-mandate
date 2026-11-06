@@ -1,0 +1,236 @@
+// LOCAL SANDBOX TEST SIGNER: a localhost-only Node helper that stands in for a wallet when the console is exercised
+// against a local sandbox. It holds a sandbox owner key in this process (never in the browser), serves the console
+// page from its own origin and signs exactly the one function call the page's intent describes. It refuses to start
+// or sign for anything but its own sandbox chain (chain id and genesis pinned at start, loopback RPC only), accepts
+// requests only from its own origin and Host, and signs only the owner methods the console offers. It is not a wallet
+// and its use proves nothing about any external wallet.
+import { createHash } from "node:crypto";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import { JsonRpcProvider, actions, baseEncode, encodeTransaction, type KeyPair } from "near-api-js";
+import { NearClient } from "../near/client.js";
+import { MAINNET_GENESIS_HASH } from "../page/verify.js";
+import { signableOf, type Signable } from "./intent.js";
+
+export const TEST_SIGNER_LABEL = "LOCAL SANDBOX TEST SIGNER (not a wallet)";
+
+/** The only calls the console offers; anything else is refused. */
+const ALLOWED_METHODS = new Set(["revoke", "recover", "ft_withdraw", "storage_deposit"]);
+const MAX_DEPOSIT = 10n ** 22n; // 0.01 NEAR: one storage registration at most
+const MAX_BODY = 64 * 1024;
+const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?\/?$/;
+const REJECTED = /InvalidTx|InvalidNonce|InvalidAccessKey|NotEnoughBalance|Expired|does not exist|DoesNotExist|must be larger|InvalidSignature|NotEnoughAllowance/i;
+
+export type Decision = "approve" | "cancel";
+
+export interface SignerOptions {
+  rpcUrl: string;
+  accountId: string;
+  key: KeyPair;
+  /** The console page served at GET /; receives this helper's origin. */
+  page?: (origin: string) => string;
+  port?: number;
+  /** Stands in for the wallet's confirmation prompt; default approve. */
+  decide?: (intent: Signable) => Decision | Promise<Decision>;
+  /**
+   * Test hook: answer with the transaction hash first and broadcast it this many ms later, as a wallet that returns
+   * before broadcasting would. A rejection after the answer is then only logged.
+   */
+  broadcastDelayMs?: number;
+}
+
+export interface SignRequestLog {
+  at: number;
+  intent_sha256: string | null;
+  status: string;
+  tx_hash: string | null;
+}
+
+const json = (res: ServerResponse, code: number, body: unknown): void => {
+  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  res.end(JSON.stringify(body));
+};
+
+async function readBody(req: IncomingMessage): Promise<string> {
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    size += b.length;
+    if (size > MAX_BODY) throw new Error("request body too large");
+    chunks.push(b);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+export class LocalSandboxSigner {
+  /** Every sign request received, in order, whatever its result. Tests count these. */
+  readonly requests: SignRequestLog[] = [];
+  private readonly signed = new Map<string, { tx_hash: string; public_key: string }>();
+  private readonly client: NearClient;
+
+  private constructor(
+    private readonly opts: SignerOptions,
+    private readonly server: Server,
+    readonly origin: string,
+    readonly chain: { chain_id: string; genesis_hash: string },
+  ) {
+    this.client = new NearClient(opts.rpcUrl, new JsonRpcProvider({ url: opts.rpcUrl }), "final", "FINAL");
+  }
+
+  static async chainOf(rpcUrl: string): Promise<{ chain_id: string; genesis_hash: string }> {
+    const res = await fetch(rpcUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: "s", method: "status", params: [] }) });
+    const body = (await res.json()) as { result?: { chain_id?: unknown; genesis_hash?: unknown } };
+    const chain_id = body.result?.chain_id;
+    const genesis_hash = body.result?.genesis_hash;
+    if (typeof chain_id !== "string" || typeof genesis_hash !== "string") throw new Error("the RPC reported no chain id or genesis hash");
+    return { chain_id, genesis_hash };
+  }
+
+  /** Refuses any RPC that is not loopback and any chain that looks public. */
+  static async start(opts: SignerOptions): Promise<LocalSandboxSigner> {
+    if (!LOOPBACK.test(opts.rpcUrl)) throw new Error(`the test signer only talks to a loopback sandbox RPC, not ${opts.rpcUrl}`);
+    const chain = await LocalSandboxSigner.chainOf(opts.rpcUrl);
+    if (["mainnet", "testnet", "betanet", "statelessnet"].includes(chain.chain_id) || chain.genesis_hash === MAINNET_GENESIS_HASH) {
+      throw new Error(`refusing chain ${chain.chain_id}: the test signer is for a local sandbox only`);
+    }
+    let self: LocalSandboxSigner | null = null;
+    const server = createServer((req, res) => {
+      if (self === null) {
+        json(res, 503, { error: "starting" });
+        return;
+      }
+      void self.handle(req, res).catch((e: unknown) => {
+        json(res, 500, { status: "error", error: e instanceof Error ? e.message : String(e) });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    self = new LocalSandboxSigner(opts, server, `http://127.0.0.1:${String(port)}`, chain);
+    return self;
+  }
+
+  get signRequests(): number {
+    return this.requests.length;
+  }
+
+  info(): Record<string, string> {
+    return {
+      label: TEST_SIGNER_LABEL,
+      account_id: this.opts.accountId,
+      public_key: this.opts.key.getPublicKey().toString(),
+      chain_id: this.chain.chain_id,
+      genesis_hash: this.chain.genesis_hash,
+    };
+  }
+
+  async stop(): Promise<void> {
+    this.server.closeAllConnections();
+    await new Promise<void>((resolve) => {
+      this.server.close(() => {
+        resolve();
+      });
+    });
+  }
+
+  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? "/", this.origin);
+    if (req.headers.host !== new URL(this.origin).host) {
+      json(res, 403, { status: "refused", error: "wrong Host header" });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/") {
+      if (this.opts.page === undefined) {
+        json(res, 404, { error: "no page" });
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+      res.end(this.opts.page(this.origin));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/signer/info") {
+      json(res, 200, this.info());
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/signer/record") {
+      const found = this.signed.get(url.searchParams.get("intent_sha256") ?? "");
+      json(res, found === undefined ? 404 : 200, found ?? { error: "no transaction signed for this intent" });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/signer/sign") {
+      json(res, 200, await this.sign(req));
+      return;
+    }
+    json(res, 404, { error: "not found" });
+  }
+
+  private async sign(req: IncomingMessage): Promise<Record<string, unknown>> {
+    const log: SignRequestLog = { at: Date.now(), intent_sha256: null, status: "refused", tx_hash: null };
+    this.requests.push(log);
+    const refuse = (error: string) => ({ status: "refused", error });
+    if (req.headers.origin !== this.origin) return refuse(`requests are accepted only from ${this.origin}`);
+    if (req.headers["content-type"]?.startsWith("application/json") !== true) return refuse("content type must be application/json");
+    let body: { intent?: unknown; intent_sha256?: unknown };
+    try {
+      body = JSON.parse(await readBody(req)) as typeof body;
+    } catch (e) {
+      return refuse(`unreadable request: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const intent = signableOf(body.intent);
+    if ("error" in intent) return refuse(intent.error);
+    const sha = intent.sha256;
+    log.intent_sha256 = sha;
+    if (body.intent_sha256 !== sha) return refuse("intent_sha256 does not match the intent");
+    const chain = await LocalSandboxSigner.chainOf(this.opts.rpcUrl);
+    if (chain.chain_id !== this.chain.chain_id || chain.genesis_hash !== this.chain.genesis_hash) return refuse("the sandbox RPC now reports another chain");
+    if (intent.network.chain_id !== this.chain.chain_id || intent.network.genesis_hash !== this.chain.genesis_hash) return refuse(`the intent is for chain ${intent.network.chain_id}, not this sandbox`);
+    if (intent.signer_id !== this.opts.accountId) return refuse(`the intent's signer ${intent.signer_id} is not this signer's account ${this.opts.accountId}`);
+    const pk = this.opts.key.getPublicKey().toString();
+    if (intent.public_key !== null && intent.public_key !== pk) return refuse(`the intent names key ${intent.public_key}, this signer holds ${pk}`);
+    const a = intent.actions[0];
+    if (intent.actions.length !== 1 || a === undefined || !ALLOWED_METHODS.has(a.method)) return refuse("the test signer signs only revoke, recover, ft_withdraw and storage_deposit");
+    if (BigInt(a.deposit) > MAX_DEPOSIT) return refuse("deposit above the test signer's 0.01 NEAR bound");
+    const decision = (await this.opts.decide?.(intent)) ?? "approve";
+    if (decision === "cancel") {
+      log.status = "cancelled";
+      return { status: "cancelled", reason: "the signer's confirmation was declined" };
+    }
+    const account = this.client.account(this.opts.accountId, this.opts.key);
+    let signed: Awaited<ReturnType<typeof account.createSignedTransaction>>;
+    try {
+      signed = await account.createSignedTransaction({ receiverId: intent.receiver_id, actions: [actions.functionCall(a.method, a.args, BigInt(a.gas), BigInt(a.deposit))] });
+    } catch (e) {
+      log.status = "rejected";
+      return { status: "rejected", error: `not signed: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    const txHash = baseEncode(createHash("sha256").update(encodeTransaction(signed.transaction)).digest());
+    const record = { tx_hash: txHash, public_key: signed.transaction.publicKey.toString() };
+    this.signed.set(sha, record);
+    log.tx_hash = txHash;
+    const send = () => this.client.provider.sendTransactionUntil(signed, "NONE");
+    if (this.opts.broadcastDelayMs !== undefined) {
+      const delay = this.opts.broadcastDelayMs;
+      setTimeout(() => {
+        send().catch((e: unknown) => {
+          console.error(`test signer: delayed broadcast of ${txHash} failed: ${e instanceof Error ? e.message : String(e)}`);
+        });
+      }, delay);
+      log.status = "submitted";
+      return { status: "submitted", ...record, broadcast: `after ${String(delay)} ms` };
+    }
+    try {
+      await send();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (REJECTED.test(message)) {
+        this.signed.delete(sha);
+        log.status = "rejected";
+        return { status: "rejected", error: message };
+      }
+      log.status = "submitted";
+      return { status: "submitted", ...record, ambiguous: `the broadcast response was lost (${message}); poll the hash` };
+    }
+    log.status = "submitted";
+    return { status: "submitted", ...record };
+  }
+}

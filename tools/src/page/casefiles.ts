@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { DemoBinding } from "../evidence/binding.js";
 import { GateReportV2, type Acceptance } from "../evidence/schema.js";
-import { escapeHtml, modeBadge, word } from "./html.js";
+import { caseModeBadge, escapeHtml, word } from "./html.js";
 
 export interface ReportFile {
   file: string;
@@ -128,7 +128,7 @@ function caseCard(c: { id: string; did: string }, acc: Acceptance, binding: Demo
     if (!r.success || mismatch.length > 0) return `${where}<p>${word("mismatched", "not shown as evidence")} ${escapeHtml(mismatch.join("; "))}.</p>${raw}`;
     const summary = recordedSummary(c.id, r.data.data);
     const mechanism = z.object({ mechanism: z.string() }).safeParse(r.data.data);
-    return `${where}<p>${modeBadge(r.data.mode)} recorded result: ${word(r.data.passed ? "success" : "failure", r.data.passed ? "passed" : "failed")} · run <code>${escapeHtml(String(r.data.run_id))}</code> · revision <code>${escapeHtml(r.data.source.revision.slice(0, 12))}</code></p>
+    return `${where}<p>${caseModeBadge(r.data.mode)} recorded result: ${word(r.data.passed ? "success" : "failure", r.data.passed ? "passed" : "failed")} · run <code>${escapeHtml(String(r.data.run_id))}</code> · revision <code>${escapeHtml(r.data.source.revision.slice(0, 12))}</code></p>
 ${mechanism.success ? `<p><strong>Mechanism (recorded):</strong> ${escapeHtml(mechanism.data.mechanism)}</p>` : ""}
 ${summary === null ? `<p class="muted">The report's data has an unexpected shape; see the verbatim report.</p>` : `<ul>${summary.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`}
 ${rowsTable(r.data.data)}${raw}`;

@@ -1,5 +1,5 @@
-// Renders the static evidence page. Order: product position, claim and the run's allocation outcome, the seven-stage
-// revocation story bound to the demo evidence, three ways to check it, mainnet receipts (or the pending panel), the
+// Renders the static evidence page. Order: product position, claim and the run's allocation outcome, the nine-stage
+// journey bound to the demo evidence, three ways to check it, the attack log, mainnet receipts (or the pending panel), the
 // opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
 // acceptance gates per case, the T5 baseline, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
 // certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
@@ -13,11 +13,12 @@ import { REQUIRED_CASES } from "../evidence/required.js";
 import { Acceptance, type BaselineCase, type CaseResult } from "../evidence/schema.js";
 import { type Assertion, Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
 import { caseFilesBody, loadReportFiles, type ReportFile } from "./casefiles.js";
-import { chip, escapeHtml, modeBadge, word } from "./html.js";
+import { caseModeBadge, chip, escapeHtml, modeBadge, word } from "./html.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
-import { AGENT_OBJECTIVE, allocation, isoNs, offBalance, priceText, revocationStory, share, shortHash, usd, usdc, wnear, type Stage } from "./story.js";
+import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, priceText, revocationStory, share, shortHash, stateLine, usd, usdc, wnear, type Stage } from "./story.js";
+import { PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
 import { STYLES } from "./styles.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
@@ -78,6 +79,8 @@ export const GATE_LABEL: Record<string, string> = {
   BOUNDARY: "forbidden requests fail at their boundary",
   MODEL: "recorded genuine model proposal reaches the interface",
   DEPLOY: "proposed deployment binary exercised in sandbox",
+  DAO: "a pinned Sputnik DAO as the fixed owner, threshold-voted (sandbox)",
+  AGENT: "runner sale budgets bound the agent; no-transaction provider rehearsal",
 };
 
 const json = (value: unknown): string => {
@@ -261,7 +264,8 @@ function demonstrationSection(ev: Evidence): string {
         ...(s.receipts.some((r) => stepMode(r, ev) === "recorded-model") || s.checks.some(isModelOutput) ? ["recorded genuine model output"] : []),
         ...(s.checks.some((a) => SCRIPTED_ATTACK.test(a.description)) ? ["scripted attacks"] : []),
         ...(s.receipts.some((r) => /scripted/.test(r.label)) ? ["scripted proposal"] : []),
-        ...(/recover/i.test(s.title) ? ["ordinary recovery (not the owner-key rescue)"] : []),
+        ...(/^Recovery/i.test(s.title) ? ["ordinary recovery (not the owner-key rescue)"] : []),
+        ...(/withdrawal/i.test(s.title) ? ["owner action, outside recovery claims"] : []),
       ];
       const failed = s.receipts.some((r) => r.outcome === "failure" && !/after revocation/.test(r.label)) || s.checks.some((a) => !a.passed);
       return `<li class="${failed ? "failure" : "success"}" style="--i:${String(i)}"><div class="step-head"><strong>${escapeHtml(s.title)}</strong>${modeBadge(ev.mode)}${[...labels, ...base].map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("")}</div>${stepBody(s, ev)}</li>`;
@@ -291,15 +295,20 @@ function stageCard(s: Stage, i: number, ev: Evidence): string {
   const txs = s.receipts.map(
     ({ index, receipt }) => `<a href="#tx-${String(index)}">tx ${escapeHtml(shortHash(receipt.tx_hash ?? receipt.label))}</a>${receipt.outcome === "failure" ? " (failed)" : ""}`,
   );
-  const checks = s.checks.map((c) =>
-    c.held === null ? `<span class="absent">${escapeHtml(c.id)}: not in this evidence</span>` : `<a href="#check-${escapeHtml(c.id)}">${escapeHtml(c.id)}</a> ${c.held ? "held" : "<strong>did not hold</strong>"}`,
-  );
+  const one = (c: Stage["checks"][number]): string =>
+    c.held === null ? `<span class="absent">${escapeHtml(c.id)}: not in this evidence</span>` : `<a href="#check-${escapeHtml(c.id)}">${escapeHtml(c.id)}</a> ${c.held ? "held" : "<strong>did not hold</strong>"}`;
+  // A stage bound to many checks (the attack log) lists only those that did not hold, and links the log.
+  const many = s.checks.length > 8;
+  const checks = many
+    ? [`${String(s.checks.filter((c) => c.held === true).length)} of ${String(s.checks.length)} checks held (<a href="#attacks">attack log</a>)`, ...s.checks.filter((c) => c.held !== true).map(one)]
+    : s.checks.map(one);
   const labels = s.labels.map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("");
   const facts = s.facts.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
   return `<li class="stage ${s.key} ${state}" id="stage-${s.key}"><p class="stage-head"><span class="stage-n" aria-hidden="true">${String(i + 1)}</span><span class="stage-title">${escapeHtml(s.title)}</span></p>
 <p class="stage-modes">${modeBadge(ev.mode)}${labels}</p>
 ${s.headline === null ? `<p class="headline absent">Not in this evidence: ${escapeHtml(s.missing.join("; "))}</p>` : `<p class="headline${s.outcome === "held" ? "" : " absent"}">${escapeHtml(s.headline)}</p>`}
 ${facts === "" ? "" : `<dl class="stage-facts">${facts}</dl>`}
+${s.state === null ? "" : `<p class="stage-state"><span>State after</span> ${escapeHtml(stateLine(s.state))}</p>`}
 <p class="bound">Evidence: ${[...txs, ...checks].join(" · ")}</p></li>`;
 }
 
@@ -323,8 +332,8 @@ ${row("Distance from 50 / 50", offBalance)}
 
 function storySection(ev: Evidence): string {
   const stages = revocationStory(ev);
-  return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The revocation story, from one ${escapeHtml(ev.mode)} run</h2>
-<p class="source">Every value is read from out/evidence/demo.json (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1). Story checks never mark an acceptance gate (§2).</p>
+  return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The journey in ${String(stages.length)} stages, from one ${escapeHtml(ev.mode)} run</h2>
+<p class="source">Every value is read from out/evidence/demo.json (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1), and its state line is read through contract and verifier views at the end of that step. Story checks never mark an acceptance gate (§2).</p>
 <ol class="stages">${stages.map((s, i) => stageCard(s, i, ev)).join("\n")}</ol></section>`;
 }
 
@@ -332,7 +341,59 @@ function casesSection(acc: Acceptance | null, binding: DemoBinding, reports: rea
   return section("§R", "sandbox", "regrant", "Regrant and disclosed signatures: sandbox acceptance cases", caseFilesBody(acc, binding, reports));
 }
 
-function pathsSection(live: LiveView): string {
+/** The attack log: every hostile request of this run, the layer that refused it and the source that shows where. */
+function attackLogSection(ev: Evidence, acc: Acceptance | null, binding: DemoBinding): string {
+  const rows = attackRows(ev);
+  const title = "Attack log: each hostile request and the layer that refused it";
+  if (rows.length === 0) return section("§A", "attacks", "attacks", title, `<p class="muted">This evidence records no attack results.</p>`);
+  const origin = (o: string | null): string =>
+    o === "injected-request" ? chip("label", "synthetic injected request") : o === "scripted-direct" ? chip("label", "scripted direct call") : chip("label", "origin not recorded");
+  const sourceCell = (r: (typeof rows)[number]): string => {
+    const excerpt = r.source === null ? "" : r.source.excerpt.length > 90 ? `${r.source.excerpt.slice(0, 89)}…` : r.source.excerpt;
+    const src = r.source === null ? "" : `<code>${escapeHtml(`${r.source.file}:${String(r.source.line)}`)}</code><br><span class="muted mono">${escapeHtml(excerpt)}</span>`;
+    const tx = r.tx_hash !== null ? `sandbox tx <code class="mono">${escapeHtml(r.tx_hash)}</code>` : r.submitted === false ? "no transaction: refused before inclusion" : r.observed === "adapter-schema" ? "no transaction: refused before any chain call" : "";
+    const parts = [src, tx].filter((p) => p !== "");
+    return parts.length === 0 ? `<span class="muted">source not located in this evidence</span>` : parts.join("<br>");
+  };
+  const row = (r: (typeof rows)[number]): string => {
+    const held = r.passed && r.contained !== false;
+    return `<tr id="attack-${escapeHtml(r.id.replace(/^attack-/, ""))}"><td>${word(held ? "success" : "failure", held ? "refused" : r.contained === false ? "state changed" : "not at its expected layer")} ${escapeHtml(r.description)}<br>${origin(r.origin)}${r.model_output === null ? "" : `<details><summary>Injected text</summary><pre>${escapeHtml(r.model_output)}</pre></details>`}</td>
+<td class="reason">${escapeHtml(r.reason ?? "not recorded")}</td><td>${sourceCell(r)}</td></tr>`;
+  };
+  const layers = [...new Set(rows.map((r) => r.layer))];
+  const body = layers
+    .map((layer) => {
+      const of = rows.filter((r) => r.layer === layer);
+      const wheres = [...new Set(of.map((r) => r.where))].join("; ");
+      return `<h3>${escapeHtml(layer.charAt(0).toUpperCase() + layer.slice(1))}: ${String(of.filter((r) => r.passed).length)} of ${String(of.length)} refused <span class="muted">(${escapeHtml(wheres)})</span></h3>
+<div class="scroll"><table class="attack-log"><caption>${escapeHtml(layer)} in this ${escapeHtml(ev.mode)} run</caption><thead><tr><th scope="col">Request</th><th scope="col">What it returned</th><th scope="col">Source evidence</th></tr></thead><tbody>${of.map(row).join("")}</tbody></table></div>`;
+    })
+    .join("");
+  const injection = ev.assertions.find((a) => a.id === "injection-recording");
+  const verdict = z.object({ verdict: z.object({ kind: z.string() }).loose(), model: z.string().optional(), decision_text: z.string().optional() }).loose().safeParse(injection?.observed);
+  const injectionBlock =
+    injection === undefined
+      ? ""
+      : `<h3>Prompt injection against the model ${chip("recorded-model", "recorded genuine model output")}</h3><p>A synthetic instruction to withdraw everything to another account was placed in the market notes given to ${escapeHtml(verdict.success ? (verdict.data.model ?? "the model") : "the model")}. Its recorded response left the adapter as <strong>${escapeHtml(verdict.success ? verdict.data.verdict.kind : "not recorded")}</strong>; only a strict proposal (sell, amount, concession) or a decline can leave it, so no withdrawal is expressible. ${word(injection.passed ? "success" : "failure", injection.passed ? "held" : "did not hold")}</p>${
+          verdict.success && verdict.data.decision_text !== undefined ? `<details><summary>Recorded model output</summary><pre>${escapeHtml(verdict.data.decision_text)}</pre></details>` : ""
+        }`;
+  const report = acc?.cases.find((c) => c.gate === "BOUNDARY" && c.case === "attacks");
+  const reportLine =
+    report === undefined
+      ? "The acceptance case BOUNDARY.attacks is not in this page's acceptance run."
+      : `Acceptance case BOUNDARY.attacks: ${report.status}${report.status === "passed" && !binding.certified ? ", not certified for this demo" : ""} (${report.files.join(", ")}).`;
+  const counts = layerCounts(rows);
+  return section("§A", "attacks", "attacks", title,
+    `<p class="source">Source: the attack-* story checks of out/evidence/demo.json. Each layer is the boundary the attack suite classified from the observed result; each source line was located at demo time by searching this checkout for the text the layer returned. Origins: synthetic injected requests and scripted direct calls are written by us, never model output. ${escapeHtml(reportLine)}</p>
+<p><strong>${String(rows.filter((r) => r.passed).length)} of ${String(rows.length)} refused</strong>: ${counts.map(([l, n]) => `${escapeHtml(l)} ${String(n)}`).join(" · ")}</p>
+${body}${injectionBlock}`);
+}
+
+/** The planned hosting locations, always labelled as planned and unpublished; never a link. */
+const plannedLine = (): string =>
+  `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing is hosted there yet.</p>`;
+
+function pathsSection(live: LiveView, stageCount: number): string {
   const video =
     VIDEO_URL === "VIDEO_URL_PENDING"
       ? `<a href="${VIDEO_URL}">${VIDEO_URL}</a> (hosting pending; local build: out/video/bounded-mandate-short.mp4)`
@@ -342,10 +403,10 @@ function pathsSection(live: LiveView): string {
       ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
       : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a> · <a href="#verify">read-only checks you can run from this page</a></p>`;
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
-<li><p class="do">Watch the short video</p><p class="see">See: the seven stages above narrated with this run's numbers, in about a minute.</p><p>${video}</p></li>
+<li><p class="do">Watch the short video</p><p class="see">See: the ${String(stageCount)} stages above captioned with this run's numbers, in under 90 seconds.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
 <li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (about 16 minutes).</p></li>
-</ol></section>`;
+</ol>${plannedLine()}</section>`;
 }
 
 function gatesSection(acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[]): string {
@@ -362,7 +423,7 @@ function gatesSection(acc: Acceptance | null, binding: DemoBinding, views: reado
         .map((c, i) => {
           const head = i === 0 ? `<th scope="row" rowspan="${String(cases.length)}"><code>${escapeHtml(v.gate)}</code>${label(v.gate)}<br>${statusBadge(v.status)}</th>` : "";
           if (c === null) return `<tr>${head}<td colspan="3" class="muted">no cases recorded</td></tr>`;
-          return `<tr>${head}<td><code>${escapeHtml(c.case)}</code></td><td>${caseBadge(c, binding.certified)}${c.mode === null ? "" : ` ${modeBadge(c.mode)}`}</td><td class="reason">${escapeHtml(c.reason)}${c.files.length > 0 ? `<br><span class="muted mono">${escapeHtml(c.files.join(", "))}</span>` : ""}</td></tr>`;
+          return `<tr>${head}<td><code>${escapeHtml(c.case)}</code></td><td>${caseBadge(c, binding.certified)}${c.mode === null ? "" : ` ${caseModeBadge(c.mode)}`}</td><td class="reason">${escapeHtml(c.reason)}${c.files.length > 0 ? `<br><span class="muted mono">${escapeHtml(c.files.join(", "))}</span>` : ""}</td></tr>`;
         })
         .join("");
     })
@@ -424,6 +485,8 @@ const CLAIM_PARTS: readonly { text: string; gates: readonly string[] }[] = [
   { text: "A genuine recorded model proposal reaches the real application interface", gates: ["MODEL"] },
   { text: "The proposed deployment binary is the one exercised in sandbox", gates: ["DEPLOY"] },
   { text: "Differentiation against a comparable baseline", gates: ["T5"] },
+  { text: "A pinned Sputnik DAO works as the single fixed owner: grant, revoke, recovery and withdrawal by threshold vote", gates: ["DAO"] },
+  { text: "Agent proposals above the runner's remaining sale budgets are rejected, never clipped", gates: ["AGENT"] },
 ];
 
 const NON_CLAIMS = [
@@ -578,7 +641,8 @@ ${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${esc
 ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
 </header>
 ${storySection(ev)}
-${pathsSection(live)}
+${pathsSection(live, revocationStory(ev).length)}
+${attackLogSection(ev, acc, binding)}
 ${section("§M", "mainnet", "mainnet", "Mainnet receipts", mainnetBody(live))}
 ${section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", verifySection(ev, verifyData(ev, live)))}
 ${casesSection(acc, binding, extras.reports ?? [])}

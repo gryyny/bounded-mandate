@@ -69,10 +69,40 @@ export const STORY = {
 
 const price = (id: string, p: { price: bigint; expo: number }) => ({ price_id: id, price: p.price.toString(), conf: "1", expo: p.expo, publish_time_sec: "1000000000" });
 
-/** Evidence carrying every assertion and receipt the seven story stages bind to. */
+/** SYNTHETIC attack results, one per enforcement layer the suite classifies (values invented here). */
+export const ATTACKS = [
+  { id: "attack-adapter-withdraw", boundary: "adapter-schema", origin: "injected-request", reason: "SYNTHETIC action: invalid discriminator", source: { file: "tools/src/agent/decision.ts", line: 50, excerpt: "SYNTHETIC validateDecision" }, model_output: '{"action":"withdraw","recipient":"evil.synthetic"}' },
+  { id: "attack-agent-revoke", boundary: "near-access-key", origin: "scripted-direct", reason: "SYNTHETIC Access key does not allow method revoke", source: { file: "tools/src/demo/world.ts", line: 122, excerpt: "SYNTHETIC key" }, submitted: false },
+  { id: "attack-attacker-grant", boundary: "contract-role", origin: "scripted-direct", reason: "only the owner", source: { file: "contract/src/lib.rs", line: 930, excerpt: '"only the owner"' }, submitted: true, tx_hash: "SYNTHETICattacktx1" },
+  { id: "attack-direct-over-cap", boundary: "contract-policy", origin: "scripted-direct", reason: "per-order cap exceeded", source: { file: "contract/src/lib.rs", line: 905, excerpt: 'return Err("per-order cap exceeded");' }, submitted: true, tx_hash: "SYNTHETICattacktx2" },
+  { id: "attack-forged-mandate-transfer", boundary: "verifier", origin: "injected-request", reason: "SYNTHETIC public key doesn't exist", source: null, submitted: true, tx_hash: "SYNTHETICattacktx3" },
+] as const;
+
+const attackAssertion = (a: (typeof ATTACKS)[number]): Assertion => {
+  const { id, boundary, origin, ...rest } = a;
+  return { id, gate: "SYNTHETIC", description: `SYNTHETIC ${id} -> stopped by ${boundary} (${origin})`, passed: true, observed: { observed: boundary, contained: true, origin, ...rest } };
+};
+
+type Pair = { usdc: bigint; wnear: bigint };
+const pairStr = (p: Pair) => ({ usdc: p.usdc.toString(), wnear: p.wnear.toString() });
+const zero: Pair = { usdc: 0n, wnear: 0n };
+/** SYNTHETIC chain state after a step. */
+const state = (grant: string, key: boolean | null, open: number, mandate: Pair, ownerIntents: Pair = zero, ownerNear: Pair = zero) => ({
+  grant_status: grant,
+  grant_epoch: grant === "none" ? null : 1,
+  key_present: key,
+  open_orders: open,
+  mandate: pairStr(mandate),
+  owner_intents: pairStr(ownerIntents),
+  owner_near: pairStr(ownerNear),
+  block_time_ns: "1000000000000000000",
+});
+
+/** Evidence carrying every assertion, receipt and step state the nine journey stages bind to. */
 export function storyEvidence(): Evidence {
   const s = STORY;
-  const after = { usdc: (s.before.usdc - s.sell).toString(), wnear: (s.before.wnear + s.buy).toString() };
+  const afterPair = { usdc: s.before.usdc - s.sell, wnear: s.before.wnear + s.buy };
+  const after = pairStr(afterPair);
   const policy = {
     per_order_cap_bps: 2000,
     outstanding_cap_bps: 2000,
@@ -87,63 +117,141 @@ export function storyEvidence(): Evidence {
     proposal_charge_bps: 50,
   };
   const withheldOrder = { id: "7", sell: "wnear", sell_amount: s.withheld.sell.toString(), buy: "usdc", buy_amount: s.withheld.buy.toString() };
+  const withdrawal = (asset: "usdc" | "wnear", registered: boolean) => ({
+    asset,
+    token: `${asset}.synthetic`,
+    registration: { registered_before: registered, storage_deposit_tx: registered ? null : txHash(`owner storage_deposit on ${asset} token`), deposit_yocto: registered ? "0" : "1250000000000000000000", registered_after: true },
+    amount: afterPair[asset].toString(),
+    intents_before: afterPair[asset].toString(),
+    near_before: "0",
+    attempts: [{ tx_hash: txHash(`owner ft_withdraw ${asset}`), success: true, returned: afterPair[asset].toString(), intents_after: "0", near_after: afterPair[asset].toString(), error: null }],
+    outcome: "withdrawn",
+  });
+  const steps: { step: string; receipts: Receipt[]; assertions: Assertion[]; state: ReturnType<typeof state> }[] = [
+    {
+      step: "Mandate reviewed in the console",
+      receipts: [],
+      assertions: [
+        held("mandate-no-keys", []),
+        held("agent-one-restricted-key", [{ permission: { FunctionCall: { method_names: ["propose_order"], receiver_id: "mandate.synthetic" } } }]),
+        held("console-review", {
+          state: state("none", null, 0, s.before),
+          config: { owner: "owner.synthetic", agent: "agent.synthetic", verifier: "intents.synthetic", usdc_token: "usdc.synthetic", wnear_token: "wnear.synthetic" },
+          view: { local_path: null, planned_url: "https://gryyny.github.io/bounded-mandate/console/", planned_label: "planned, unpublished" },
+        }),
+      ],
+      state: state("none", null, 0, s.before),
+    },
+    {
+      step: "Grant and limits",
+      receipts: [tx("owner grant")],
+      assertions: [
+        held("grant-active", {
+          epoch: 1,
+          path: "mandate/v1/1",
+          public_key: s.key,
+          policy,
+          initial_reference: { usdc: price("SYNTHETIC-usdc", s.reference.usdc), wnear: price("SYNTHETIC-wnear", s.reference.wnear), observed_at_ns: "1000000000000000000" },
+        }),
+        held("grant-initial-value", { contract: s.initialValue.toString() }),
+      ],
+      state: state("active", true, 0, s.before),
+    },
+    {
+      step: "Bounded agent proposal (recorded genuine model output) -> propose_order",
+      receipts: [tx("agent propose_order (order 1)")],
+      assertions: [held("model-proposal-on-chain", { mode: "recorded-model", decision: { model: s.model }, order: { id: "6", sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString(), concession_bps: 40 } })],
+      state: state("active", true, 1, s.before),
+    },
+    {
+      step: "Filler fills order 1 (actual trade on the pinned verifier)",
+      receipts: [tx("filler execute_intents order 6"), tx("settle_order 6")],
+      assertions: [
+        held("trade-executed", { before: pairStr(s.before), after, signed: { sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString() } }),
+        held("settled-release", { state: "released", reason: "settled" }),
+      ],
+      state: state("active", true, 0, afterPair),
+    },
+    {
+      step: "Second signed order withheld",
+      receipts: [tx("agent propose_order (order 2, scripted, withheld)", { events: [{ event: "order_sign_requested", data: { order: withheldOrder } }] })],
+      assertions: [
+        held("withheld-executable", {
+          simulation: "accepted",
+          order_id: "7",
+          epoch: 1,
+          mandate: "mandate.synthetic",
+          signing_public_key: s.key,
+          mandate_nonce: "SYNTHETICnonce",
+          deadline_ns: s.deadlineNs.toString(),
+          payload_sha256: "8".repeat(64),
+          bundle_sha256: s.bundleSha256,
+          filler_nonce: "SYNTHETICfillernonce",
+        }),
+      ],
+      state: state("active", true, 1, afterPair),
+    },
+    {
+      step: "Hostile requests refused",
+      receipts: [],
+      assertions: [...ATTACKS.map(attackAssertion), held("injection-recording", { mode: "recorded-model", model: s.model, decision_text: "SYNTHETIC decline", verdict: { kind: "decline" } })],
+      state: state("active", true, 1, afterPair),
+    },
+    {
+      step: "Owner revokes; removal confirmed",
+      receipts: [tx("owner revoke")],
+      assertions: [held("revoked", { status: "revoked", key_registered: false, grant_public_key: s.key }), held("withheld-released", { state: "released", reason: "key_removed" })],
+      state: state("revoked", false, 0, afterPair),
+    },
+    {
+      step: "Withheld order relayed from another account",
+      receipts: [tx("relayer execute_intents (withheld order after revocation)", { signer_id: "relayer.synthetic", events: [] }, "failure")],
+      assertions: [
+        held("withheld-rejected", {
+          error: `SYNTHETIC Smart contract panicked: public key '${s.key}' doesn't exist for account 'mandate.synthetic'`,
+          relay_block_time_ns: (s.relayNs - 1_000_000_000n).toString(),
+          order_deadline_ns: s.deadlineNs.toString(),
+          nonce_used: false,
+          relayer: "relayer.synthetic",
+          mandate: "mandate.synthetic",
+          revoked_key: s.key,
+          bundle_sha256: s.bundleSha256,
+          verifier_receipt: { id: "SYNTHETICreceipt", block_hash: "SYNTHETICblock", block_time_ns: s.relayNs.toString() },
+        }),
+      ],
+      state: state("revoked", false, 0, afterPair),
+    },
+    {
+      step: "Agent, oracle and MPC disabled",
+      receipts: [tx("oracle set_fail(true)"), tx("mpc set_mode(hold)"), tx("agent propose_order after revocation", {}, "failure")],
+      assertions: [held("agent-stopped", "SYNTHETIC grant is not active")],
+      state: state("revoked", false, 0, afterPair),
+    },
+    {
+      step: "Recovery to the owner's Intents account",
+      receipts: [tx("owner recover usdc"), tx("owner recover wnear")],
+      assertions: [held("recovered", { destination: "owner.synthetic (owner's Intents account)", recovered: after, mandate_final: { usdc: "0", wnear: "0" } })],
+      state: state("revoked", false, 0, zero, afterPair),
+    },
+    {
+      step: "Owner withdrawal to its NEAR account (outside recovery)",
+      receipts: [tx("owner storage_deposit on wnear token"), tx("owner ft_withdraw usdc to its NEAR account (attempt 1)"), tx("owner ft_withdraw wnear to its NEAR account (attempt 1)")],
+      assertions: [held("owner-withdrawal", { owner: "owner.synthetic", verifier: "intents.synthetic", outside_recovery: true, assets: [withdrawal("usdc", true), withdrawal("wnear", false)] })],
+      state: state("revoked", false, 0, zero, zero, afterPair),
+    },
+  ];
+  let r = 0;
+  let a = 0;
+  const offsets = steps.map((st) => {
+    const o = { step: st.step, started_ms: 0, first_receipt: r, first_assertion: a, state: st.state };
+    r += st.receipts.length;
+    a += st.assertions.length;
+    return o;
+  });
   return evidence({
-    receipts: [
-      tx("owner grant"),
-      tx("agent propose_order (order 1)"),
-      tx("filler execute_intents order 6"),
-      tx("settle_order 6"),
-      tx("agent propose_order (order 2, scripted, withheld)", { events: [{ event: "order_sign_requested", data: { order: withheldOrder } }] }),
-      tx("owner revoke"),
-      tx("relayer execute_intents (withheld order after revocation)", { signer_id: "relayer.synthetic", events: [] }, "failure"),
-      tx("oracle set_fail(true)"),
-      tx("mpc set_mode(hold)"),
-      tx("agent propose_order after revocation", {}, "failure"),
-      tx("owner recover usdc"),
-      tx("owner recover wnear"),
-    ],
-    assertions: [
-      held("mandate-no-keys", []),
-      held("agent-one-restricted-key", [{ permission: { FunctionCall: { method_names: ["propose_order"], receiver_id: "mandate.synthetic" } } }]),
-      held("grant-active", {
-        epoch: 1,
-        path: "mandate/v1/1",
-        public_key: s.key,
-        policy,
-        initial_reference: { usdc: price("SYNTHETIC-usdc", s.reference.usdc), wnear: price("SYNTHETIC-wnear", s.reference.wnear), observed_at_ns: "1000000000000000000" },
-      }),
-      held("grant-initial-value", { contract: s.initialValue.toString() }),
-      held("model-proposal-on-chain", { mode: "recorded-model", decision: { model: s.model }, order: { id: "6", sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString(), concession_bps: 40 } }),
-      held("trade-executed", { before: { usdc: s.before.usdc.toString(), wnear: s.before.wnear.toString() }, after, signed: { sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString() } }),
-      held("settled-release", { state: "released", reason: "settled" }),
-      held("withheld-executable", {
-        simulation: "accepted",
-        order_id: "7",
-        epoch: 1,
-        mandate: "mandate.synthetic",
-        signing_public_key: s.key,
-        mandate_nonce: "SYNTHETICnonce",
-        deadline_ns: s.deadlineNs.toString(),
-        payload_sha256: "8".repeat(64),
-        bundle_sha256: s.bundleSha256,
-        filler_nonce: "SYNTHETICfillernonce",
-      }),
-      held("revoked", { status: "revoked", key_registered: false, grant_public_key: s.key }),
-      held("withheld-released", { state: "released", reason: "key_removed" }),
-      held("withheld-rejected", {
-        error: `SYNTHETIC Smart contract panicked: public key '${s.key}' doesn't exist for account 'mandate.synthetic'`,
-        relay_block_time_ns: (s.relayNs - 1_000_000_000n).toString(),
-        order_deadline_ns: s.deadlineNs.toString(),
-        nonce_used: false,
-        relayer: "relayer.synthetic",
-        mandate: "mandate.synthetic",
-        revoked_key: s.key,
-        bundle_sha256: s.bundleSha256,
-        verifier_receipt: { id: "SYNTHETICreceipt", block_hash: "SYNTHETICblock", block_time_ns: s.relayNs.toString() },
-      }),
-      held("agent-stopped", "SYNTHETIC grant is not active"),
-      held("recovered", { recovered: after, mandate_final: { usdc: "0", wnear: "0" } }),
-    ],
+    environment: { label: "SYNTHETIC specimen", steps: JSON.stringify(offsets) },
+    receipts: steps.flatMap((st) => st.receipts),
+    assertions: steps.flatMap((st) => st.assertions),
   });
 }
 

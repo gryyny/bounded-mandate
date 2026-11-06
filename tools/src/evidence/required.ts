@@ -16,6 +16,14 @@ export const REQUIRED_CASES = {
   DAO: ["sputnik-owner"],
   /** Runner sale budgets in the agent snapshot, prompt and validation; the no-transaction provider rehearsal (stub providers). */
   AGENT: ["budget-bounds", "rehearsal"],
+  /** External owner actions persisted as intents and imported by transaction hash; refusals; lost-response resume. */
+  HANDOFF: ["import-verified", "import-refusals", "lost-response-resume", "unrecorded-owner-tx"],
+  /** The owner's ft_withdraw of both assets after recovery, outside recovery claims. */
+  WITHDRAW: ["both-assets", "unregistered-owner", "failed-receipt-retry"],
+  /** The primary live-agent template's full sequence in live-sandbox on the exact deployment binary (synthetic provider). */
+  LIVE: ["agent-template"],
+  /** The owner console in headless Chromium against sandbox through the labelled local test signer; not an external wallet. */
+  CONSOLE: ["browser-sandbox", "access-controls"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */

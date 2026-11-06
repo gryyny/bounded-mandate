@@ -3,7 +3,7 @@
 // doubles; the model step replays a recorded genuine interaction. Nothing here touches a public network.
 import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { decide, decisionRecord, judge, submitProposal, type AgentDecision } from "../agent/adapter.js";
 import { RecordedProvider } from "../agent/recording.js";
@@ -15,12 +15,16 @@ import { findSignedPayload, settledOrder } from "../near/contracts.js";
 import { LocalNetwork, REPO_ROOT, requireSuccess } from "../near/sandbox.js";
 import { Evidence, Proposal } from "../types.js";
 import { BENIGN_NOTES, DECIMALS, DEMO_POLICY, DEPOSITS, PRICES, SCRIPTED_WITHHELD_PROPOSAL } from "./market.js";
-import { Recorder, chainSnapshot, grantDemo, tryLoadRecording } from "./story.js";
+import { Recorder, chainSnapshot, grantDemo, journeyState, tryLoadRecording } from "./story.js";
+import { attackLogFields } from "./attack-log.js";
+import { withdrawToOwner } from "./withdraw.js";
+import { CONSOLE_LOCAL_PATH, PLANNED_LABEL, PLANNED_URLS, type ConsoleReview, type OwnerWithdrawal } from "../evidence/journey.js";
 import { balances, fillerKey, postPrices, setupWorld, type World } from "./world.js";
 import { valueUnits } from "../agent/snapshot.js";
 import { canonical } from "../live/ledger.js";
 import { simulationProblem } from "../live/verify.js";
 import { renderPage } from "../page/render.js";
+import { renderConsole } from "../console/render.js";
 
 const str = (v: bigint): string => v.toString();
 const balStr = (b: Record<string, bigint>): Record<string, string> => Object.fromEntries(Object.entries(b).map(([k, v]) => [k, str(v)]));
@@ -35,13 +39,29 @@ async function accessKeys(world: World, accountId: string): Promise<unknown[]> {
 async function story(world: World, rec: Recorder, unknowns: string[], identifiers: Record<string, string>): Promise<void> {
   const { client, mandate, verifier } = world;
 
-  rec.step("Roles and limits");
+  await rec.step("Mandate reviewed in the console");
   const mandateKeys = await accessKeys(world, mandate.id);
   rec.check("mandate-no-keys", "BOUNDARY", "mandate account has no access key; only its contract acts for it", mandateKeys.length === 0, mandateKeys);
   const agentKeys = await accessKeys(world, world.agent.id);
   const onlyPropose =
     agentKeys.length === 1 && JSON.stringify(agentKeys[0]).includes('"method_names":["propose_order"]') && JSON.stringify(agentKeys[0]).includes(mandate.id);
   rec.check("agent-one-restricted-key", "BOUNDARY", "agent's only key is a function-call key for propose_order on the mandate", onlyPropose, agentKeys);
+  const config = await mandate.config();
+  const review: ConsoleReview = {
+    state: await journeyState(world),
+    config: { owner: config.owner_id, agent: config.agent_id, verifier: config.verifier_id, usdc_token: config.usdc.token, wnear_token: config.wnear.token },
+    // The console view is rendered from this run's evidence after the story; main() records its path once written.
+    view: { local_path: null, planned_url: PLANNED_URLS.console, planned_label: PLANNED_LABEL },
+  };
+  rec.check(
+    "console-review",
+    "DEMO",
+    "the console's read-only view shows the fixed owner, agent, verifier and exact tokens the contract was deployed with",
+    review.config.owner === world.owner.id && review.config.agent === world.agent.id && review.config.verifier === verifier.id && review.config.usdc_token === world.tokens.usdc && review.config.wnear_token === world.tokens.wnear,
+    review,
+  );
+
+  await rec.step("Grant and limits");
   rec.receipt(await grantDemo(world), { step: "grant" });
   const grant = await mandate.grant();
   if (grant === null) throw new Error("no grant");
@@ -62,7 +82,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   identifiers.grant_public_key = grant.public_key ?? "";
   identifiers.grant_path = grant.path;
 
-  rec.step("Genuine model proposal (recorded) -> propose_order");
+  await rec.step("Bounded agent proposal (recorded genuine model output) -> propose_order");
   const recorded = tryLoadRecording("normal");
   let firstProposal: Proposal;
   let decision: AgentDecision | null = null;
@@ -99,7 +119,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const prehash = nep413Prehash({ message: first.payload.message, nonce: Buffer.from(first.payload.nonce, "base64"), recipient: first.payload.recipient }).toString("hex");
   rec.check("nep413-cross-check", "T2", "TypeScript NEP-413 prehash equals the contract's payload_hash", prehash === first.payload_hash, { ts: prehash, contract: first.payload_hash });
 
-  rec.step("Filler fills order 1 (actual trade on the pinned verifier)");
+  await rec.step("Filler fills order 1 (actual trade on the pinned verifier)");
   const statePath = join(REPO_ROOT, "out/demo/filler-state.json");
   rmSync(statePath, { force: true }); // fresh sandbox chain: previous runs' order ids are unrelated
   const filler = new Filler({ client, mandate, verifier, account: world.filler.account, key: fillerKey(world), statePath });
@@ -123,7 +143,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const settledFirst = await mandate.order(firstId);
   rec.check("settled-release", "T2", "settle_order released the reservation on the verifier's nonce evidence", settle.success && settledFirst?.state.state === "released" && settledFirst.state.reason === "settled", settledFirst?.state);
 
-  rec.step("Second signed order withheld");
+  await rec.step("Second signed order withheld");
   await postPrices(world);
   const withheldOutcome = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, SCRIPTED_WITHHELD_PROPOSAL, "agent propose_order (order 2, scripted, withheld)"), {
     proposal_source: "scripted",
@@ -150,10 +170,10 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     filler_nonce: prepared.own.payload.nonce,
   });
 
-  rec.step("Malicious requests");
+  await rec.step("Hostile requests refused");
   const suite = await runAttackSuite(world);
   for (const r of suite.results) {
-    rec.check(`attack-${r.id}`, "BOUNDARY", `${r.description} -> stopped by ${r.expected} (${r.origin})`, r.passed, { observed: r.observed, contained: r.contained, ...r.detail });
+    rec.check(`attack-${r.id}`, "BOUNDARY", `${r.description} -> stopped by ${r.expected} (${r.origin})`, r.passed, { ...r.detail, ...attackLogFields(REPO_ROOT, r) });
   }
   const injected = tryLoadRecording("injection");
   if (injected.ok) {
@@ -177,8 +197,8 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     unknowns.push(`injection recording unavailable: ${injected.reason}`);
   }
 
-  rec.step("Owner revokes; removal confirmed");
-  const revoke = rec.receipt(await mandate.revoke(world.owner.account));
+  await rec.step("Owner revokes; removal confirmed");
+  const revoke = rec.receipt(await mandate.revoke(world.owner.account), { via: "owner account call in sandbox; the console's owner controls are tested separately" });
   const revoked = await mandate.grant();
   const keyGone = grant.public_key !== null && !(await verifier.hasPublicKey(mandate.id, grant.public_key));
   rec.check("revoked", "T1", "grant revoked and the grant key is no longer registered on the verifier", revoke.success && revoked?.status === "revoked" && keyGone, {
@@ -189,7 +209,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const releasedWithheld = await mandate.order(withheldId);
   rec.check("withheld-released", "T1", "withheld order's reservation released only by confirmed key removal", releasedWithheld?.state.state === "released" && releasedWithheld.state.reason === "key_removed", releasedWithheld?.state);
 
-  rec.step("Withheld order relayed from another account");
+  await rec.step("Withheld order relayed from another account");
   const mandateBefore = await balances(world, mandate.id);
   const relayTime = await client.blockTimestampNs();
   const relay = rec.receipt(await verifier.execute(world.relayer.account, prepared.bundle, "relayer execute_intents (withheld order after revocation)"));
@@ -197,6 +217,8 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const mandateAfter = await balances(world, mandate.id);
   const relayError = relay.error ?? relay.receipts.find((r) => !r.success)?.error ?? "";
   const verifierFailure = relay.receipts.find((r) => r.executor_id === verifier.id && r.error !== undefined);
+  const rejectedAtNs = verifierFailure === undefined ? null : await client.blockTimestampAt(verifierFailure.block_hash);
+  const deadlineNs = BigInt(withheld.deadline_ns ?? "0");
   rec.check(
     "withheld-rejected",
     "T1",
@@ -206,6 +228,9 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
       error: relayError.slice(0, 300),
       relay_block_time_ns: str(relayTime),
       order_deadline_ns: withheld.deadline_ns,
+      /** Order lifetime left when the relay was broadcast (deadline minus the block time read just before it). */
+      remaining_at_broadcast_ns: str(deadlineNs - relayTime),
+      remaining_at_rejection_ns: rejectedAtNs === null ? null : str(deadlineNs - rejectedAtNs),
       nonce_used: nonceUsed,
       relay_tx_hash: relay.tx_hash ?? null,
       relayer: world.relayer.id,
@@ -217,17 +242,17 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
       verifier_receipt:
         verifierFailure === undefined
           ? null
-          : { id: verifierFailure.id, block_hash: verifierFailure.block_hash, block_time_ns: str(await client.blockTimestampAt(verifierFailure.block_hash)) },
+          : { id: verifierFailure.id, block_hash: verifierFailure.block_hash, block_time_ns: str(rejectedAtNs ?? 0n) },
     },
   );
 
-  rec.step("Agent, oracle and MPC disabled");
+  await rec.step("Agent, oracle and MPC disabled");
   rec.receipt(requireSuccess(await client.call("oracle set_fail(true)", world.operator.account, world.oracleId, "set_fail", { fail: true })));
   rec.receipt(requireSuccess(await client.call("mpc set_mode(hold)", world.operator.account, world.mpcId, "set_mode", { mode: "hold" })));
   const lateProposal = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, { sell: "usdc", sell_amount: "1000000", max_concession_bps: 10 }, "agent propose_order after revocation"));
   rec.check("agent-stopped", "T4", "agent proposal after revocation is rejected by the contract; the agent takes no further part", !lateProposal.success, lateProposal.error?.slice(0, 200));
 
-  rec.step("Recovery to the owner");
+  await rec.step("Recovery to the owner's Intents account");
   const ownerBefore = await balances(world, world.owner.id);
   const toRecover = await balances(world, mandate.id);
   for (const asset of ["usdc", "wnear"] as const) rec.receipt(await mandate.recover(world.owner.account, asset));
@@ -238,18 +263,33 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     "T4",
     "all mandate units moved to the owner's Intents account with oracle failing and MPC on hold",
     mandateFinal.usdc === 0n && mandateFinal.wnear === 0n && ownerFinal.usdc - ownerBefore.usdc === toRecover.usdc && ownerFinal.wnear - ownerBefore.wnear === toRecover.wnear,
-    { recovered: balStr(toRecover), mandate_final: balStr(mandateFinal), owner_final: balStr(ownerFinal), recovery: await mandate.recovery() },
+    { destination: `${world.owner.id} (owner's Intents account)`, recovered: balStr(toRecover), mandate_final: balStr(mandateFinal), owner_final: balStr(ownerFinal), recovery: await mandate.recovery() },
   );
 
-  rec.step("Final balances");
+  await rec.step("Owner withdrawal to its NEAR account (outside recovery)");
+  const withdrawal: OwnerWithdrawal = { owner: world.owner.id, verifier: verifier.id, outside_recovery: true, assets: [] };
+  // One asset's failure neither blocks nor repeats the other's.
+  for (const asset of ["usdc", "wnear"] as const) withdrawal.assets.push(await withdrawToOwner(world, rec, asset));
+  rec.check(
+    "owner-withdrawal",
+    "WITHDRAWAL",
+    "the owner withdrew both assets from its Intents account to its NEAR account with ft_withdraw, registering storage only where needed (owner action, not part of recovery)",
+    withdrawal.assets.every((a) => a.outcome === "withdrawn"),
+    withdrawal,
+  );
+
+  await rec.step("Final balances");
+  const ownerIntentsFinal = await balances(world, world.owner.id);
   const final = {
-    mandate: balStr(mandateFinal),
-    owner: balStr(ownerFinal),
+    mandate: balStr(await balances(world, mandate.id)),
+    owner_intents: balStr(ownerIntentsFinal),
+    owner_near: Object.fromEntries(withdrawal.assets.map((a) => [a.asset, a.attempts.at(-1)?.near_after ?? a.near_before])),
     filler: balStr(await balances(world, world.filler.id)),
     fee_collector: balStr(await balances(world, world.feeCollector.id)),
   };
   console.log(JSON.stringify(final, null, 2));
-  rec.check("final-balances", "T4", "final Intents balances (owner holds everything the mandate held)", true, final);
+  rec.check("final-balances", "DEMO", "final balances (recorded, not a check)", true, final);
+  await rec.close();
 }
 
 function render(evidence: Evidence, outDir: string): string {
@@ -269,7 +309,8 @@ async function main(): Promise<number> {
   ];
   const identifiers: Record<string, string> = {};
   try {
-    const world = await setupWorld(net);
+    // The owner holds no wNEAR token registration, so its withdrawal exercises storage registration (see WorldOptions).
+    const world = await setupWorld(net, { ownerUnregistered: ["wnear"] });
     const setupMs = Date.now() - coldStart;
     Object.assign(identifiers, {
       mandate: world.mandate.id,
@@ -284,7 +325,7 @@ async function main(): Promise<number> {
       mpc_test_double: world.mpcId,
     });
     console.log(`setup (sandbox start, deploy, fund): ${setupMs} ms`);
-    const rec = new Recorder();
+    const rec = new Recorder(() => journeyState(world));
     const storyStart = Date.now();
     await story(world, rec, unknowns, identifiers);
     const storyMs = Date.now() - storyStart;
@@ -292,7 +333,7 @@ async function main(): Promise<number> {
 
     const binding = sourceBinding(REPO_ROOT, world.wasm.mandate.sha256, Object.values(world.wasm));
     if (binding.integrity_error !== null) rec.check("integrity", "INTEGRITY", "spec and fixture hashes match fixtures/manifest.json", false, binding.integrity_error);
-    const evidence = Evidence.parse({
+    const draft = {
       schema_version: 1,
       generated_at: new Date().toISOString(),
       mode: "sandbox",
@@ -303,6 +344,7 @@ async function main(): Promise<number> {
         model_mode: "recorded-model",
         setup_ms: String(setupMs),
         story_ms: String(storyMs),
+        owner_setup: "owner storage registration on the wNEAR token removed after its deposit (sandbox setup), so the withdrawal registers it",
         steps: JSON.stringify(rec.steps),
       }),
       command: "make demo",
@@ -310,7 +352,16 @@ async function main(): Promise<number> {
       receipts: rec.receipts,
       assertions: rec.assertions,
       unknowns,
+    };
+    // The console view is rendered from this run's evidence; the console stage then records where it was written.
+    const consolePath = renderConsole(Evidence.parse(draft));
+    const consoleRel = relative(REPO_ROOT, consolePath);
+    if (consoleRel !== CONSOLE_LOCAL_PATH) throw new Error(`console written to ${consoleRel}, expected ${CONSOLE_LOCAL_PATH}`);
+    const evidence = Evidence.parse({
+      ...draft,
+      assertions: draft.assertions.map((a) => (a.id === "console-review" ? { ...a, observed: { ...(a.observed as ConsoleReview), view: { ...(a.observed as ConsoleReview).view, local_path: consoleRel } } } : a)),
     });
+    console.log(`console: ${consoleRel}`);
     const outDir = join(REPO_ROOT, "out/evidence");
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "demo.json"), `${JSON.stringify(evidence, null, 2)}\n`);

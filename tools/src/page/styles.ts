@@ -172,6 +172,13 @@ dl.stage-facts dt { color: var(--muted); }
 dl.stage-facts dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .bound { margin: auto 0 0; padding-top: .4rem; border-top: 1px dotted var(--rule-strong); font: .72rem/1.55 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .bound .absent { color: var(--fail); }
+li.stage.withdrawn { border-top-style: dashed; border-top-color: var(--m-sandbox); }
+.stage-state { margin: 0; font: .72rem/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.stage-state span { text-transform: uppercase; letter-spacing: .1em; color: var(--ink); }
+p.planned { margin: .9rem 0 0; font-size: .88rem; overflow-wrap: anywhere; }
+table.attack-log td { vertical-align: top; overflow-wrap: anywhere; }
+table.attack-log td.reason { font: .8rem/1.45 var(--mono); }
+table.attack-log .mono { font: .74rem/1.4 var(--mono); }
 ol.path-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; counter-reset: path; }
 ol.path-list > li { background: var(--sheet); border: 1px solid var(--rule); padding: 1rem 1.1rem; counter-increment: path; overflow-wrap: anywhere; }
 ol.path-list > li p { margin: .3rem 0; }

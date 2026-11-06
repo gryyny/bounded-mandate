@@ -13,3 +13,11 @@ export const modeBadge = (mode: string): string => {
 };
 
 export const chip = (cls: string, text: string): string => `<span class="mode ${cls}">${escapeHtml(text)}</span>`;
+
+/** Execution mode of an acceptance case report (envelope v2 `mode`), named for what actually ran. */
+export const caseModeBadge = (mode: string): string =>
+  mode === "unit"
+    ? `<span class="mode other" title="execution mode">TypeScript unit test (no VM, chain or model)</span>`
+    : mode === "unit-vm"
+      ? `<span class="mode other" title="execution mode">unit test in the mocked NEAR VM</span>`
+      : modeBadge(mode);
