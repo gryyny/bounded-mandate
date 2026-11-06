@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluate, makeTestCommands, writeAcceptance } from "../src/checks/acceptance.js";
+import { REQUIRED_GATES } from "../src/checks/gates.js";
 import { readRun, recordWasm, startRun } from "../src/checks/run.js";
 import { REQUIRED_CASES, requiredCaseIds } from "../src/evidence/required.js";
 import { Acceptance, GateReportV2, REPORT_SCHEMA, type RunRecord } from "../src/evidence/schema.js";
@@ -246,7 +247,8 @@ describe("acceptance", () => {
   });
 
   it("the registry covers every required gate", () => {
-    expect(Object.keys(REQUIRED_CASES)).toEqual(["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY"]);
+    expect(Object.keys(REQUIRED_CASES)).toEqual(["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY", "DAO"]);
+    expect([...REQUIRED_GATES]).toEqual(Object.keys(REQUIRED_CASES));
   });
 
   describe("a deployment candidate bound by fixture hash", () => {

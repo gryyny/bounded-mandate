@@ -1,0 +1,25 @@
+{
+  "file": "sputnik/sputnikdao2-2.3.1.wasm",
+  "sha256": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+  "size_bytes": 444088,
+  "onchain_code_hash": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF",
+  "kind": "external-binary",
+  "source": {
+    "network": "NEAR mainnet",
+    "rpc": "https://rpc.mainnet.fastnear.com (read-only JSON-RPC, finality final)",
+    "factory_account": "sputnik-dao.near",
+    "factory_code_hash": "BXd5idTXSnC7WRfxHmi7z4crw2F5WXQJ6MZUEv8DfnnY",
+    "default_code_hash": {"method": "get_default_code_hash", "block_height": 223319906, "result": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF"},
+    "default_version": {"method": "get_default_version", "block_height": 223319907, "result": [3, 2]},
+    "factory_metadata": {"method": "get_contracts_metadata", "block_height": 223319907, "entry": {"code_hash": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF", "version": [3, 2], "commit_id": "2b0f34a3860460f285307ec2ccf36345acbe05a2"}},
+    "bytes": {"method": "get_code", "args": {"code_hash": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF"}, "block_height": 223319919, "block_hash": "6SD49RRh4KBvXhtKVFRgyp9wzWd5BZEbtf3HnpDY9aLv"},
+    "check": "base58(sha256(file)) equals the factory's default code hash; this is the code the factory deploys to every new *.sputnik-dao.near DAO"
+  },
+  "declared_source": {
+    "contract_source_metadata": "embedded NEP-330: version 2.3.1, https://github.com/near-daos/sputnik-dao-contract/tree/2b0f34a3860460f285307ec2ccf36345acbe05a2, build sourcescan/cargo-near:0.19.0-rust-1.86.0@sha256:772638e343baeeea24e49062c7d424274f3441452cc06ce97fc4e5695b19fecc, contract_path sputnikdao2",
+    "crate": "sputnikdao2 2.3.1 (factory label v3.2)"
+  },
+  "reproduced_from_source": false,
+  "license": "MIT, Copyright (c) 2021 near-daos (near-daos/sputnik-dao-contract LICENSE at 2b0f34a3860460f285307ec2ccf36345acbe05a2)",
+  "retrieved_at": "2026-11-06"
+}

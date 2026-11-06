@@ -39,6 +39,21 @@
       "kind": "deployment-candidate",
       "source": "cargo near build reproducible-wasm of product commit 163ccfa75de2db014a626de7dea4b7baad0bace4 (contract/), image sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234; built twice with identical output; NEAR code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
       "license": "MIT (this repository)"
+    },
+    "sputnik/sputnikdao2-2.3.1.wasm": {
+      "sha256": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+      "kind": "external-binary",
+      "source": "NEAR mainnet factory sputnik-dao.near, RPC call_function get_code({code_hash: DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF}) (final) at block 223319919; factory get_default_code_hash (block 223319906) equals base58(sha256) of this file",
+      "declared_source": "contract_source_metadata: version 2.3.1, https://github.com/near-daos/sputnik-dao-contract/tree/2b0f34a3860460f285307ec2ccf36345acbe05a2, build sourcescan/cargo-near:0.19.0-rust-1.86.0, contract_path sputnikdao2; factory metadata version [3,2], commit_id 2b0f34a3860460f285307ec2ccf36345acbe05a2",
+      "reproduced_from_source": false,
+      "license": "MIT, Copyright (c) 2021 near-daos (near-daos/sputnik-dao-contract)",
+      "retrieved_at": "2026-11-06"
+    },
+    "sputnik/sputnikdao2-2.3.1.provenance.json": {
+      "sha256": "6f34318f2f678821a60a10ac44221799d802f95aea330f9ed1b3d4aba2100a7d",
+      "kind": "provenance-record",
+      "source": "Read-only mainnet RPC queries recorded by the repository author for sputnik/sputnikdao2-2.3.1.wasm",
+      "license": "MIT (this repository)"
     }
   }
 }

@@ -3,7 +3,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-export const REQUIRED_GATES = ["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY"] as const;
+export const REQUIRED_GATES = ["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY", "DAO"] as const;
+
+// Longest names first so `T2b` is never read as `T2`.
+const GATE_TAG = new RegExp(`gate:\\s*(${[...REQUIRED_GATES].sort((a, b) => b.length - a.length).join("|")})\\b`, "g");
 
 const TEST_ROOTS = ["contract/tests", "contract/src", "tools/test", "baseline"];
 const SKIP_MARKERS = [/#\[ignore/, /\.skip\(/, /\bit\.todo\(/, /\bxit\(/];
@@ -23,7 +26,7 @@ export function findGates(root: string): { found: Map<string, string[]>; problem
   for (const file of TEST_ROOTS.flatMap((r) => walk(join(root, r)))) {
     if (!/\.(rs|ts)$/.test(file)) continue;
     const text = readFileSync(file, "utf8");
-    const tags = [...text.matchAll(/gate:\s*(T2b|T[1-5]|BOUNDARY|MODEL|DEPLOY)\b/g)].map((m) => m[1]).filter((t) => t !== undefined);
+    const tags = [...text.matchAll(GATE_TAG)].map((m) => m[1]).filter((t) => t !== undefined);
     if (tags.length === 0) continue;
     const rel = relative(root, file);
     if (SKIP_MARKERS.some((re) => re.test(text))) problems.push(`${rel}: gate-tagged file contains a skipped test`);
