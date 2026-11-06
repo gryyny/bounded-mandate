@@ -392,6 +392,33 @@ describe("evidence page: revocation story", () => {
     expect(html).toContain("withheld-rejected</a> <strong>did not hold</strong>");
   });
 
+  it("never states the console revocation's route or preview when its check did not hold", () => {
+    const ev = storyEvidence();
+    const failedConsole = (observed: unknown) => ({
+      ...ev,
+      assertions: ev.assertions.map((a) => (a.id === "revoke-through-console" ? { ...a, passed: false, observed } : a)),
+    });
+    const held = revocationStory(ev).find((s) => s.key === "revoked");
+    expect(held?.facts.map(([k]) => k)).toEqual(expect.arrayContaining(["Through", "Preview", "Sign requests", "Transaction"]));
+    expect(renderHtml(ev, { acceptance: null, live: null })).toContain("<dt>Preview</dt>");
+
+    const html = renderHtml(failedConsole({ ...CONSOLE_REVOKE, preview_problems: ["Method shows revoke_all, derived revoke"] }), { acceptance: null, live: null });
+    expect(stages(html)).toContain("revoked failure");
+    expect(html).toContain("revoke-through-console</a> <strong>did not hold</strong>");
+    expect(html).not.toContain("<dt>Through</dt>");
+    expect(html).not.toContain(escapeHtml("the console's Revoke control"));
+    expect(html).not.toContain("<dt>Preview</dt>");
+    expect(html).not.toContain(escapeHtml("exact: receiver, method, arguments, gas and deposit as derived"));
+    expect(html).toContain(escapeHtml("console revocation did not hold: preview differs: Method shows revoke_all, derived revoke"));
+
+    // Values that look exact still do not make a failed check read as the console route.
+    const stage = revocationStory(failedConsole(CONSOLE_REVOKE)).find((s) => s.key === "revoked");
+    expect(stage?.outcome).toBe("not-held");
+    expect(stage?.facts.map(([k]) => k)).not.toEqual(expect.arrayContaining(["Through"]));
+    expect(stage?.facts.find(([k]) => k === "Revocation")).toEqual(["Revocation", "console revocation did not hold: the revoke-through-console check failed"]);
+    expect(stage?.facts.some(([k]) => ["Preview", "Sign requests", "Transaction"].includes(k))).toBe(false);
+  });
+
   it("never marks a gate from the story", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
     for (const gate of Object.keys(REQUIRED_CASES)) expect(gateStatus(html, gate)).toBe("not-run");

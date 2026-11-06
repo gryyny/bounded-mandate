@@ -222,6 +222,16 @@ class Binder {
   }
 }
 
+/** Why a recorded console revocation did not hold, from its observed values. */
+const consoleRevokeFailure = (r: ConsoleRevoke): string => {
+  const reasons = [
+    ...(r.preview_problems.length > 0 ? [`preview differs: ${r.preview_problems.join("; ")}`] : []),
+    ...(r.sign_requests.length === 1 ? [] : [`${String(r.sign_requests.length)} sign requests, expected 1`]),
+    ...(r.outcome === "success" ? [] : [r.outcome === "not-found" ? "no revoke transaction found on chain" : `revoke transaction ${r.tx_hash ?? ""} failed`]),
+  ];
+  return reasons.length > 0 ? reasons.join("; ") : "the revoke-through-console check failed";
+};
+
 const verifierReason = (error: string): string =>
   (/ExecutionError\\?":\\?"([^"\\]+)/.exec(error)?.[1] ?? error).replace(/^Smart contract panicked: /, "");
 
@@ -493,11 +503,14 @@ export function revocationStory(ev: Evidence): Stage[] {
       const released = b.observed("withheld-released");
       const key = revoked?.grant_public_key ?? (grantKey.success ? grantKey.data.public_key : null);
       const direct = !ev.assertions.some((a) => a.id === "revoke-through-console");
+      const consoleHeld = ev.assertions.find((a) => a.id === "revoke-through-console")?.passed === true;
       return {
         headline: revoked === null ? null : `grant ${revoked.status ?? "revoked"} · key registered: ${revoked.key_registered ? "yes" : "no"}`,
         facts: [
-          ["Through", viaConsole === null ? (direct ? "a direct owner call (not through the console)" : "not recorded") : `the console's Revoke control, ${OWNER_CONTROLS_LABEL}`],
-          ...(viaConsole === null
+          viaConsole !== null && !consoleHeld
+            ? ["Revocation", `console revocation did not hold: ${consoleRevokeFailure(viaConsole)}`]
+            : ["Through", viaConsole === null ? (direct ? "a direct owner call (not through the console)" : "not recorded") : `the console's Revoke control, ${OWNER_CONTROLS_LABEL}`],
+          ...(viaConsole === null || !consoleHeld
             ? []
             : ([
                 ["Preview", viaConsole.preview_problems.length === 0 ? "exact: receiver, method, arguments, gas and deposit as derived" : `differs: ${viaConsole.preview_problems.join("; ")}`],
