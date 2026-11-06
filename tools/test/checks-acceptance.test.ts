@@ -247,7 +247,7 @@ describe("acceptance", () => {
   });
 
   it("the registry covers every required gate", () => {
-    expect(Object.keys(REQUIRED_CASES)).toEqual(["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY", "DAO"]);
+    expect(Object.keys(REQUIRED_CASES)).toEqual(["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY", "DAO", "AGENT"]);
     expect([...REQUIRED_GATES]).toEqual(Object.keys(REQUIRED_CASES));
   });
 

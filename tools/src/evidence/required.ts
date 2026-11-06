@@ -14,6 +14,8 @@ export const REQUIRED_CASES = {
   DEPLOY: ["candidate"],
   /** A pinned Sputnik DAO (mainnet factory code) as the fixed owner, threshold-voted, in sandbox. */
   DAO: ["sputnik-owner"],
+  /** Runner sale budgets in the agent snapshot, prompt and validation; the no-transaction provider rehearsal (stub providers). */
+  AGENT: ["budget-bounds", "rehearsal"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */

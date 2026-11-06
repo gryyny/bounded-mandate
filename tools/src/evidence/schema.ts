@@ -17,7 +17,7 @@ export const GateReportV2 = z.object({
   case: z.string().min(1),
   /** Computed from the test's own assertions before writing. */
   passed: z.boolean(),
-  mode: z.enum(["sandbox", "unit-vm"]),
+  mode: z.enum(["sandbox", "unit-vm", "unit"]),
   run_id: z.string().min(1).nullable(),
   source: z.object({ revision: z.string().min(1), dirty: z.boolean() }),
   spec_sha256: sha256,

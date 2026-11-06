@@ -5,10 +5,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { sha256Hex } from "./decision.js";
-import { PROMPT_VERSION, buildPrompt, type BuiltPrompt } from "./prompt.js";
+import { buildPrompt, type BuiltPrompt } from "./prompt.js";
 import type { LiveModelCall, LiveModelProvider } from "./providers.js";
-import { FreshObservations, RebalanceVerdict, decideRebalance, inputsFrom, type RebalanceDecision } from "./rebalance.js";
-import { MarketSnapshot } from "./snapshot.js";
+import { FreshObservations, RebalanceVerdict, decideRebalance, inputsFrom, type RebalanceDecision } from "./objective.js";
+import { MarketSnapshot, saleBudgetOf } from "./snapshot.js";
 
 export const LiveDecisionRecording = z
   .object({
@@ -97,8 +97,8 @@ export function loadRecording(dir: string, file: string, sha256: string): LiveDe
   if (sha256Hex(bytes) !== sha256) throw new Error(`recording ${file}: sha256 ${sha256Hex(bytes)} != ledger ${sha256}`);
   const rec = LiveDecisionRecording.parse(JSON.parse(bytes.toString("utf8")));
   if (rec.raw_output !== null && sha256Hex(rec.raw_output) !== rec.raw_output_sha256) throw new Error(`recording ${file}: raw output hash mismatch`);
-  if (rec.prompt.version !== PROMPT_VERSION) throw new Error(`recording ${file}: prompt version ${rec.prompt.version} != ${PROMPT_VERSION}`);
   const rebuilt = buildPrompt(rec.snapshot);
+  if (rec.prompt.version !== rebuilt.version) throw new Error(`recording ${file}: prompt version ${rec.prompt.version} != ${rebuilt.version} built from its snapshot`);
   if (rebuilt.sha256 !== rec.prompt.sha256 || rebuilt.user !== rec.prompt.user || rebuilt.system !== rec.prompt.system) {
     throw new Error(`recording ${file}: stored prompt does not match the prompt built from its snapshot`);
   }
@@ -128,9 +128,9 @@ export class LiveRecordingProvider implements LiveModelProvider {
   }
 }
 
-/** Re-runs the decision from the recorded inputs through the adapter and objective guard. */
+/** Re-runs the decision from the recorded inputs (and the sale budget its snapshot showed) through the adapter and objective guard. */
 export async function replayRecording(rec: LiveDecisionRecording): Promise<RebalanceDecision> {
-  const inputs = inputsFrom(rec.observations, rec.decimals);
+  const inputs = inputsFrom(rec.observations, rec.decimals, saleBudgetOf(rec.snapshot));
   if (!inputs.ok) throw new Error(`recording inputs are not usable: ${inputs.problems.join("; ")}`);
   return decideRebalance(new LiveRecordingProvider(rec), inputs.inputs, rec.notes);
 }

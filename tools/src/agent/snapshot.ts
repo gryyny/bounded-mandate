@@ -5,6 +5,25 @@ import { z } from "zod";
 import type { Asset, GrantView, PriceObservation } from "../types.js";
 
 const Decimal = z.string().regex(/^[0-9]+(\.[0-9]+)?$/);
+const Units = z.string().regex(/^(0|[1-9][0-9]*)$/);
+
+/** The runner's remaining sale budget for one asset, in integer base units of that asset. */
+export const AssetSaleBudget = z
+  .object({
+    /** Largest single sale the runner allows (its max_order_sell). */
+    per_order_units: Units,
+    /** Units the runner may still sell in this run (max_total_sell minus what the ledger already charged). */
+    cumulative_remaining_units: Units,
+  })
+  .strict();
+export type AssetSaleBudget = z.infer<typeof AssetSaleBudget>;
+
+/** Input from the runner: its remaining per-order and cumulative sale budgets for both assets. */
+export const SaleBudget = z.object({ usdc: AssetSaleBudget, wnear: AssetSaleBudget }).strict();
+export type SaleBudget = z.infer<typeof SaleBudget>;
+
+/** The model-visible form: both budgets and the tighter of the two, which bounds any sale of the asset. */
+export const AssetSaleBudgetSnapshot = AssetSaleBudget.extend({ max_sale_units: Units }).strict();
 
 export const AssetSnapshot = z
   .object({
@@ -34,6 +53,11 @@ export const MarketSnapshot = z
         max_concession_bps: z.number().int(),
       })
       .strict(),
+    /**
+     * The runner's remaining sale budgets. Absent only in snapshots built without a runner (the recorded demo
+     * fixtures), whose prompt version stays v1; present, it selects the budgeted prompt.
+     */
+    runner_sale_budget: z.object({ usdc: AssetSaleBudgetSnapshot, wnear: AssetSaleBudgetSnapshot }).strict().optional(),
     /** Free-text market commentary from an untrusted feed. It may contain adversarial instructions. */
     market_notes: z.array(z.string()),
   })
@@ -72,6 +96,37 @@ export interface SnapshotInputs {
   decimals: Record<Asset, number>;
   balances: Record<Asset, bigint>;
   notes: string[];
+  /** The runner's remaining sale budgets; null only outside the live runner (demo fixtures). */
+  sale_budget?: SaleBudget | null;
+}
+
+const min = (a: bigint, b: bigint): bigint => (a < b ? a : b);
+
+/** Largest sale of `asset` both budgets allow. */
+export const maxSaleUnits = (budget: SaleBudget, asset: Asset): bigint =>
+  min(BigInt(budget[asset].per_order_units), BigInt(budget[asset].cumulative_remaining_units));
+
+/**
+ * The runner's remaining sale budget from its caps and the units it has already charged, per asset. Exceeded
+ * caps leave zero, never a negative budget.
+ */
+export function remainingSaleBudget(
+  caps: { max_order_sell: Record<Asset, string>; max_total_sell: Record<Asset, string> },
+  sold: Record<Asset, bigint>,
+): SaleBudget {
+  const of = (a: Asset): AssetSaleBudget => {
+    const left = BigInt(caps.max_total_sell[a]) - sold[a];
+    return { per_order_units: BigInt(caps.max_order_sell[a]).toString(), cumulative_remaining_units: (left > 0n ? left : 0n).toString() };
+  };
+  return SaleBudget.parse({ usdc: of("usdc"), wnear: of("wnear") });
+}
+
+/** The budget a snapshot showed the model, as runner input again (replay). */
+export function saleBudgetOf(snapshot: MarketSnapshot): SaleBudget | null {
+  const b = snapshot.runner_sale_budget;
+  if (b === undefined) return null;
+  const of = (a: Asset): AssetSaleBudget => ({ per_order_units: b[a].per_order_units, cumulative_remaining_units: b[a].cumulative_remaining_units });
+  return { usdc: of("usdc"), wnear: of("wnear") };
 }
 
 export function buildSnapshot(input: SnapshotInputs): MarketSnapshot {
@@ -92,6 +147,8 @@ export function buildSnapshot(input: SnapshotInputs): MarketSnapshot {
     };
   };
   const usd = (v: bigint): string => formatUnits(v, VALUE_DECIMALS);
+  const budget = input.sale_budget === undefined || input.sale_budget === null ? null : SaleBudget.parse(input.sale_budget);
+  const budgetOf = (b: SaleBudget, a: Asset) => ({ ...b[a], max_sale_units: maxSaleUnits(b, a).toString() });
   return {
     assets: { usdc: asset("usdc"), wnear: asset("wnear") },
     grant: {
@@ -105,6 +162,7 @@ export function buildSnapshot(input: SnapshotInputs): MarketSnapshot {
       turnover_used_usd: usd(BigInt(grant.turnover_used)),
       max_concession_bps: grant.policy.max_concession_bps,
     },
+    ...(budget === null ? {} : { runner_sale_budget: { usdc: budgetOf(budget, "usdc"), wnear: budgetOf(budget, "wnear") } }),
     market_notes: input.notes,
   };
 }

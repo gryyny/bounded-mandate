@@ -41,7 +41,7 @@ function inputs(balances: Record<Asset, bigint>, current: Record<Asset, PriceObs
     key_op_in_flight: false,
     ...over,
   };
-  return { grant, prices: current, decimals: DECIMALS, balances };
+  return { grant, prices: current, decimals: DECIMALS, balances, sale_budget: null };
 }
 
 const NOTES = ["synthetic market note"];

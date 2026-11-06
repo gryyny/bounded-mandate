@@ -2,7 +2,7 @@
 import type { Account } from "near-api-js";
 import { MAX_GAS, type NearClient, type Outcome } from "../near/client.js";
 import type { Proposal } from "../types.js";
-import { parseJsonText, sha256Hex, validateDecision, type AdapterVerdict } from "./decision.js";
+import { judge, sha256Hex, type AdapterVerdict } from "./decision.js";
 import { buildPrompt, type BuiltPrompt } from "./prompt.js";
 import type { ModelCall, ModelProvider } from "./providers.js";
 import type { MarketSnapshot } from "./snapshot.js";
@@ -13,12 +13,8 @@ export interface AgentDecision {
   verdict: AdapterVerdict;
 }
 
-export function judge(decisionText: string | null): AdapterVerdict {
-  if (decisionText === null) return { kind: "rejected", boundary: "adapter-schema", errors: ["model produced no decision"] };
-  const json = parseJsonText(decisionText);
-  if (!json.ok) return { kind: "rejected", boundary: "adapter-schema", errors: [`not JSON: ${json.error}`] };
-  return validateDecision(json.value);
-}
+// Kept here for existing importers; the rehearsal path imports it from decision.ts, which has no chain client.
+export { judge };
 
 export async function decide(provider: ModelProvider, snapshot: MarketSnapshot): Promise<AgentDecision> {
   const prompt = buildPrompt(snapshot);

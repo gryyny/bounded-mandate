@@ -39,10 +39,12 @@ export const DECISION_JSON_SCHEMA = {
   },
 } as const;
 
-export type AdapterVerdict =
-  | { kind: "proposal"; proposal: Proposal; reason: string }
-  | { kind: "decline"; reason: string }
-  | { kind: "rejected"; boundary: "adapter-schema"; errors: string[] };
+export const AdapterVerdict = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("proposal"), proposal: Proposal, reason: z.string() }).strict(),
+  z.object({ kind: z.literal("decline"), reason: z.string() }).strict(),
+  z.object({ kind: z.literal("rejected"), boundary: z.literal("adapter-schema"), errors: z.array(z.string()) }).strict(),
+]);
+export type AdapterVerdict = z.infer<typeof AdapterVerdict>;
 
 /** Strict validation of untrusted model output. Never repairs, coerces or drops fields. */
 export function validateDecision(raw: unknown): AdapterVerdict {
@@ -58,6 +60,14 @@ export function validateDecision(raw: unknown): AdapterVerdict {
   return d.action === "propose"
     ? { kind: "proposal", proposal: d.proposal, reason: d.reason }
     : { kind: "decline", reason: d.reason };
+}
+
+/** Judges the model's decision text: exactly one JSON value matching `ModelDecision`, or a rejection. */
+export function judge(decisionText: string | null): AdapterVerdict {
+  if (decisionText === null) return { kind: "rejected", boundary: "adapter-schema", errors: ["model produced no decision"] };
+  const json = parseJsonText(decisionText);
+  if (!json.ok) return { kind: "rejected", boundary: "adapter-schema", errors: [`not JSON: ${json.error}`] };
+  return validateDecision(json.value);
 }
 
 /** Parses model text that should be exactly one JSON value. */
