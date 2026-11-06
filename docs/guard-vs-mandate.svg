@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" role="img" aria-labelledby="t d" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
 <title id="t">Guard versus mandate: what happens to a withheld signed order</title>
-<desc id="d">Two columns, one sandbox scenario each. In both, the agent's order is signed and someone withholds it. Left, a guard design (our re-implementation of the Claw Guard design, gate T5): the owner pauses or removes the agent, which stops new requests only; the withheld order is relayed and executes; a regrant re-registers the same fixed-path key and revives it. Right, the bounded mandate (gate T1): the owner revokes, the contract removes the grant's signing key from intents.near, the verifier rejects the withheld order because the key no longer exists, and a regrant signs with a new key on a new path, so the old order stays invalid.</desc>
+<desc id="d">Two columns, one sandbox scenario each. In both, the agent's order is signed and someone withholds it. Left, a guard design (our re-implementation of the Claw Guard design, gate T5): the owner pauses or removes the agent, which stops new requests only; a withheld order is relayed and executes; removing the key on Intents blocks a second withheld order, but a regrant re-registers the same fixed-path key and that order then executes. Right, the bounded mandate (gate T1): the owner revokes, the contract removes the grant's signing key from intents.near, the verifier rejects the withheld order because the key no longer exists, and a regrant signs with a new key on a new path, so the old order stays invalid.</desc>
 <style>
   .bg { fill: #fbf9f4; stroke: #b9b09d; }
   .ink { fill: #1c1d21; } .muted { fill: #5f5b52; }
@@ -63,9 +63,9 @@
 
 <!-- step 4: regrant -->
 <rect class="bad" x="40" y="378" width="420" height="72" rx="6"/>
-<text class="badt tag" x="56" y="398">4 · REGRANT</text>
-<text class="badt tb" x="56" y="420">The old order executes again.</text>
-<text class="ink t" x="56" y="439">The same fixed-path key is registered again.</text>
+<text class="badt tag" x="56" y="398">4 · KEY REMOVED ON INTENTS, THEN REGRANT</text>
+<text class="badt tb" x="56" y="420">A second withheld order: blocked, then executes.</text>
+<text class="ink t" x="56" y="439">The regrant re-registers the same fixed-path key.</text>
 <rect class="good" x="500" y="378" width="420" height="72" rx="6"/>
 <text class="goodt tag" x="516" y="398">4 · REGRANT</text>
 <text class="goodt tb" x="516" y="420">The old order stays invalid.</text>
