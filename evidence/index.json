@@ -2,12 +2,20 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/0e915a2",
+      "revision": "0e915a2871b515c4e8ebc6ed6c13f1a1f0535161",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance with 33 required cases; demo bound to the acceptance run",
+      "run": "evidence/0e915a2/run.json",
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1470 s cold (TypeScript 524/524, Rust 196 passed), acceptance run 20261106T154634365Z-5f0cee0f8fdb; make demo exit 0 in 62 s, 59/59 (setup 16.0 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42246105392: make test certified (acceptance run 20261106T154938701Z-c700d334eefe, about 2051 s), make demo 59/59 (setup 14.4 s, story 20.4 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 160e8378..., walkthrough 179.7 s sha256 ae66a665...); mp4 files not committed, see video.json. Site check over page, console and video: 0 problems."
+    },
+    {
       "path": "evidence/f01b496",
       "revision": "f01b49601ad5f01aedfa2239cd02b270f5bb0e30",
-      "status": "certified",
+      "status": "superseded",
       "rules": "gate-report/2 acceptance with 33 required cases (adds DAO, AGENT, HANDOFF, WITHDRAW, LIVE, CONSOLE); demo bound to the acceptance run",
       "run": "evidence/f01b496/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1438 s cold, acceptance run 20261106T144554015Z-7e84a13280e1; make demo exit 0 in 62 s, 59/59 (setup 16.2 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42236754562: make test certified (acceptance run 20261106T145011163Z-ed47b181b44f), make demo 59/59. Both video cuts rendered from the fresh-clone demo (Certified for this demo); mp4 files are not committed, see video.json. Console index and the demo's console screenshots under console/; release-check reports under release/."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1438 s cold, acceptance run 20261106T144554015Z-7e84a13280e1; make demo exit 0 in 62 s, 59/59 (setup 16.2 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42236754562: make test certified (acceptance run 20261106T145011163Z-ed47b181b44f), make demo 59/59. Both video cuts rendered from the fresh-clone demo (Certified for this demo); mp4 files are not committed, see video.json. Console index and the demo's console screenshots under console/; release-check reports under release/. Superseded by 0e915a2 (route-specific Agent API comparison on the page, planned video URLs, video directory in the site assembly). Contract source identical."
     },
     {
       "path": "evidence/f60f999",
