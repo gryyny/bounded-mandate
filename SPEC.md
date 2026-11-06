@@ -2,7 +2,7 @@
 
 This is the canonical product specification for one competition-ready bounded trading mandate.
 
-Status: selected and in implementation. Execution results belong in the status register, not here. The source-verified primitives below are inputs, not proof that our code works.
+Status: selected; implemented and certified in sandbox, with no mainnet run yet. Execution results belong in the status register, not here. The source-verified primitives below are inputs, not proof that our code works.
 
 ## Product and claim
 
@@ -23,9 +23,11 @@ Required:
 - Our own separately keyed filler counter-signs the matching side and uses permissionless `execute_intents`.
 - A real LLM-to-proposal adapter, a recorded genuine model interaction, and deterministic malicious-request replay. A model need not accept an injection for the policy to be tested.
 - A complete unfunded fresh-clone demo, real integration evidence after authorization, and a polished generated static page.
+- A static owner console (no backend). Ordinary visitors get a read-only view of policy, grant status, key presence, orders, balances, recovery state and evidence provenance. The owner's revoke, recover and withdrawal actions are previewed exactly and signed outside the page's custody: the page holds no private key or model credential, enforces owner, network and deployment checks before enabling a control, survives cancelled signatures and reloads during pending actions, and never resubmits automatically. Each signed action is handed to the runner by transaction hash and verified there.
+- A tested DAO-owner integration: a pinned Sputnik DAO account as the fixed owner, exercising grant, revoke, recovery and withdrawal through threshold-voted proposals in sandbox. The contract's owner semantics are unchanged; the DAO is one owner account, not a pool or a grantor of third-party money.
 - Predecessor-authorized recovery to the fixed owner, independent of oracle, agent, breaker and MPC.
 
-Excluded: pooled shares, fees on third-party money, DAO grantor, cross-chain entry/exit, public solver relay, taker-pays-first, generic execution, a backend/UI application, a second hackathon entry, or deprecated/unverified primitives.
+Excluded: pooled shares, fees on third-party money, multi-member pooled or DAO-as-grantor-of-others' funds, cross-chain entry/exit, public solver relay, taker-pays-first, generic execution, a backend service or hosted application holding keys or credentials, a second hackathon entry, or deprecated/unverified primitives. The static owner console and the single-owner DAO integration above are admitted deliberately.
 
 ## Authority lifecycle
 
@@ -79,6 +81,17 @@ Stop new authorization and confirm removal before recovering. The destination is
 
 Handle each asset's failed receipt and retry without double payment or stranded accounting. Recovery must not read a price or request a signature. Its success still depends on NEAR, Intents, token contracts and sufficient owner/recovery gas.
 
+## Owner withdrawal
+
+After recovery, the owner separately withdraws each asset from its own Intents account to its NEAR account with `ft_withdraw` on the verifier. This is the owner's action, outside the mandate contract and outside every recovery claim; the contract's recovery destination does not change. Check the owner's storage registration on each token contract first and register only where needed. Verify token balances before and after from final receipts. A failed or refunded withdrawal receipt leaves the Intents balance intact and is retried without double counting; one asset's failure does not block or repeat the other's.
+
+## Runner handoff and agent budgets
+
+The runner persists each external owner action as an intent (signer, approved key, receiver, complete action list, arguments, gas/deposit bounds and expected end state) before the owner signs it, then imports the signed transaction by hash: it checks chain, signer and key, receiver, every action and argument, bounds, the final receipt tree and the expected state and balance changes, accounts for the fee and the key's nonce, and refuses unrelated, altered or duplicate imports. A lost response is reconciled from the chain on resume, never resubmitted; no step is charged or executed twice. Owner transactions the ledger does not record still stop the runner.
+
+The agent's snapshot, prompt and validation include the runner's remaining per-order and cumulative sale budgets. A proposal above them is rejected, never silently clipped; a useful partial rebalance within the tighter cap is valid. A no-transaction rehearsal mode exercises the provider path and records planned inventory separately from observed balances; it does not qualify a live provider without an approved call.
+
+
 ## Acceptance tests
 
 `make test` runs all local gates; none may be replaced by a recorded pass string. Mock external dependencies explicitly, while executing actual contract logic and the pinned verifier WASM. Retain seeds and replayable failures. A gate passes only when every one of its required cases passed in one run of a clean source revision, with spec, fixture and WASM hashes bound to that run. Missing cases leave the gate incomplete. Demo checks are not acceptance results.
@@ -99,12 +112,15 @@ Also require:
 - Changed fixtures fail verification; expected output is derived from execution, not hard-coded.
 - A separately authorized small mainnet trade covers our encoding, key registration, actual signer, settlement and recovery with receipts. One trade proves integration only.
 - A clear static evidence page and video complete the competition entry; they are not optional leftovers.
+- The runner's external-action import rejects wrong chain, signer, key, receiver, method, arguments and bounds, altered and duplicate hashes; resume after a lost response neither resubmits nor double-charges; both withdrawals pass with an unregistered owner and a failed withdrawal receipt.
+- The console's owner flow runs in a real browser against sandbox through a labelled local signing adapter: wrong owner and wrong network disable the controls, a cancelled signature and a reload during a pending action resubmit nothing, and the runner imports the resulting hashes. This does not establish compatibility with any external wallet.
+- The DAO-owner case passes against pinned Sputnik code in sandbox: insufficient approvals execute nothing, threshold approval executes grant, revoke and recovery, and recovery reaches the DAO's Intents account. If it cannot pass, the claim is withdrawn rather than weakened.
 
 T1/T4 failure blocks the corresponding claim; T2/T2b failure blocks signing safety; T3 failure blocks the stated policy; T5 failure leaves competitive differentiation unresolved. Keep independent corrective work moving without claiming these gates passed.
 
 ## Demonstration
 
-Show grant and limits; an actual permitted proposal/trade; another signed order withheld; malicious requests rejected; owner revocation confirmed; the withheld order rejected on submission; recovery with agent/oracle/MPC unavailable.
+Show the mandate reviewed in the console; grant and limits; a bounded agent proposal and an actual permitted trade; another signed order withheld; malicious requests rejected; owner revocation through the owner controls, confirmed; the still-unexpired withheld order rejected on submission; recovery into the owner's Intents account with agent/oracle/MPC unavailable; then, separately, the owner's withdrawal of both assets to its NEAR account. The unfunded demo uses recorded genuine model output and labelled test doubles; it never implies a new model call or mainnet execution. An expired order, a malformed signature or an unrelated failure is never evidence of revocation.
 
 The deterministic replay tells this complete story in under a minute after documented setup. Cold installation/build time is measured separately. Clearly label sandbox execution, recorded mainnet receipts and any actual live run. Never guarantee that network delays fit the replay's duration.
 
@@ -122,4 +138,4 @@ These were verified in the prior research and supplied by the user. Reuse them; 
 | Latency | Previously measured median 4.2 seconds with one 117-second timeout. Not measurements of this implementation and not an SLA. |
 | Recovery | Predecessor-authorized mt_transfer/ft_withdraw; no MPC or oracle required by that authority path. Our receiver handling, gas and retries remain untested. |
 
-Protocol composition is supported by source; our payload bytes, gas, lifecycle and mainnet execution remain implementation gates. No production fixture bundle, successful run or real model trace currently exists.
+Protocol composition is supported by source. Payload bytes, gas and lifecycle are exercised in sandbox against the pinned verifier, and genuine model interactions are recorded; mainnet execution remains an unrun, separately approved gate.
