@@ -832,7 +832,8 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
     const part = section(html, "agent-api");
     expect(part).toContain("Related design: the NEAR Intents Agent API");
     expect(part).toContain(`commit <code>${AGENT_API_EXAMPLES.commit}</code>`);
-    expect(AGENT_API_EXAMPLES.commit).toMatch(/^2552895[0-9a-f]{33}$/);
+    // The commit read on 2026-11-06 (README source 9), pinned independently of the constant.
+    expect(part).toContain("commit <code>25528957276e18ec933eb7d6e8e5c59a5fe033c4</code>");
     expect(part).toContain(escapeHtml(AGENT_API_EXAMPLES_URL));
     expect(AGENT_API_EXAMPLES_URL).toContain(`/blob/${AGENT_API_EXAMPLES.commit}/07-native-accounts/README.md#L`);
     expect(part).toContain(`read ${AGENT_API_EXAMPLES.read}`);

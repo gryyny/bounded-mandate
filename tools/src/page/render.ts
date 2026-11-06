@@ -391,7 +391,7 @@ ${body}${injectionBlock}`);
 
 /** The planned hosting locations, always labelled as planned and unpublished; never a link. */
 const plannedLine = (): string =>
-  `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing is hosted there yet.</p>
+  `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing was hosted there when this page was rendered.</p>
 <p class="planned">${chip("pending", PLANNED_LABEL)} Short video <code>${escapeHtml(PLANNED_URLS.video)}</code> · walkthrough <code>${escapeHtml(PLANNED_URLS.walkthrough)}</code>.</p>`;
 
 function pathsSection(live: LiveView, stageCount: number): string {
@@ -403,7 +403,7 @@ function pathsSection(live: LiveView, stageCount: number): string {
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
 <li><p class="do">Watch the short video</p><p class="see">See: the ${String(stageCount)} stages above captioned with this run's numbers, in under 90 seconds.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
-<li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (<code>make test</code> took 1438 s cold in a macOS arm64 fresh clone at f01b496).</p></li>
+<li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (<code>make test</code> took 1470 s cold in a macOS arm64 fresh clone at 0e915a2).</p></li>
 </ol>${plannedLine()}</section>`;
 }
 
