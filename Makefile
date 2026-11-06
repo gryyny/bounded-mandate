@@ -43,6 +43,7 @@ test:
 
 demo:
 	$(NPM_CI)
+	$(BROWSER)
 	$(call build_wasm)
 	$(TSX) src/demo/main.ts
 
