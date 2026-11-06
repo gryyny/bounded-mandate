@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assembleSite, checkCsp, checkSite, inlineBlocks, references } from "../src/release/site.js";
+import { assembleSite, checkCsp, checkSite, inlineBlocks, references, serveSite } from "../src/release/site.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -133,5 +133,26 @@ describe("site check over a local server", () => {
     expect(readFileSync(join(out, "index.html"), "utf8")).toBe(readFileSync(join(src, "index.html"), "utf8"));
     const report = await checkSite(out, ["", "console/"]);
     expect(report.problems).toEqual([]);
+  });
+
+  it("serves the planned video files under /video/ only when a video directory is given", async () => {
+    const src = site(goodSite());
+    const videos = join(src, "videos");
+    mkdirSync(videos, { recursive: true });
+    writeFileSync(join(videos, "bounded-mandate-short.mp4"), "SYNTHETIC short cut");
+    const without = assembleSite({ page: join(src, "index.html"), console: join(src, "console"), out: join(src, "without") });
+    expect(existsSync(join(without, "video"))).toBe(false);
+    const out = assembleSite({ page: join(src, "index.html"), console: join(src, "console"), video: videos, out: join(src, "with") });
+    expect(readFileSync(join(out, "video/bounded-mandate-short.mp4"), "utf8")).toBe("SYNTHETIC short cut");
+    expect((await checkSite(out, ["", "console/"])).problems).toEqual([]);
+    const { server, origin } = await serveSite(out);
+    try {
+      const res = await fetch(`${origin}/bounded-mandate/video/bounded-mandate-short.mp4`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("video/mp4");
+      expect(await res.text()).toBe("SYNTHETIC short cut");
+    } finally {
+      server.close();
+    }
   });
 });

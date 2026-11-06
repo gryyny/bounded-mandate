@@ -1,6 +1,6 @@
 // Release-preparation checks. Nothing here publishes, deploys or contacts a remote host.
 //   tsx src/release/main.ts secrets [--repo <name>=<path> ...] [--allow <file>]
-//   tsx src/release/main.ts site --page <index.html> [--console <dir>] [--route <path> ...]
+//   tsx src/release/main.ts site --page <index.html> [--console <dir>] [--video <dir>] [--route <path> ...]
 //   tsx src/release/main.ts licenses
 //   tsx src/release/main.ts links          (README local links, line anchors and headings)
 // Reports go to out/release/ (ignored). Exit status 1 when a check has open problems.
@@ -45,7 +45,8 @@ async function main(): Promise<number> {
   if (command === "site") {
     const page = flags(args, "page")[0] ?? join(ROOT, "out/page/index.html");
     const consoleDir = flags(args, "console")[0];
-    const site = assembleSite({ page, console: consoleDir, out: join(OUT, "site") });
+    const videoDir = flags(args, "video")[0];
+    const site = assembleSite({ page, console: consoleDir, video: videoDir, out: join(OUT, "site") });
     const routes = flags(args, "route");
     if (routes.length === 0) routes.push("", ...(consoleDir === undefined ? [] : ["console/"]));
     const report = await checkSite(site, routes);

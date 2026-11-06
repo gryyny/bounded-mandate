@@ -29,11 +29,13 @@ const TYPES: Record<string, string> = {
 };
 
 /** Copies the page and optional console into one site directory: `index.html` and `console/`. */
-export function assembleSite(opts: { page: string; console?: string | undefined; out: string }): string {
+export function assembleSite(opts: { page: string; console?: string | undefined; video?: string | undefined; out: string }): string {
   rmSync(opts.out, { recursive: true, force: true });
   mkdirSync(opts.out, { recursive: true });
   cpSync(opts.page, join(opts.out, "index.html"));
   if (opts.console !== undefined) cpSync(opts.console, join(opts.out, "console"), { recursive: true });
+  // The planned video URLs live under /video/; the release commit adds the final cuts there.
+  if (opts.video !== undefined) cpSync(opts.video, join(opts.out, "video"), { recursive: true });
   // GitHub Pages runs Jekyll unless this file exists; Jekyll drops files and folders starting with _ or .
   writeFileSync(join(opts.out, ".nojekyll"), "");
   return opts.out;

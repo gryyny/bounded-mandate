@@ -26,7 +26,7 @@ npx tsx src/release/main.ts site --page ../evidence/<rev>/page/index.html --cons
 
 It assembles `out/release/site/`, serves it from `127.0.0.1` under `/bounded-mandate/`, requests every route and every linked page, asset and fragment, checks each page's CSP, and writes `out/release/site-check.json`. External links are listed and never requested. It exits 1 on any problem.
 
-At f60f999 the only problem is the known `VIDEO_URL_PENDING` link (the video URL is set by a normal commit and certification before hosting).
+At f01b496 the only problem was the then-pending video link; the page now shows the planned video URLs (`/video/bounded-mandate-short.mp4`, `/video/bounded-mandate-demo.mp4`) as plain text labelled unpublished. Before hosting, the release commit adds the final cuts under `evidence/<rev>/video/` and the check is run with `--video ../evidence/<rev>/video`, so those URLs resolve.
 
 ## Order of release steps
 
