@@ -2,11 +2,20 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/f01b496",
+      "revision": "f01b49601ad5f01aedfa2239cd02b270f5bb0e30",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance with 33 required cases (adds DAO, AGENT, HANDOFF, WITHDRAW, LIVE, CONSOLE); demo bound to the acceptance run",
+      "run": "evidence/f01b496/run.json",
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1438 s cold, acceptance run 20261106T144554015Z-7e84a13280e1; make demo exit 0 in 62 s, 59/59 (setup 16.2 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42236754562: make test certified (acceptance run 20261106T145011163Z-ed47b181b44f), make demo 59/59. Both video cuts rendered from the fresh-clone demo (Certified for this demo); mp4 files are not committed, see video.json. Console index and the demo's console screenshots under console/; release-check reports under release/."
+    },
+    {
       "path": "evidence/f60f999",
       "revision": "f60f9990ae51f6b8b8d75d553071f85b19ec6ae3",
-      "status": "certified",
+      "status": "superseded",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
-      "run": "evidence/f60f999/run.json"
+      "run": "evidence/f60f999/run.json",
+      "note": "certified; superseded by f01b496 (owner console, external owner-action import, owner withdrawals, Sputnik DAO owner, agent sale budgets and rehearsal, release checks). Contract source identical."
     },
     {
       "path": "evidence/7fc3f90",
