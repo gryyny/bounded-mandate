@@ -776,12 +776,22 @@ async fn t5_baseline_threat_model() -> Result<()> {
         .as_str()
         .context("hash")?
         .to_owned();
-    let pending: Vec<Value> = env.mpc.view("list_pending").await?.json()?;
-    let request_id = pending
-        .iter()
-        .find(|p| p["payload_hex"] == json!(c_hash))
-        .and_then(|p| p["request_id"].as_u64())
-        .context("pending sign request for C")?;
+    // The receipt turns PendingSignature in the guard's receipt; the signer's own sign call executes in a later
+    // receipt, so its pending request can appear a block after the status.
+    let mut polls = 0;
+    let request_id = loop {
+        polls += 1;
+        let pending: Vec<Value> = env.mpc.view("list_pending").await?.json()?;
+        if let Some(id) = pending
+            .iter()
+            .find(|p| p["payload_hex"] == json!(c_hash))
+            .and_then(|p| p["request_id"].as_u64())
+        {
+            break id;
+        }
+        ensure!(polls < 50, "pending sign request for C");
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    };
     let disclosed: Value = env
         .mpc
         .view("get_disclosed_signature")
