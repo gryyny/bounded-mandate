@@ -1,0 +1,75 @@
+# DISABLED. GitHub Pages deployment for the certified evidence page and owner console.
+#
+# This file is deliberately outside .github/workflows/, so GitHub never runs it. Enabling it publishes the
+# site and needs the lead's separate approval (see hosting/README.md). To enable after approval:
+#   1. make the repository public (lead), and set Settings > Pages > Source to "GitHub Actions" (lead);
+#   2. git mv hosting/pages.yml.disabled .github/workflows/pages.yml in a reviewed commit;
+#   3. run it by hand (workflow_dispatch) with the certified revision; it has no push or schedule trigger.
+#
+# It serves the committed, certified bytes unchanged: nothing is built or edited here. It fails before
+# upload if the local routing/CSP check fails or the bytes differ from the certified evidence.
+name: pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Certified source revision whose evidence directory is served (evidence/<revision>/)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
+      - name: Install tools (no lifecycle scripts)
+        run: cd tools && npm ci --no-audit --no-fund --ignore-scripts
+      - name: Assemble the site and check routes, links, assets and CSP on 127.0.0.1
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          case "$REVISION" in (*[!0-9a-f]*|'') echo "revision must be a hex commit id" >&2; exit 2;; esac
+          dir="evidence/$REVISION"
+          test -f "$dir/page/index.html"
+          console_args=()
+          if [ -d "$dir/console" ]; then console_args=(--console "$PWD/$dir/console"); fi
+          (cd tools && npx --no-install tsx src/release/main.ts site --page "$PWD/../$dir/page/index.html" "${console_args[@]}")
+          # Served bytes must equal the certified files.
+          cmp "$dir/page/index.html" out/release/site/index.html
+          if [ -d "$dir/console" ]; then diff -r "$dir/console" out/release/site/console; fi
+          ( cd out/release/site && find . -type f ! -name .nojekyll -exec sha256sum {} + | sort -k2 ) | tee out/release/site-sha256.txt
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: out/release/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
