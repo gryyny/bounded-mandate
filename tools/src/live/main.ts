@@ -14,6 +14,11 @@
 //   key, receiver, every action and argument, bounds, the key's nonce, the final receipt tree and the step's end state.
 //   Unrelated, altered or duplicate handoffs are refused and recorded as refused; nothing is ever submitted for the
 //   owner. A handoff comes from LiveDeps.handoff, MANDATE_LIVE_HANDOFF=<file> or <ledger>/external/<stem>.handoff.json.
+// - A transaction the ledger does not record stops the run, never absorbed: before every runner-signed transaction and
+//   every import the signing key's chain nonce must equal the ledger's expectation (the transaction's must be the next),
+//   and the owner account's complete access-key list must still match the start snapshot (manifest
+//   expected_owner_keys, else preflight): no key added or removed, no key the ledger does not track used. Resumes check
+//   the same. A refused handoff whose transaction is found on chain records its fee, charged once if the owner paid.
 // - Owner withdrawals (withdraw, withdraw_external) run after recovery, outside recovery claims; a refunded or failed
 //   attempt leaves the Intents balance intact and is retried on resume, the other asset is neither blocked nor repeated.
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
@@ -49,9 +54,9 @@ import { Evidence, GrantView, OrderView, SignedNep413, type Asset, type Assertio
 import { BudgetExceeded, checkActual, checkPlanned, sellProblem, totals, type Planned } from "./budget.js";
 import { EXTERNAL_HANDOFF_SCHEMA, EXTERNAL_INTENT_SCHEMA, ExternalHandoff, ExternalIntent, intentSha256, intentStem, transactionProblems, type ExternalKind } from "./external.js";
 import { Ledger, canonical, type LedgerEntry } from "./ledger.js";
-import { Refusal, externalOwnerKey, loadManifest, type LiveManifest, type ModelSource, type Step } from "./manifest.js";
+import { OwnerKey, Refusal, externalOwnerKey, loadManifest, type LiveManifest, type ModelSource, type Step } from "./manifest.js";
 import { credentialProblems } from "./network.js";
-import { STEP_SIGNER, preflight, stepGasTgas, worstFee, type Check } from "./preflight.js";
+import { STEP_SIGNER, ownerKeyChanges, ownerKeySnapshot, preflight, stepGasTgas, worstFee, type Check } from "./preflight.js";
 import {
   balancesOf,
   classifyRelay,
@@ -1034,9 +1039,35 @@ function knownHashes(ledger: Ledger): Set<string> {
 
 const handoffOfIntent = (ledger: Ledger, sha: string): LedgerEntry | undefined => ledger.ofKind("external-handoff").find((e) => e.data.intent_sha256 === sha);
 
-/** Records a refused handoff (never a success) and stops the run. */
-function refuseHandoff(rt: Runtime, step: number | null, h: ExternalHandoff, problems: string[]): never {
-  rt.ledger.append("external-refused", { step, intent_sha256: h.intent_sha256, tx_hash: h.tx_hash, signer_id: h.signer_id, problems });
+/** What a refused handoff's transaction cost, as recorded with the refusal; budget.ts charges `charged` fees once. */
+interface RefusalFee {
+  fee_yocto: string | null;
+  payer: string | null;
+  charged: boolean;
+  fee_note: string;
+}
+
+/**
+ * The fee of a refused handoff's transaction: charged when it is found final on this chain, the owner paid it and
+ * the ledger does not already hold it. Looked up unless `found` is given; a hash the ledger knows is not looked up.
+ */
+async function refusalFee(rt: Runtime, h: ExternalHandoff, found?: Outcome): Promise<RefusalFee> {
+  if (found === undefined && knownHashes(rt.ledger).has(h.tx_hash)) {
+    return { fee_yocto: null, payer: null, charged: false, fee_note: "already in the ledger: counted where it was first recorded, never again" };
+  }
+  let o = found ?? null;
+  if (o === null && (await rt.client.txKnown(h.tx_hash, h.signer_id)) === "known") o = await rt.client.resolve(`refused handoff ${h.tx_hash}`, h.signer_id, h.tx_hash);
+  if (o === null || o.ambiguous || !o.final || o.transaction === undefined) {
+    return { fee_yocto: null, payer: null, charged: false, fee_note: "not found final on this chain at refusal: its fee, if any, is unknown and not counted" };
+  }
+  const payer = o.transaction.signer_id;
+  const charged = payer === rt.m.accounts.owner;
+  return { fee_yocto: o.fee_yocto, payer, charged, fee_note: charged ? "paid by the owner: charged once against max_fee_yocto" : `paid by ${payer}, not the owner: recorded, not charged` };
+}
+
+/** Records a refused handoff (never a success) with its fee and stops the run. */
+function refuseHandoff(rt: Runtime, step: number | null, h: ExternalHandoff, problems: string[], fee: RefusalFee): never {
+  rt.ledger.append("external-refused", { step, intent_sha256: h.intent_sha256, tx_hash: h.tx_hash, signer_id: h.signer_id, problems, ...fee });
   const where = step === null ? "" : `step ${step + 1}: `;
   throw new Stop(`${where}handoff ${h.tx_hash} refused: ${problems.join("; ")}. Nothing was imported; nothing is resubmitted.`);
 }
@@ -1044,8 +1075,10 @@ function refuseHandoff(rt: Runtime, step: number | null, h: ExternalHandoff, pro
 const StartNonces = z.object({ owner: z.string(), agent: z.string(), filler: z.string(), owner_external: z.string().optional() }).strict();
 
 /**
- * Nonce each key must have on chain if every transaction of it is in the ledger: the start nonce, advanced by our
- * executed transactions and by imported owner transactions. Refused or unrelated transactions advance nothing.
+ * Nonce each key must have on chain if every transaction of it is in the ledger: the start nonce plus one per executed
+ * runner transaction and per imported owner transaction. Refused or unrelated transactions advance nothing. Each
+ * recorded transaction was checked to be exactly the next nonce before it was sent or imported, so a gap is never
+ * absorbed.
  */
 function expectedNonces(rt: Runtime): { account: string; key: string; nonce: bigint }[] {
   const start = StartNonces.parse(rt.ledger.entries[0]?.data.nonces);
@@ -1057,16 +1090,47 @@ function expectedNonces(rt: Runtime): { account: string; key: string; nonce: big
   ]);
   const ext = externalOwnerKey(m);
   if (!keys.has(ext) && start.owner_external !== undefined) keys.set(ext, { account: m.accounts.owner, nonce: BigInt(start.owner_external) });
-  const bump = (key: unknown, nonce: unknown): void => {
+  const bump = (key: unknown): void => {
     const k = typeof key === "string" ? keys.get(key) : undefined;
-    if (k !== undefined && typeof nonce === "string" && BigInt(nonce) > k.nonce) k.nonce = BigInt(nonce);
+    if (k !== undefined) k.nonce += 1n;
   };
   for (const intent of rt.ledger.ofKind("tx-intent")) {
     const res = [...rt.ledger.entries].reverse().find((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.tx_hash === intent.data.tx_hash);
-    if (res?.data.status === "executed") bump(intent.data.public_key, intent.data.nonce);
+    if (res?.data.status === "executed") bump(intent.data.public_key);
   }
-  for (const h of rt.ledger.ofKind("external-handoff")) bump(h.data.public_key, h.data.nonce);
+  for (const h of rt.ledger.ofKind("external-handoff")) bump(h.data.public_key);
   return [...keys].map(([key, v]) => ({ key, ...v }));
+}
+
+const roleOfKey = (rt: Runtime, k: { account: string; key: string }): string =>
+  k.account === rt.m.accounts.owner ? (k.key === rt.m.keys.owner.public_key ? "owner" : "owner external") : k.account === rt.m.accounts.agent ? "agent" : "filler";
+
+/**
+ * Changes of the owner account's access keys against the snapshot taken at the run's start: an added or removed key, a
+ * changed permission, or a nonce change of a key whose nonce the ledger does not track.
+ */
+async function ownerKeyProblems(rt: Runtime): Promise<string[]> {
+  const snapshot = z.array(OwnerKey).safeParse(rt.ledger.entries[0]?.data.owner_keys);
+  if (!snapshot.success) return ["the ledger's start entry holds no snapshot of the owner account's access keys"];
+  const owner = rt.m.accounts.owner;
+  const tracked = new Set(expectedNonces(rt).filter((k) => k.account === owner).map((k) => k.key));
+  return ownerKeyChanges(snapshot.data, ownerKeySnapshot(await rt.client.accessKeys(owner)), tracked);
+}
+
+/**
+ * Why the chain shows a transaction of `account` the ledger does not record, or []: a tracked key whose nonce is not the
+ * ledger's expectation (`importing` names the key of a transaction being imported and the nonce it must now have), and
+ * for the owner account any change of its key list against the start snapshot.
+ */
+async function unrecordedProblems(rt: Runtime, account: string, importing?: { key: string; nonce: bigint }): Promise<string[]> {
+  const p: string[] = [];
+  for (const k of expectedNonces(rt).filter((x) => x.account === account)) {
+    const want = importing?.key === k.key ? importing.nonce : k.nonce;
+    const chain = await rt.client.accessKeyNonce(k.account, k.key);
+    if (chain !== want) p.push(`${roleOfKey(rt, k)} key nonce on chain is ${String(chain)}, ledger expects ${want}`);
+  }
+  if (account === rt.m.accounts.owner) p.push(...(await ownerKeyProblems(rt)));
+  return p;
 }
 
 /**
@@ -1077,17 +1141,22 @@ function expectedNonces(rt: Runtime): { account: string; key: string; nonce: big
  */
 async function importHandoff(rt: Runtime, rec: IntentRecord, h: ExternalHandoff): Promise<void> {
   const { step: i, intent } = rec;
-  if (knownHashes(rt.ledger).has(h.tx_hash)) refuseHandoff(rt, i, h, [`duplicate: transaction ${h.tx_hash} is already in the ledger`]);
+  if (knownHashes(rt.ledger).has(h.tx_hash)) refuseHandoff(rt, i, h, [`duplicate: transaction ${h.tx_hash} is already in the ledger`], await refusalFee(rt, h));
   if (h.intent_sha256 !== rec.intent_sha256) {
     const other = rt.ledger.ofKind("external-intent").find((e) => e.data.intent_sha256 === h.intent_sha256);
-    refuseHandoff(rt, i, h, [other === undefined ? `unrelated: no intent ${h.intent_sha256} in this ledger` : `unrelated: the handoff names intent ${h.intent_sha256} (step ${String(other.data.step)}), the pending intent is ${rec.intent_sha256}`]);
+    const problem = other === undefined ? `unrelated: no intent ${h.intent_sha256} in this ledger` : `unrelated: the handoff names intent ${h.intent_sha256} (step ${String(other.data.step)}), the pending intent is ${rec.intent_sha256}`;
+    refuseHandoff(rt, i, h, [problem], await refusalFee(rt, h));
   }
   const prior = handoffOfIntent(rt.ledger, rec.intent_sha256);
-  if (prior !== undefined) refuseHandoff(rt, i, h, [`duplicate: intent ${rec.intent_sha256} was already handed off as ${String(prior.data.tx_hash)}`]);
-  if (h.signer_id !== intent.signer_id) refuseHandoff(rt, i, h, [`wrong signer: the handoff names ${h.signer_id}, the intent requires ${intent.signer_id}`]);
+  if (prior !== undefined) refuseHandoff(rt, i, h, [`duplicate: intent ${rec.intent_sha256} was already handed off as ${String(prior.data.tx_hash)}`], await refusalFee(rt, h));
+  if (h.signer_id !== intent.signer_id) refuseHandoff(rt, i, h, [`wrong signer: the handoff names ${h.signer_id}, the intent requires ${intent.signer_id}`], await refusalFee(rt, h));
   const status = await rt.client.nodeStatus();
   if (status.chain_id !== intent.network.chain_id || status.genesis_hash !== intent.network.genesis_hash) {
-    refuseHandoff(rt, i, h, [`wrong chain: the RPC serves ${status.chain_id}/${status.genesis_hash}, the intent is for ${intent.network.chain_id}/${intent.network.genesis_hash}`]);
+    // The RPC, not necessarily the handoff, is wrong: nothing is looked up or recorded, so the hash can still be
+    // imported once the runner reads the intent's chain.
+    throw new Stop(
+      `step ${i + 1} ${rec.kind}: wrong chain: the RPC serves ${status.chain_id}/${status.genesis_hash}, the intent is for ${intent.network.chain_id}/${intent.network.genesis_hash}; handoff ${h.tx_hash} not looked up, nothing recorded.`,
+    );
   }
   const known = await rt.client.txKnown(h.tx_hash, h.signer_id);
   const found = known === "unknown" ? null : await rt.client.resolve(`import step ${i + 1} ${rec.kind}`, h.signer_id, h.tx_hash, intent.actions[0]?.method ?? "-");
@@ -1095,15 +1164,24 @@ async function importHandoff(rt: Runtime, rec: IntentRecord, h: ExternalHandoff)
   if (found.ambiguous || !found.final || found.transaction === undefined) throw new Stop(`step ${i + 1} ${rec.kind}: transaction ${h.tx_hash} is not final yet; nothing recorded. Resume to import it.`);
   const tx = found.transaction;
   const problems = transactionProblems(intent, tx);
-  if (problems.length > 0) refuseHandoff(rt, i, h, problems);
+  if (problems.length > 0) refuseHandoff(rt, i, h, problems, await refusalFee(rt, h, found));
   const expected = expectedNonces(rt).find((k) => k.key === intent.public_key);
   const chainNonce = await rt.client.accessKeyNonce(intent.signer_id, intent.public_key);
   const txNonce = tx.nonce === null ? null : BigInt(tx.nonce);
   if (expected === undefined || txNonce === null || txNonce !== expected.nonce + 1n || chainNonce !== txNonce) {
-    refuseHandoff(rt, i, h, [
-      `unrecorded owner transaction: the imported transaction has nonce ${String(txNonce)} and the key's nonce on chain is ${String(chainNonce)}, the ledger expects ${String(expected === undefined ? null : expected.nonce + 1n)} for both; transactions exist that the ledger does not record`,
-    ]);
+    refuseHandoff(
+      rt,
+      i,
+      h,
+      [
+        `unrecorded owner transaction: the imported transaction has nonce ${String(txNonce)} and the key's nonce on chain is ${String(chainNonce)}, the ledger expects ${String(expected === undefined ? null : expected.nonce + 1n)} for both; transactions exist that the ledger does not record`,
+      ],
+      await refusalFee(rt, h, found),
+    );
   }
+  // The owner's other tracked key and its whole key list, with this transaction counted.
+  const other = await unrecordedProblems(rt, intent.signer_id, { key: intent.public_key, nonce: txNonce });
+  if (other.length > 0) refuseHandoff(rt, i, h, [`unrecorded owner transaction: ${other.join("; ")}; transactions exist that the ledger does not record`], await refusalFee(rt, h, found));
   rt.ledger.append("external-handoff", { step: i, kind: rec.kind, attempt: rec.attempt, intent_sha256: rec.intent_sha256, tx_hash: h.tx_hash, signer_id: h.signer_id, public_key: tx.public_key, nonce: tx.nonce });
   await finishImport(rt, rec, found, "tx-result");
 }
@@ -1236,16 +1314,16 @@ async function externalStep(rt: Runtime, i: number, step: ExternalStep): Promise
  * Handoffs given in MANDATE_LIVE_HANDOFF are screened before anything runs: a hash the ledger knows, a second hash for
  * a handed-off intent, or an intent this ledger does not have is refused. The rest wait for their pending intent.
  */
-function screenSupplied(rt: Runtime, list: ExternalHandoff[]): void {
+async function screenSupplied(rt: Runtime, list: ExternalHandoff[]): Promise<void> {
   const known = knownHashes(rt.ledger);
   for (const h of list) {
     const intent = rt.ledger.ofKind("external-intent").find((e) => e.data.intent_sha256 === h.intent_sha256);
     const step = intent === undefined ? null : z.number().int().parse(intent.data.step);
-    if (known.has(h.tx_hash)) refuseHandoff(rt, step, h, [`duplicate: transaction ${h.tx_hash} is already in the ledger`]);
-    if (intent === undefined) refuseHandoff(rt, null, h, [`unrelated: no intent ${h.intent_sha256} in this ledger`]);
+    if (known.has(h.tx_hash)) refuseHandoff(rt, step, h, [`duplicate: transaction ${h.tx_hash} is already in the ledger`], await refusalFee(rt, h));
+    if (intent === undefined) refuseHandoff(rt, null, h, [`unrelated: no intent ${h.intent_sha256} in this ledger`], await refusalFee(rt, h));
     const prior = handoffOfIntent(rt.ledger, h.intent_sha256);
-    if (prior !== undefined) refuseHandoff(rt, step, h, [`duplicate: intent ${h.intent_sha256} was already handed off as ${String(prior.data.tx_hash)}`]);
-    if (rt.external.supplied.has(h.intent_sha256)) refuseHandoff(rt, step, h, [`duplicate: a second handoff for intent ${h.intent_sha256}`]);
+    if (prior !== undefined) refuseHandoff(rt, step, h, [`duplicate: intent ${h.intent_sha256} was already handed off as ${String(prior.data.tx_hash)}`], await refusalFee(rt, h));
+    if (rt.external.supplied.has(h.intent_sha256)) refuseHandoff(rt, step, h, [`duplicate: a second handoff for intent ${h.intent_sha256}`], await refusalFee(rt, h));
     rt.external.supplied.set(h.intent_sha256, h);
   }
 }
@@ -1336,10 +1414,11 @@ async function checkNonces(rt: Runtime): Promise<void> {
   for (const k of expectedNonces(rt)) {
     const chain = await client.accessKeyNonce(k.account, k.key);
     if (chain !== k.nonce) {
-      const role = k.account === rt.m.accounts.owner ? (k.key === rt.m.keys.owner.public_key ? "owner" : "owner external") : k.account === rt.m.accounts.agent ? "agent" : "filler";
-      throw new Refusal(`cannot resume: ${role} key nonce on chain is ${String(chain)}, ledger expects ${k.nonce}; transactions exist that the ledger does not record`);
+      throw new Refusal(`cannot resume: ${roleOfKey(rt, k)} key nonce on chain is ${String(chain)}, ledger expects ${k.nonce}; transactions exist that the ledger does not record`);
     }
   }
+  const changes = await ownerKeyProblems(rt);
+  if (changes.length > 0) throw new Refusal(`cannot resume: the owner account's access keys differ from the run's start snapshot (${changes.join("; ")}); transactions exist that the ledger does not record`);
 }
 
 async function execute(rt: Runtime, from: number): Promise<void> {
@@ -1397,7 +1476,17 @@ async function execute(rt: Runtime, from: number): Promise<void> {
 /** Signs, records the intent and broadcasts once; `gate` runs after signing, immediately before the broadcast. */
 async function send(rt: Runtime, i: number, step: Step, p: Plan, gate?: () => Promise<Record<string, unknown>>): Promise<void> {
   const role = STEP_SIGNER[step.kind];
+  if (role === undefined) throw new Stop(`step ${i + 1} ${step.kind}: no signer role`);
+  // Every transaction of the signer's account must be in the ledger before another is signed: a stray one is never
+  // absorbed by taking the chain's next nonce.
+  const unrecorded = await unrecordedProblems(rt, rt.m.accounts[role]);
+  if (unrecorded.length > 0) throw new Stop(`step ${i + 1} ${step.kind}: unrecorded ${role} transaction: ${unrecorded.join("; ")}; nothing was sent`);
+  const key = rt.m.keys[role].public_key;
+  const expected = expectedNonces(rt).find((k) => k.key === key)?.nonce;
   const outcome = await rt.client.submit(`step ${i + 1} ${step.kind}`, p.signer, p.receiver, p.actions, p.method, async (info) => {
+    if (expected === undefined || info.public_key !== key || BigInt(info.nonce) !== expected + 1n) {
+      throw new Stop(`step ${i + 1} ${step.kind}: unrecorded ${role} transaction: signed with ${info.public_key} at nonce ${info.nonce}, the ledger expects ${key} at ${String(expected === undefined ? null : expected + 1n)}; nothing was sent`);
+    }
     const extra = gate === undefined ? {} : await gate();
     rt.ledger.append("tx-intent", { step: i, kind: step.kind, role, method: p.method, ...info, planned: p.planned, pre: p.pre, detail: p.detail, ...(p.attempt === undefined ? {} : { attempt: p.attempt }), ...extra });
   });
@@ -1528,7 +1617,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       rt = runtime(ledger, await client.gasPrice());
       await reconcile(rt);
       // Handed-off hashes are screened before the nonce check, so a duplicate is refused for what it is.
-      screenSupplied(rt, supplied);
+      await screenSupplied(rt, supplied);
       await importAvailable(rt);
       await checkNonces(rt);
     }
@@ -1558,7 +1647,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     rt = { ...(rt ?? runtime(ledger, 0n)), gasPrice: BigInt(pf.facts.gas_price) };
     await execute(rt, nextStepIndex(ledger));
     if (resume) await retryWithdrawals(rt);
-    for (const h of rt.external.supplied.values()) refuseHandoff(rt, null, h, [`unrelated: intent ${h.intent_sha256} is not pending in this run`]);
+    for (const h of rt.external.supplied.values()) refuseHandoff(rt, null, h, [`unrelated: intent ${h.intent_sha256} is not pending in this run`], await refusalFee(rt, h));
     const findings = currentFindings(ledger);
     if (findings.length > 0) {
       exitCode = 1;

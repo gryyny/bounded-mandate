@@ -56,6 +56,7 @@ function mainnetManifest(): LiveManifest {
       owner: { public_key: k.owner.getPublicKey().toString() },
       filler: { public_key: k.filler.getPublicKey().toString(), intents_public_key: k.intents.getPublicKey().toString() },
     },
+    expected_owner_keys: [{ public_key: k.owner.getPublicKey().toString(), permission: "full_access", nonce: "0" }],
     credentials: {
       owner: writeCredential(dir, `o-${n}.json`, accounts.owner, k.owner),
       agent: writeCredential(dir, `a-${n}.json`, accounts.agent, k.agent),
@@ -119,6 +120,8 @@ describe("mainnet manifests refuse anything sandbox- or test-shaped before any R
     ["unpinned wNEAR code", (m) => ({ ...m, code_hashes: { ...m.code_hashes, wnear: "11111111111111111111111111111111" } }), /wnear token code hash must be the pinned/],
     ["verifier fee", (m) => ({ ...m, verifier_fee_pips: 2 }), /verifier fee must be pinned/],
     ["agent allowance above 0.25 NEAR", (m) => ({ ...m, keys: { ...m.keys, agent: { ...m.keys.agent, max_allowance_yocto: "250000000000000000000001" } } }), /at most 0\.25 NEAR/],
+    ["missing owner key list", (m) => ({ ...m, expected_owner_keys: undefined }), /must list expected_owner_keys/],
+    ["owner key list without keys.owner", (m) => ({ ...m, expected_owner_keys: [{ public_key: KeyPair.fromRandom("ed25519").getPublicKey().toString(), permission: "full_access", nonce: "0" }] }), /expected_owner_keys must list keys\.owner/],
   ];
 
   it.each(mutations)("refuses a %s with exit 2 and no RPC request", async (_name, mutate, re) => {

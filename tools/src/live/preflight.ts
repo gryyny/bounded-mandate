@@ -2,12 +2,12 @@
 // the approved manifest. Every check is listed with pass/fail; any failure refuses the run before a
 // transaction is signed. All reads use the client's finality ("final" in live runs).
 import { z } from "zod";
-import type { NearClient } from "../near/client.js";
+import type { AccessKeyInfo, NearClient } from "../near/client.js";
 import { OPEN_ORDER_STATES, TokenClient, type MandateClient, type VerifierClient } from "../near/contracts.js";
 import { wasmFunctionExports } from "../near/wasm.js";
 import type { Asset, OrderView, Policy } from "../types.js";
 import { canonical } from "./ledger.js";
-import { EXTERNAL_GAS_SLACK_TGAS, isExternal, type LiveManifest, type Step, type StepKind } from "./manifest.js";
+import { EXTERNAL_GAS_SLACK_TGAS, isExternal, type LiveManifest, type OwnerKey, type Step, type StepKind } from "./manifest.js";
 
 export interface Check {
   id: string;
@@ -25,6 +25,8 @@ export interface PreflightFacts {
   mandate_balances: Record<Asset, string>;
   filler_balances: Record<Asset, string>;
   open_orders: { id: string; state: string; epoch: number; sell: Asset; sell_amount: string }[];
+  /** The owner account's complete access-key list: the run's baseline for keys and untracked nonces. */
+  owner_keys: OwnerKey[];
 }
 
 export interface PreflightResult {
@@ -130,6 +132,38 @@ export function signingFloat(m: LiveManifest, steps: readonly Step[], signer: "o
   return need;
 }
 
+/** An access-key list in the manifest's form, sorted by public key. */
+export function ownerKeySnapshot(keys: readonly AccessKeyInfo[]): OwnerKey[] {
+  return keys
+    .map((k) => ({
+      public_key: k.public_key,
+      permission: k.permission.kind === "full" ? ("full_access" as const) : { receiver_id: k.permission.receiver_id, method_names: [...k.permission.method_names].sort() },
+      nonce: k.nonce.toString(),
+    }))
+    .sort((a, b) => (a.public_key < b.public_key ? -1 : a.public_key > b.public_key ? 1 : 0));
+}
+
+/**
+ * Differences between an expected owner key list and the chain's: an added or removed key, a changed permission, and
+ * a changed nonce of any key not in `tracked` (the keys whose nonces the ledger accounts for itself).
+ */
+export function ownerKeyChanges(expected: readonly OwnerKey[], chain: readonly OwnerKey[], tracked: ReadonlySet<string> = new Set()): string[] {
+  const p: string[] = [];
+  const perm = (k: OwnerKey) => canonical(k.permission === "full_access" ? k.permission : { ...k.permission, method_names: [...k.permission.method_names].sort() });
+  const want = new Map(expected.map((k) => [k.public_key, k]));
+  const have = new Map(chain.map((k) => [k.public_key, k]));
+  for (const k of chain) if (!want.has(k.public_key)) p.push(`key added: ${k.public_key} (${perm(k)}, nonce ${k.nonce})`);
+  for (const k of expected) {
+    const c = have.get(k.public_key);
+    if (c === undefined) p.push(`key removed: ${k.public_key}`);
+    else {
+      if (perm(c) !== perm(k)) p.push(`permission of ${k.public_key} changed from ${perm(k)} to ${perm(c)}`);
+      if (!tracked.has(k.public_key) && c.nonce !== k.nonce) p.push(`nonce of ${k.public_key}, a key the ledger does not track, changed from ${k.nonce} to ${c.nonce}`);
+    }
+  }
+  return p;
+}
+
 export interface PreflightInput {
   client: NearClient;
   manifest: LiveManifest;
@@ -216,8 +250,9 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   });
   check("keys.agent_allowance_cap", allowance !== null && allowance <= BigInt(m.keys.agent.max_allowance_yocto), { chain: allowance?.toString() ?? null, cap: m.keys.agent.max_allowance_yocto });
 
+  const ownerKeys = await client.accessKeys(m.accounts.owner);
   const fullKey = async (role: "owner" | "filler"): Promise<{ ok: boolean; nonce: bigint | null }> => {
-    const keys = await client.accessKeys(m.accounts[role]);
+    const keys = role === "owner" ? ownerKeys : await client.accessKeys(m.accounts[role]);
     const k = keys.find((x) => x.public_key === m.keys[role].public_key);
     return { ok: k !== undefined && k.permission.kind === "full" && k.public_key === input.credentialKeys[role], nonce: k?.nonce ?? null };
   };
@@ -233,17 +268,24 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   const extKey = m.keys.owner_external?.public_key;
   let extNonce: bigint | null = null;
   if (extKey !== undefined && extKey !== m.keys.owner.public_key) {
-    const k = (await client.accessKeys(m.accounts.owner)).find((x) => x.public_key === extKey);
+    const k = ownerKeys.find((x) => x.public_key === extKey);
     extNonce = k?.nonce ?? -1n;
     check("keys.owner_external", k?.permission.kind === "full", { manifest: extKey, present: k !== undefined, permission: k?.permission.kind ?? null });
   }
   if (input.fresh && m.expected_nonces !== undefined) {
     const e = m.expected_nonces;
-    const extOk = extNonce === null || e.owner_external === undefined || extNonce.toString() === e.owner_external;
+    // A distinct external key must have its approval-time nonce too: its earlier use would otherwise go unnoticed.
+    const extOk = extNonce === null || extNonce.toString() === e.owner_external;
     check("keys.unused_since_approval", nonces.owner.toString() === e.owner && nonces.agent.toString() === e.agent && nonces.filler.toString() === e.filler && extOk, {
       chain: { owner: nonces.owner.toString(), agent: nonces.agent.toString(), filler: nonces.filler.toString(), ...(extNonce === null ? {} : { owner_external: extNonce.toString() }) },
       manifest: e,
     });
+  }
+
+  const ownerSnapshot = ownerKeySnapshot(ownerKeys);
+  if (input.fresh && m.expected_owner_keys !== undefined) {
+    const changes = ownerKeyChanges(m.expected_owner_keys, ownerSnapshot);
+    check("keys.owner_key_set_since_approval", changes.length === 0, { changes, chain: ownerSnapshot, manifest: m.expected_owner_keys });
   }
 
   // Grant state and open orders.
@@ -371,6 +413,7 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
       mandate_balances: { usdc: mandateBal.usdc.toString(), wnear: mandateBal.wnear.toString() },
       filler_balances: { usdc: fillerBal.usdc.toString(), wnear: fillerBal.wnear.toString() },
       open_orders: open,
+      owner_keys: ownerSnapshot,
     },
   };
 }

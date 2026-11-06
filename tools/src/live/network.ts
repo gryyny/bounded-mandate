@@ -103,6 +103,7 @@ export function networkProblems(m: LiveManifest, root = REPO_ROOT): string[] {
     if (!deploy.has(m.code_hashes.mandate)) p.push(`mainnet mandate code hash ${m.code_hashes.mandate} is not a pinned reproducible build in fixtures/deploy`);
     if (m.verifier_fee_pips !== MAINNET.verifier_fee_pips) p.push(`mainnet verifier fee must be pinned at ${MAINNET.verifier_fee_pips} pip`);
     if (BigInt(m.keys.agent.max_allowance_yocto) > MAINNET.max_agent_allowance_yocto) p.push("mainnet agent allowance cap must be at most 0.25 NEAR");
+    if (m.expected_owner_keys === undefined) p.push("mainnet manifest must list expected_owner_keys: the owner account's complete access-key list (public key, permission, nonce) read at approval");
   } else {
     if (!LOCAL_HOST.test(host)) p.push(`sandbox manifest uses a non-local RPC host ${host}`);
     if (m.network.chain_id === MAINNET.chain_id || m.network.chain_id === "testnet") p.push(`sandbox manifest has chain_id ${m.network.chain_id}`);

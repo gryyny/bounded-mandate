@@ -11,7 +11,8 @@
     "The worst-case fee of the steps below at gas price 1e8 yocto is (sum over transaction steps of the step's gas_tgas + 5) x 1e12 x 1e8 = 1310 TGas = 0.131 NEAR; max_fee_yocto is 0.15 NEAR. Preflight refuses if the live gas price makes the worst case exceed it.",
     "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
     "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
-    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders."
+    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders.",
+    "Owner key list (expected_owner_keys, required on mainnet): every access key of accounts.owner as returned by view_access_key_list at approval time, one entry per key with its permission (\"full_access\", or {receiver_id, method_names}) and nonce. A fresh start refuses any difference. During the run and on every resume, any added or removed key, changed permission, or nonce change of a key the ledger does not track (any key other than keys.owner) stops the run; before every runner-signed transaction the signing key's nonce must equal the ledger's expectation, so an owner transaction the ledger does not record is never absorbed."
   ],
   "network": {
     "name": "mainnet",
@@ -127,6 +128,13 @@
     "agent": "REPLACE_ME: agent key nonce read at approval time",
     "filler": "REPLACE_ME: filler key nonce read at approval time"
   },
+  "expected_owner_keys": [
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner read at approval time"
+    }
+  ],
   "steps": [
     {
       "kind": "check"

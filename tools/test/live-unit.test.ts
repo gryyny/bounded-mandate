@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { checkPlanned, totals, type Planned } from "../src/live/budget.js";
 import { Ledger, canonical } from "../src/live/ledger.js";
 import { runLive } from "../src/live/main.js";
-import { LiveManifest, sequenceProblems, type Step } from "../src/live/manifest.js";
-import { gasPurchasePrice, signingFloat, worstFee } from "../src/live/preflight.js";
+import { LiveManifest, sequenceProblems, type OwnerKey, type Step } from "../src/live/manifest.js";
+import { gasPurchasePrice, ownerKeyChanges, signingFloat, worstFee } from "../src/live/preflight.js";
 import { ExternalHandoff, ExternalIntent, intentSha256, transactionProblems } from "../src/live/external.js";
 import { classifyRelay, receiptTree, simulationProblem, verifyRefusedProposal, type Balances, type RelayExpectation, type VerifyContext } from "../src/live/verify.js";
 import type { Outcome, ReceiptOutcome, TransactionView } from "../src/near/client.js";
@@ -18,6 +18,7 @@ import type { MandateClient, VerifierClient } from "../src/near/contracts.js";
 import type { GrantView, OrderView } from "../src/types.js";
 import { crateWasm, loadWasm } from "../src/near/sandbox.js";
 import { wasmFunctionExports } from "../src/near/wasm.js";
+import { sandboxKey } from "../src/near/keys.js";
 import { offlineManifest, writeJson } from "./live-helpers.js";
 
 const dirs: string[] = [];
@@ -84,14 +85,26 @@ describe("ledger", () => {
   it("reloads a verified chain and derives spent budget from it", () => {
     const { dir } = make();
     const t = totals(Ledger.load(dir, sha));
-    expect(t).toEqual({ transactions: 1, fee_yocto: 40n, deposit_yocto: 1n, sold: { usdc: 5n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } });
+    expect(t).toEqual({ transactions: 1, fee_yocto: 40n, deposit_yocto: 1n, sold: { usdc: 5n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n }, refused_fee_yocto: 0n });
   });
 
   it("does not count an intent the network refused before inclusion (it cannot execute; its step is planned again)", () => {
     const { dir, ledger } = make();
     ledger.append("tx-intent", { tx_hash: "h3", planned: { worst_fee_yocto: "100", deposit_yocto: "0", sell: { asset: "usdc", units: "7" } } });
     ledger.append("tx-result", { tx_hash: "h3", status: "rejected", fee_yocto: "0" });
-    expect(totals(Ledger.load(dir, sha))).toEqual({ transactions: 1, fee_yocto: 40n, deposit_yocto: 1n, sold: { usdc: 5n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } });
+    expect(totals(Ledger.load(dir, sha))).toEqual({ transactions: 1, fee_yocto: 40n, deposit_yocto: 1n, sold: { usdc: 5n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n }, refused_fee_yocto: 0n });
+  });
+
+  it("charges the owner-paid fee of a refused handoff once per hash; never a fee another account paid or one already counted", () => {
+    const { dir, ledger } = make();
+    const refused = (hash: string, fee: string, charged: boolean) => ledger.append("external-refused", { step: 0, tx_hash: hash, problems: ["x"], fee_yocto: fee, charged });
+    refused("r1", "7", true);
+    refused("r1", "7", true); // presented again
+    refused("r2", "11", false); // signed and paid by another account
+    refused("h1", "40", true); // already counted as an executed transaction
+    ledger.append("external-refused", { step: 0, tx_hash: "r3", problems: ["x"], fee_yocto: null, charged: false, fee_note: "not found final" });
+    const t = totals(Ledger.load(dir, sha));
+    expect([t.fee_yocto, t.refused_fee_yocto, t.transactions]).toEqual([47n, 7n, 1]);
   });
 
   it("counts an unresolved intent at its worst-case fee", () => {
@@ -138,7 +151,7 @@ describe("budget caps", () => {
     max_total_sell: { usdc: "15", wnear: "0" },
     filler_spend_max: { usdc: "0", wnear: "7" },
   };
-  const zero = { transactions: 0, fee_yocto: 0n, deposit_yocto: 0n, sold: { usdc: 0n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } };
+  const zero = { transactions: 0, fee_yocto: 0n, deposit_yocto: 0n, sold: { usdc: 0n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n }, refused_fee_yocto: 0n };
   const plan = (p: Partial<Planned> = {}): Planned => ({ worst_fee_yocto: "100", deposit_yocto: "0", ...p });
 
   it.each([
@@ -458,11 +471,18 @@ describe("live-agent manifest template", () => {
     // transaction caps grow for the owner withdrawals.
     const shared = (m: typeof agent) => {
       const b = m.budget as Record<string, unknown>;
-      return { ...m, notes: null, steps: null, keys: null, expected_nonces: null, gas_tgas: null, budget: { ...b, max_fee_yocto: null, max_deposit_yocto: null, max_transactions: null } };
+      return { ...m, notes: null, steps: null, keys: null, expected_nonces: null, expected_owner_keys: null, gas_tgas: null, budget: { ...b, max_fee_yocto: null, max_deposit_yocto: null, max_transactions: null } };
     };
     expect(shared(agent)).toEqual(shared(fixed));
     expect(agent.gas_tgas).toEqual({ ...(fixed.gas_tgas as Record<string, number>), withdraw: 100, storage_deposit: 30 });
     expect(agent.keys).toMatchObject({ owner_external: { public_key: expect.stringMatching(/^REPLACE_ME/) as unknown } });
+    // Each template lists the owner account's whole key list at approval, including every key it signs with.
+    const listed = (m: typeof agent) => (m.expected_owner_keys as { public_key: string; permission: string }[]).map((k) => [k.public_key.replace(/^REPLACE_ME: ed25519 public key of /, ""), k.permission]);
+    expect(listed(agent)).toEqual([
+      ["keys.owner", "full_access"],
+      ["keys.owner_external", "full_access"],
+    ]);
+    expect(listed(fixed)).toEqual([["keys.owner", "full_access"]]);
     expect(String((fixed.notes as string[])[0])).toMatch(/^FALLBACK TEMPLATE.*unapproved until the owner authorizes it/);
   });
 
@@ -591,5 +611,40 @@ describe("signing floats", () => {
     expect(signingFloat(mm, seq, "owner", 100_000_000n, 1_000_000_000n)).toBe(175n * T * 1_000_000_000n);
     expect(signingFloat(mm, seq, "filler", 100_000_000n, 1_000_000_000n)).toBe(105n * T * 1_000_000_000n);
     expect(signingFloat(mm, [], "filler", 100_000_000n, 1_000_000_000n)).toBe(0n);
+  });
+});
+
+describe("owner key declarations and changes", () => {
+  const pk = (label: string) => sandboxKey(label).getPublicKey().toString();
+  const full = (label: string, nonce: string) => ({ public_key: pk(label), permission: "full_access" as const, nonce });
+
+  it("reports an added or removed key, a changed permission and a nonce change of an untracked key; tracked nonces are the ledger's", () => {
+    const fc: OwnerKey = { public_key: pk("fc"), permission: { receiver_id: "m.sandbox", method_names: ["b", "a"] }, nonce: "3" };
+    const start: OwnerKey[] = [full("o", "5"), full("x", "9"), fc];
+    expect(ownerKeyChanges(start, [full("o", "7"), full("x", "9"), { ...fc, permission: { receiver_id: "m.sandbox", method_names: ["a", "b"] } }], new Set([pk("o")]))).toEqual([]);
+    const changes = ownerKeyChanges(start, [full("o", "7"), full("x", "10"), { ...fc, permission: "full_access" }, full("new", "1")], new Set([pk("o")]));
+    expect(changes).toEqual([
+      expect.stringMatching(new RegExp(`^key added: ${pk("new")}`)),
+      expect.stringMatching(new RegExp(`^nonce of ${pk("x")}, a key the ledger does not track, changed from 9 to 10$`)),
+      expect.stringMatching(new RegExp(`^permission of ${pk("fc")} changed`)),
+    ]);
+    expect(ownerKeyChanges(start, [full("o", "5")])).toEqual([`key removed: ${pk("x")}`, `key removed: ${pk("fc")}`]);
+    // Untracked (approval-time comparison): every nonce counts.
+    expect(ownerKeyChanges([full("o", "5")], [full("o", "6")])).toEqual([`nonce of ${pk("o")}, a key the ledger does not track, changed from 5 to 6`]);
+  });
+
+  it("refuses before any network access an owner key list without the signing keys or with a duplicate, and a distinct external key without its expected nonce", async () => {
+    const d = tmp();
+    const m = offlineManifest(d);
+    const refuse = async (over: Partial<typeof m>, re: RegExp) => {
+      const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: writeJson(d, `m-${Math.random()}.json`, { ...m, ...over }) });
+      expect(r.exitCode).toBe(2);
+      expect(r.message).toMatch(re);
+    };
+    const ext = { ...m.keys, owner_external: { public_key: pk("console") } };
+    await refuse({ expected_owner_keys: [full("other", "1")] }, /expected_owner_keys must list keys\.owner \(/);
+    await refuse({ expected_owner_keys: [full("o", "1"), full("o", "1")] }, /lists \S+ twice/);
+    await refuse({ keys: ext, expected_owner_keys: [full("o", "1")] }, /must list keys\.owner_external/);
+    await refuse({ keys: ext, expected_nonces: { owner: "1", agent: "1", filler: "1" } }, /expected_nonces\.owner_external is required when keys\.owner_external names a key distinct from keys\.owner/);
   });
 });

@@ -19,6 +19,16 @@ const AssetConfig = z.object({ token: AccountId, decimals: z.number().int().min(
 
 export const OrderExpectation = z.enum(["signed", "rejected"]);
 
+/** One access key of the owner account as listed by view_access_key_list (allowance omitted: it only moves with the nonce). */
+export const OwnerKey = z
+  .object({
+    public_key: PublicKey,
+    permission: z.union([z.literal("full_access"), z.object({ receiver_id: z.string(), method_names: z.array(z.string()) }).strict()]),
+    nonce: Units,
+  })
+  .strict();
+export type OwnerKey = z.infer<typeof OwnerKey>;
+
 /**
  * A live agent decision: fresh oracle prices, a deterministic 50/50 objective guard, and at most one model call.
  * Live steps use NEAR AI Cloud only, with an explicit model id and bounds: no default model, no fallback, one
@@ -217,6 +227,12 @@ export const LiveManifest = z
     fillable_preexisting_orders: z.array(Units).default([]),
     /** Optional: access-key nonces at approval time; any earlier use of the keys refuses a fresh start. */
     expected_nonces: z.object({ owner: Units, agent: Units, filler: Units, owner_external: Units.optional() }).strict().optional(),
+    /**
+     * The owner account's complete access-key list at approval (every key, its permission and nonce). A fresh start
+     * refuses any difference; required for mainnet. Without it, a sandbox run snapshots the list at preflight. Either
+     * way the run stops on any added or removed key, or any nonce change of a key the ledger does not track.
+     */
+    expected_owner_keys: z.array(OwnerKey).optional(),
     steps: z.array(Step).min(1),
   })
   .strict();
@@ -226,6 +242,30 @@ export type LiveManifest = z.infer<typeof LiveManifest>;
 export const externalOwnerKey = (m: LiveManifest): string => m.keys.owner_external?.public_key ?? m.keys.owner.public_key;
 
 export class Refusal extends Error {}
+
+/** Static consistency of the owner key declarations: the expected key list and the external key's expected nonce. */
+export function ownerKeyDeclarationProblems(m: LiveManifest): string[] {
+  const p: string[] = [];
+  const ext = m.keys.owner_external?.public_key;
+  const distinct = ext !== undefined && ext !== m.keys.owner.public_key;
+  if (distinct && m.expected_nonces !== undefined && m.expected_nonces.owner_external === undefined) {
+    p.push("expected_nonces.owner_external is required when keys.owner_external names a key distinct from keys.owner");
+  }
+  const list = m.expected_owner_keys;
+  if (list !== undefined) {
+    const seen = new Set<string>();
+    for (const k of list) {
+      if (seen.has(k.public_key)) p.push(`expected_owner_keys lists ${k.public_key} twice`);
+      seen.add(k.public_key);
+    }
+    const required: [string, string][] = [["keys.owner", m.keys.owner.public_key]];
+    if (ext !== undefined && distinct) required.push(["keys.owner_external", ext]);
+    for (const [name, key] of required) {
+      if (!list.some((k) => k.public_key === key && k.permission === "full_access")) p.push(`expected_owner_keys must list ${name} (${key}) as a full_access key`);
+    }
+  }
+  return p;
+}
 
 export interface LoadedManifest {
   manifest: LiveManifest;
@@ -254,6 +294,8 @@ export function loadManifest(env: NodeJS.ProcessEnv): LoadedManifest {
   if (!result.success) throw new Refusal(`live: invalid manifest: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   const sequence = sequenceProblems(result.data.steps);
   if (sequence.length > 0) throw new Refusal(`live: invalid step sequence: ${sequence.join("; ")}`);
+  const ownerKeys = ownerKeyDeclarationProblems(result.data);
+  if (ownerKeys.length > 0) throw new Refusal(`live: invalid owner key declarations: ${ownerKeys.join("; ")}`);
   const shape = networkProblems(result.data);
   if (shape.length > 0) throw new Refusal(`live: manifest inconsistent with network ${result.data.network.name}: ${shape.join("; ")}`);
   if (result.data.network.name === "mainnet" && env.MANDATE_LIVE_CONFIRM !== sha256) {

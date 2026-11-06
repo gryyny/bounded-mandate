@@ -315,7 +315,7 @@ describe("verified runs", () => {
   });
 
   it("a lost grant response under the template cap resumes within budget, reserving each intent once", async () => {
-    const template = LiveManifest.parse({ ...(JSON.parse(readFileSync(join(import.meta.dirname, "../src/live/manifest.example.json"), "utf8")) as Record<string, unknown>), network: base.network, accounts: base.accounts, code_hashes: base.code_hashes, versions: {}, mandate_config: base.mandate_config, keys: base.keys, credentials: base.credentials, expected_nonces: undefined, budget: base.budget });
+    const template = LiveManifest.parse({ ...(JSON.parse(readFileSync(join(import.meta.dirname, "../src/live/manifest.example.json"), "utf8")) as Record<string, unknown>), network: base.network, accounts: base.accounts, code_hashes: base.code_hashes, versions: {}, mandate_config: base.mandate_config, keys: base.keys, credentials: base.credentials, expected_nonces: undefined, expected_owner_keys: undefined, budget: base.budget });
     await mintAndDeposit(world, world.owner, "usdc", 5n * 10n ** 6n, world.mandate.id);
     await mintAndDeposit(world, world.owner, "wnear", 1n * 10n ** 24n, world.mandate.id);
     await postPrices(world);

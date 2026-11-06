@@ -20,7 +20,8 @@
     "The worst-case fee at gas price 1e8 yocto is (sum over sending steps of the step's gas_tgas, + 20 TGas for external steps, + 5) x 1e12 x 1e8 = 1620 TGas = 0.162 NEAR in 12 transactions (registrations skipped); one retried withdrawal per asset adds 250 TGas = 0.025 NEAR and 2 transactions. max_fee_yocto 0.2 NEAR, max_transactions 14 and max_deposit_yocto 4 (1 yocto per ft_withdraw attempt) are proposed, not approved. Preflight refuses if the live gas price makes the pending worst case exceed max_fee_yocto, and checks each signer's signing float: prepaid gas bought at max(gas price, runtime_config.min_gas_purchase_price), 1e9 yocto/gas on mainnet, for each transaction when it is signed.",
     "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
     "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
-    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders."
+    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders.",
+    "Owner key list (expected_owner_keys, required on mainnet): every access key of accounts.owner as returned by view_access_key_list at approval time, one entry per key with its permission (\"full_access\", or {receiver_id, method_names}) and nonce; keys.owner and keys.owner_external must both be listed as full_access. A fresh start refuses any difference. During the run and on every resume, any added or removed key, changed permission, or nonce change of a key the ledger does not track (any key other than keys.owner and keys.owner_external) stops the run; before every runner-signed transaction and every import, the key's nonce must equal the ledger's expectation, so an owner transaction the ledger does not record is never absorbed. With keys.owner_external distinct from keys.owner, expected_nonces.owner_external is required."
   ],
   "network": {
     "name": "mainnet",
@@ -142,6 +143,18 @@
     "filler": "REPLACE_ME: filler key nonce read at approval time",
     "owner_external": "REPLACE_ME: nonce of keys.owner_external read at approval time (omit with keys.owner_external)"
   },
+  "expected_owner_keys": [
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner read at approval time"
+    },
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner_external",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner_external read at approval time"
+    }
+  ],
   "steps": [
     {
       "kind": "check"

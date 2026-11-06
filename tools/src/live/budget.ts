@@ -1,7 +1,9 @@
 // Budget derived only from the ledger. Spending is counted conservatively when a transaction is
 // intended (before it is sent); fees are replaced by the actual tokens_burnt once the outcome is known.
 // An external owner action is counted from its intent (before the owner signs) and settled to the imported
-// transaction's actual fee: once per intent, however often its handoff is presented or reconciled.
+// transaction's actual fee: once per intent, however often its handoff is presented or reconciled. A refused handoff
+// whose transaction was found on chain and paid by the owner is charged its actual fee once per hash (not counted as a
+// transaction of the run: it is no planned step).
 import { z } from "zod";
 import type { Asset } from "../types.js";
 import type { Ledger } from "./ledger.js";
@@ -26,10 +28,12 @@ export interface Totals {
   deposit_yocto: bigint;
   sold: Record<Asset, bigint>;
   filler_paid: Record<Asset, bigint>;
+  /** Fees the owner paid for refused handoffs (included in fee_yocto). */
+  refused_fee_yocto: bigint;
 }
 
 export function totals(ledger: Ledger): Totals {
-  const t: Totals = { transactions: 0, fee_yocto: 0n, deposit_yocto: 0n, sold: { usdc: 0n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n } };
+  const t: Totals = { transactions: 0, fee_yocto: 0n, deposit_yocto: 0n, sold: { usdc: 0n, wnear: 0n }, filler_paid: { usdc: 0n, wnear: 0n }, refused_fee_yocto: 0n };
   const actualFee = new Map<string, bigint>();
   // Refused by the network before inclusion: it cannot execute later, spent nothing, and its step is planned again.
   const rejected = new Set<string>();
@@ -57,6 +61,14 @@ export function totals(ledger: Ledger): Totals {
     }
   }
   for (const e of ledger.ofKind("external-intent")) count(Planned.parse(e.data.planned), importedFee.get(z.string().parse(e.data.intent_sha256)));
+  const charged = new Set<string>(actualFee.keys());
+  for (const e of ledger.ofKind("external-refused")) {
+    const hash = e.data.tx_hash;
+    if (e.data.charged !== true || typeof hash !== "string" || typeof e.data.fee_yocto !== "string" || charged.has(hash)) continue;
+    charged.add(hash);
+    t.fee_yocto += BigInt(e.data.fee_yocto);
+    t.refused_fee_yocto += BigInt(e.data.fee_yocto);
+  }
   return t;
 }
 

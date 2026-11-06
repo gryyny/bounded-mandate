@@ -3,8 +3,10 @@
 // Owner transactions "signed outside the runner" are signed here by a SANDBOX LOCAL SIGNING ADAPTER (a test double
 // with TEST keys standing in for the console's wallet); this establishes nothing about any external wallet. Forged
 // transactions are deliberately wrong test inputs. Model answers are SYNTHETIC (written by the test). Token contracts
-// are the mock-ft test double; a failed withdrawal receipt is produced with a SANDBOX DOUBLE (an RPC view that
-// misreports the owner's registration), never presented as a mainnet result.
+// are the mock-ft test double; a refunded withdrawal receipt is produced with a SANDBOX DOUBLE (an RPC view that
+// misreports the owner's registration) and a failed verifier receipt with deliberately low prepaid gas; neither is
+// presented as a mainnet result. Stray owner transactions, added keys, and an RPC status reporting another chain are
+// injected by SANDBOX DOUBLE transports at labelled points.
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +21,7 @@ import { ExternalIntent, handoffOf, intentSha256, type ExternalHandoff } from ".
 import { Ledger } from "../src/live/ledger.js";
 import { runLive, type LiveDeps, type LiveResult } from "../src/live/main.js";
 import { LiveManifest } from "../src/live/manifest.js";
+import { ownerKeySnapshot } from "../src/live/preflight.js";
 import { NEAR, NearClient, TGAS } from "../src/near/client.js";
 import { MandateClient, TokenClient } from "../src/near/contracts.js";
 import { sandboxKey } from "../src/near/keys.js";
@@ -52,16 +55,20 @@ const cases = {
     "gas-above-bounds",
     "deposit-out-of-bounds",
     "extra-action",
+    "wrong-chain-status",
     "duplicate-hash",
     "second-hash-for-satisfied-intent",
   ]),
   lost: new CaseRecorder("HANDOFF", "lost-response-resume", ["import-lookup-lost", "import-crash-after-handoff", "runner-withdrawal-lost"]),
-  unrecorded: new CaseRecorder("HANDOFF", "unrecorded-owner-tx", ["during-import", "while-awaiting-then-resume"]),
+  unrecorded: new CaseRecorder("HANDOFF", "unrecorded-owner-tx", ["during-import", "while-awaiting-then-resume", "stray-then-runner-owner-step", "extra-owner-key-stray", "owner-key-added"]),
   both: new CaseRecorder("WITHDRAW", "both-assets", ["registered-owner-runner-signed"]),
-  unregistered: new CaseRecorder("WITHDRAW", "unregistered-owner", ["registers-only-where-needed"]),
-  retry: new CaseRecorder("WITHDRAW", "failed-receipt-retry", ["partial-failure-recorded", "retry-without-double-count"]),
+  unregistered: new CaseRecorder("WITHDRAW", "unregistered-owner", ["registers-only-where-needed", "external-withdrawal-unregistered-owner"]),
+  retry: new CaseRecorder("WITHDRAW", "failed-receipt-retry", ["partial-failure-recorded", "retry-without-double-count", "external-refund-retried-and-imported", "verifier-failure-classified-failed"]),
   template: new CaseRecorder("LIVE", "agent-template", ["primary-template-sequence"]),
 };
+
+/** Which path each import-refusal case took (written into the HANDOFF.import-refusals report). */
+const refusalPaths: Record<string, Record<string, unknown>> = {};
 
 const deps = (extra: Partial<LiveDeps> = {}): LiveDeps => ({ outRoot: join(dir, "live"), timeoutMs: 60_000, pollMs: 300, ...extra });
 let counter = 0;
@@ -126,6 +133,20 @@ const fund = async (mandate: string, usdc: bigint, wnear: bigint): Promise<void>
 };
 
 const kinds = (l: Ledger, kind: "tx-intent" | "external-intent" | "external-handoff" | "external-refused") => l.ofKind(kind).map((e) => e.data.kind ?? e.data.step);
+/** tokens_burnt summed over a transaction's outcome and every receipt, read from the raw RPC response (independent of the runner's parsing). */
+async function burnt(hash: string, signer: string): Promise<bigint> {
+  const raw = (await world.client.provider.viewTransactionStatusWithReceipts({ txHash: hash, accountId: signer, waitUntil: "FINAL" })) as unknown as {
+    transaction_outcome: { outcome: { tokens_burnt: string } };
+    receipts_outcome: { outcome: { tokens_burnt: string } }[];
+  };
+  return [raw.transaction_outcome, ...raw.receipts_outcome].reduce((sum, o) => sum + BigInt(o.outcome.tokens_burnt), 0n);
+}
+/** The single external-refused entry's recorded fee fields. */
+const refusedFee = (l: Ledger) => {
+  const e = l.ofKind("external-refused").at(-1);
+  return { tx_hash: String(e?.data.tx_hash), fee_yocto: e?.data.fee_yocto ?? null, payer: e?.data.payer ?? null, charged: e?.data.charged, fee_note: String(e?.data.fee_note) };
+};
+
 /** Sum of the actual fees of every executed or imported transaction: what the budget must equal once all settled. */
 const actualFees = (l: Ledger): bigint => {
   const seen = new Map<string, bigint>();
@@ -145,7 +166,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const wasm = { ...wasmHashes(typeof world === "undefined" ? [] : Object.values(world.wasm)), "bounded_mandate-163ccfa-reproducible": createHash("sha256").update(readFileSync(join(REPO_ROOT, FIXTURE))).digest("hex") };
-  for (const c of Object.values(cases)) c.write("sandbox", wasm, { deployment_binary: FIXTURE, signing: "SANDBOX LOCAL SIGNING ADAPTER (test double)", tokens: "mock-ft test double" });
+  for (const c of Object.values(cases)) {
+    const extra = c === cases.refusals ? { refusal_paths: refusalPaths } : {};
+    c.write("sandbox", wasm, { deployment_binary: FIXTURE, signing: "SANDBOX LOCAL SIGNING ADAPTER (test double)", tokens: "mock-ft test double", ...extra });
+  }
   await net.stop();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -229,6 +253,12 @@ describe("external owner actions: import by hash", () => {
       const after = ledgerOf(path);
       expect(after.ofKind("external-refused").length).toBe(1);
       expect(after.ofKind("tx-result").length).toBe(l.ofKind("tx-result").length);
+      // Its fee is the imported transaction's, already counted once: not charged again.
+      const f = refusedFee(after);
+      expect([f.charged, f.fee_yocto]).toEqual([false, null]);
+      expect(f.fee_note).toMatch(/already in the ledger/);
+      expect(totals(after).fee_yocto).toBe(actualFees(after));
+      refusalPaths["duplicate-hash"] = { path: "screened before any lookup (MANDATE_LIVE_HANDOFF on resume): the hash is already in the ledger; recorded as external-refused", message: r2.message, ...f };
     });
     await cases.refusals.check("second-hash-for-satisfied-intent", async () => {
       const intent = ExternalIntent.parse(recUsdc?.data.intent);
@@ -241,6 +271,18 @@ describe("external owner actions: import by hash", () => {
       const after = ledgerOf(path);
       expect(after.ofKind("external-refused").map((e) => e.data.tx_hash)).toContain(second);
       expect(after.ofKind("external-handoff").length).toBe(3);
+      // The owner paid for the refused transaction: its actual fee is recorded and charged once against the cap.
+      const fee = await burnt(second, ownerV.id);
+      const f = refusedFee(after);
+      expect([f.tx_hash, f.payer, f.charged, f.fee_yocto]).toEqual([second, ownerV.id, true, fee.toString()]);
+      expect(totals(after).refused_fee_yocto).toBe(fee);
+      expect(totals(after).fee_yocto).toBe(actualFees(after) + fee);
+      refusalPaths["second-hash-for-satisfied-intent"] = { path: "screened before the import (MANDATE_LIVE_HANDOFF on resume): the intent was already handed off; looked up for its fee, recorded as external-refused", message: r3.message, ...f };
+      // Presented again: refused as a duplicate hash, its fee not charged twice.
+      const again = await resume(path, {}, { MANDATE_LIVE_HANDOFF: file });
+      expect(again.exitCode).toBe(1);
+      expect(again.message).toMatch(/refused: duplicate: transaction \S+ is already in the ledger/);
+      expect(totals(ledgerOf(path)).fee_yocto).toBe(actualFees(after) + fee);
       // That transaction is not in the ledger as imported, so the owner key's nonce now stops any further resume.
       const r4 = await resume(path);
       expect(r4.exitCode).toBe(2);
@@ -265,7 +307,10 @@ describe("external owner actions: import by hash", () => {
       if (otherOwner.key === null) throw new Error("missing key");
       const otherClient = other.client.final();
       type Forge = (intent: ExternalIntent) => Promise<ExternalHandoff>;
-      const cases_: [keyof typeof refusalTags, Forge][] = [
+      // SANDBOX DOUBLE: an RPC whose status reports another chain once armed (after preflight, when the owner signs).
+      const lying = new OtherChainStatus({ url: world.client.rpcUrl });
+      const statusHandoff: { h: ExternalHandoff | null } = { h: null };
+      const cases_: [keyof typeof refusalTags, Forge, NearClient?][] = [
         ["wrong-chain", async (i) => handoff(i, await sign(i, otherClient.account(ownerR.id, otherOwner.key ?? undefined), undefined, undefined, otherClient))],
         // The handoff claims the owner, but another account signed.
         ["wrong-signer", async (i) => handoff(i, await sign(i, finalClient.account(world.relayer.id, world.relayer.key ?? undefined)), ownerR.id)],
@@ -277,12 +322,21 @@ describe("external owner actions: import by hash", () => {
         ["gas-above-bounds", async (i) => handoff(i, await sign(i, mr.owner.account, () => [actions.functionCall("recover", { asset: "usdc" }, 300n * TGAS, 0n)]))],
         ["deposit-out-of-bounds", async (i) => handoff(i, await sign(i, mr.owner.account, (a) => [actions.functionCall("recover", { asset: "usdc" }, BigInt(i.actions[0]?.gas ?? "0"), 1n), ...a.slice(1)]))],
         ["extra-action", async (i) => handoff(i, await sign(i, mr.owner.account, (a) => [...a, actions.transfer(1n)]))],
+        [
+          "wrong-chain-status",
+          async (i) => {
+            lying.armed = true;
+            statusHandoff.h = await handoff(i, await sign(i, mr.owner.account));
+            return statusHandoff.h;
+          },
+          new NearClient(world.client.rpcUrl, lying),
+        ],
       ];
-      for (const [name, forge] of cases_) {
+      for (const [name, forge, client] of cases_) {
         await cases.refusals.check(name, async () => {
           await settleFinal();
           const path = pathOf(m, `refusal-${name}`);
-          const r = await live(path, { handoff: forge });
+          const r = await live(path, { handoff: forge, ...(client === undefined ? {} : { client }) });
           expect(r.exitCode).toBe(1);
           expect(r.message).toMatch(refusalTags[name]);
           const l = ledgerOf(path);
@@ -290,13 +344,37 @@ describe("external owner actions: import by hash", () => {
           expect(l.ofKind("external-handoff")).toEqual([]);
           expect(l.ofKind("tx-result")).toEqual([]);
           expect(l.ofKind("step-done")).toEqual([]);
-          if (name === "wrong-chain") expect(l.ofKind("external-refused")).toEqual([]);
-          else {
+          if (name === "wrong-chain" || name === "wrong-chain-status") {
+            expect(l.ofKind("external-refused")).toEqual([]);
+            const lookedUp = !/wrong chain: the RPC serves/.test(r.message);
+            refusalPaths[name] = {
+              path: lookedUp ? "looked up on this chain: not found final; stopped, nothing recorded" : "RPC status reports another chain: stopped before any lookup, nothing recorded",
+              message: r.message,
+              fee: lookedUp
+                ? "none on this chain (the transaction exists only on the other chain)"
+                : "not recorded at the refusal (nothing is looked up through an RPC that reports another chain); the same handoff then imports against the intent's chain and its fee is charged once there",
+            };
+          } else {
             const refused = l.ofKind("external-refused");
             expect(refused.length).toBe(1);
             expect((refused[0]?.data.problems as string[]).join("; ")).toMatch(refusalTags[name]);
+            // A found transaction's actual fee is recorded; charged only when the owner paid it.
+            const f = refusedFee(l);
+            const payer = name === "wrong-signer" ? world.relayer.id : ownerR.id;
+            const fee = await burnt(f.tx_hash, payer);
+            expect([f.payer, f.charged, f.fee_yocto]).toEqual([payer, payer === ownerR.id, fee.toString()]);
+            expect(totals(l).refused_fee_yocto).toBe(payer === ownerR.id ? fee : 0n);
+            refusalPaths[name] = { path: "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused", problems: refused[0]?.data.problems, message: r.message, ...f };
           }
           expect(r.evidence?.assertions.some((a) => a.id.startsWith("step-1") && a.passed)).toBe(false);
+          if (name === "wrong-chain-status") {
+            lying.armed = false;
+            // Nothing was recorded, so the same handoff imports once the runner reads the intent's chain.
+            const file = writeJson(dir, "status-handoff.json", statusHandoff.h);
+            const again = await resume(path, {}, { MANDATE_LIVE_HANDOFF: file });
+            expect([again.exitCode, again.message]).toEqual([0, "completed"]);
+            expect(ledgerOf(path).ofKind("external-handoff").length).toBe(1);
+          }
         });
       }
     } finally {
@@ -305,9 +383,19 @@ describe("external owner actions: import by hash", () => {
   }, 600_000);
 });
 
+/** SANDBOX DOUBLE: while armed, `status` reports another chain id and genesis hash. */
+class OtherChainStatus extends JsonRpcProvider {
+  armed = false;
+  override async viewNodeStatus(): ReturnType<JsonRpcProvider["viewNodeStatus"]> {
+    const status = await super.viewNodeStatus();
+    return this.armed ? { ...status, chain_id: "other-chain", genesis_hash: "11111111111111111111111111111111" } : status;
+  }
+}
+
 /** The specific reason each refusal must report (pinned: a refusal for another reason does not count). */
 const refusalTags = {
   "wrong-chain": /not found final/,
+  "wrong-chain-status": /wrong chain: the RPC serves other-chain\/1{32}, the intent is for .*nothing recorded/,
   "wrong-signer": /wrong signer/,
   "wrong-key": /wrong key/,
   "wrong-receiver": /wrong receiver/,
@@ -472,6 +560,129 @@ describe("resume and unrecorded owner transactions", () => {
   }, 300_000);
 });
 
+/**
+ * SANDBOX DOUBLE transport: once armed, runs `before` ahead of the first read of `account`'s Intents balances, i.e. while
+ * the runner plans a recovery step, after preflight and before that step's transaction is signed.
+ */
+class BeforeBalanceRead extends JsonRpcProvider {
+  before: (() => Promise<void>) | null = null;
+  constructor(
+    url: string,
+    private readonly account: string,
+  ) {
+    super({ url });
+  }
+  override async callFunctionRaw(params: Parameters<JsonRpcProvider["callFunctionRaw"]>[0]): ReturnType<JsonRpcProvider["callFunctionRaw"]> {
+    const p = params as { method?: string; args?: { account_id?: string } };
+    const run = this.before;
+    if (run !== null && p.method === "mt_balance_of" && p.args?.account_id === this.account) {
+      this.before = null;
+      await run();
+    }
+    return super.callFunctionRaw(params);
+  }
+}
+
+const sends = (calls: { method: string }[]) => calls.filter((c) => ["send_tx", "broadcast_tx_async", "broadcast_tx_commit"].includes(c.method));
+
+describe("owner transactions the ledger does not record, by any key of the owner account", () => {
+  // gate: HANDOFF
+  it("a stray owner transaction before a runner-signed owner step stops the run before it signs; the import never happens", async () => {
+    const ownerS = await net.createAccount("owners");
+    const ms = await deployMandate("ms", ownerS);
+    const m: LiveManifest = { ...ms.manifest, steps: [{ kind: "recover", asset: "usdc" }, { kind: "recover_external", asset: "wnear" }] };
+    const path = pathOf(m, "stray-runner-step");
+    const hook = new BeforeBalanceRead(world.client.rpcUrl, ownerS.id);
+    const rpc = recordRpc(hook);
+    hook.before = async () => {
+      requireSuccess(await finalClient.send("stray owner transaction (TEST)", ms.owner.account, world.relayer.id, [actions.transfer(1n)], "transfer"));
+    };
+    let signatures = 0;
+    const r = await live(path, {
+      client: new NearClient(world.client.rpcUrl, hook),
+      handoff: async (intent) => {
+        signatures += 1;
+        return handoff(intent, await sign(intent, ms.owner.account));
+      },
+    });
+    await cases.unrecorded.check("stray-then-runner-owner-step", async () => {
+      expect(hook.before).toBeNull();
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toMatch(/^step 1 recover: unrecorded owner transaction: owner key nonce on chain is \d+, ledger expects \d+; nothing was sent$/);
+      const l = ledgerOf(path);
+      expect([l.ofKind("tx-intent").length, l.ofKind("external-intent").length, l.ofKind("external-handoff").length, l.ofKind("step-done").length]).toEqual([0, 0, 0, 0]);
+      expect(sends(rpc)).toEqual([]);
+      expect(signatures).toBe(0);
+      const again = await resume(path);
+      expect(again.exitCode).toBe(2);
+      expect(again.message).toMatch(/cannot resume: owner key nonce on chain is \d+, ledger expects \d+/);
+    });
+  }, 300_000);
+
+  // gate: HANDOFF
+  it("a stray transaction by another full-access key of the owner stops the import; an added key stops the runner's send, the resume and a fresh start", async () => {
+    const ownerK = await net.createAccount("ownerk");
+    const mk = await deployMandate("mk", ownerK);
+    // A second full-access key of the owner account: listed in the snapshot, never tracked by the ledger.
+    const k2 = KeyPair.fromRandom("ed25519");
+    requireSuccess(await finalClient.send("add second owner key (TEST)", mk.owner.account, ownerK.id, [actions.addFullAccessKey(k2.getPublicKey())], "add_key"));
+    const second = finalClient.account(ownerK.id, k2);
+    const k2Nonce = async () => (await ownerNonce(ownerK.id, k2)) ?? -1n;
+
+    await cases.unrecorded.check("extra-owner-key-stray", async () => {
+      await settleFinal();
+      const path = pathOf({ ...mk.manifest, steps: [{ kind: "recover_external", asset: "usdc" }] }, "extra-key-stray");
+      const before = await k2Nonce();
+      let signed = "";
+      const r = await live(path, {
+        handoff: async (intent) => {
+          signed = await sign(intent, mk.owner.account);
+          requireSuccess(await finalClient.send("stray transaction by the second owner key (TEST)", second, world.relayer.id, [actions.transfer(1n)], "transfer"));
+          return handoff(intent, signed);
+        },
+      });
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toMatch(new RegExp(`refused: unrecorded owner transaction: nonce of ${k2.getPublicKey().toString()}, a key the ledger does not track, changed from ${before} to ${before + 1n}`));
+      const l = ledgerOf(path);
+      expect([l.ofKind("external-handoff").length, l.ofKind("tx-result").length, l.ofKind("step-done").length, l.ofKind("external-refused").length]).toEqual([0, 0, 0, 1]);
+      // The refused transaction was the owner's: its fee is charged once.
+      const f = refusedFee(l);
+      expect([f.tx_hash, f.charged, f.fee_yocto]).toEqual([signed, true, (await burnt(signed, ownerK.id)).toString()]);
+      const again = await resume(path);
+      expect(again.exitCode).toBe(2);
+    });
+
+    await cases.unrecorded.check("owner-key-added", async () => {
+      await settleFinal();
+      const path = pathOf({ ...mk.manifest, steps: [{ kind: "recover", asset: "usdc" }] }, "key-added");
+      const approved = ownerKeySnapshot(await finalClient.accessKeys(ownerK.id));
+      const k3 = KeyPair.fromRandom("ed25519");
+      const hook = new BeforeBalanceRead(world.client.rpcUrl, ownerK.id);
+      const rpc = recordRpc(hook);
+      hook.before = async () => {
+        requireSuccess(await finalClient.send("add a key with the second owner key (TEST)", second, ownerK.id, [actions.addFullAccessKey(k3.getPublicKey())], "add_key"));
+      };
+      const r = await live(path, { client: new NearClient(world.client.rpcUrl, hook) });
+      expect(hook.before).toBeNull();
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toMatch(new RegExp(`^step 1 recover: unrecorded owner transaction: key added: ${k3.getPublicKey().toString()} .*; nonce of ${k2.getPublicKey().toString()}, a key the ledger does not track, changed`));
+      expect(sends(rpc)).toEqual([]);
+      expect(ledgerOf(path).ofKind("tx-intent")).toEqual([]);
+      const again = await resume(path);
+      expect(again.exitCode).toBe(2);
+      expect(again.message).toMatch(new RegExp(`cannot resume: the owner account's access keys differ from the run's start snapshot \\(key added: ${k3.getPublicKey().toString()}`));
+      // A fresh start against the approval-time list refuses at preflight; against the current list it passes.
+      await settleFinal();
+      const fresh = await live(pathOf({ ...mk.manifest, expected_owner_keys: approved, steps: [{ kind: "check" }] }, "key-added-fresh"));
+      expect(fresh.exitCode).toBe(2);
+      expect((fresh.preflight ?? []).filter((c) => !c.passed).map((c) => c.id)).toEqual(["keys.owner_key_set_since_approval"]);
+      const current = ownerKeySnapshot(await finalClient.accessKeys(ownerK.id));
+      const ok = await live(pathOf({ ...mk.manifest, expected_owner_keys: current, steps: [{ kind: "check" }] }, "key-current-fresh"));
+      expect([ok.exitCode, ok.message]).toEqual([0, "completed"]);
+    });
+  }, 300_000);
+});
+
 /** SANDBOX DOUBLE: while armed, storage_balance_of reports `owner` registered on `token` although it is not. */
 class LieRegistered extends JsonRpcProvider {
   armed = true;
@@ -625,6 +836,177 @@ describe("owner withdrawals (runner-signed)", () => {
     });
   }, 300_000);
 });
+
+describe("owner withdrawals signed outside the runner (withdraw_external)", () => {
+  const nearSide = async (owner: string) => ({ usdc: await tokens("usdc").balance(owner), wnear: await tokens("wnear").balance(owner) });
+  const doneOf = (l: Ledger, step: number) => l.ofKind("step-done").filter((e) => e.data.step === step);
+  const register = async (owner: string, asset: Asset) => {
+    // Setup outside the runner, paid by another account: not an owner transaction.
+    requireSuccess(await finalClient.call(`setup: register ${owner} on ${asset}`, world.owner.account, world.tokens[asset], "storage_deposit", { account_id: owner, registration_only: true }, { gas: 30n * TGAS, deposit: NEAR / 100n }));
+  };
+
+  // gate: WITHDRAW
+  it("an unregistered owner: registered where a step asks for it, otherwise nothing is signed until a resume finds it registered", async () => {
+    const ownerE = await net.createAccount("ownere");
+    const me = await deployMandate("me", ownerE);
+    await fund(me.id, 2n * USDC, 1n * WNEAR);
+    const steps: LiveManifest["steps"] = [
+      { kind: "recover", asset: "usdc" },
+      { kind: "recover", asset: "wnear" },
+      { kind: "register_storage", asset: "usdc" },
+      { kind: "withdraw_external", asset: "usdc" },
+      { kind: "withdraw_external", asset: "wnear" },
+    ];
+    const path = pathOf({ ...me.manifest, steps }, "external-unregistered");
+    let signatures = 0;
+    const counting = async (intent: ExternalIntent) => {
+      signatures += 1;
+      return handoff(intent, await sign(intent, me.owner.account));
+    };
+    await cases.unregistered.check("external-withdrawal-unregistered-owner", async () => {
+      expect([await tokens("usdc").isRegistered(ownerE.id), await tokens("wnear").isRegistered(ownerE.id)]).toEqual([false, false]);
+      const r = await live(path, { handoff: counting });
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toMatch(new RegExp(`completed with findings: step 5 withdraw_external: ${ownerE.id} is not registered on ${world.tokens.wnear}; the transfer would be refunded, nothing sent`));
+      let l = ledgerOf(path);
+      expect(kinds(l, "tx-intent")).toEqual(["recover", "recover", "register_storage"]);
+      // USDC: registered by step 3, then signed outside the runner and imported. wNEAR: no intent, nothing signed.
+      expect(l.ofKind("external-intent").map((e) => [e.data.step, e.data.attempt])).toEqual([[3, 1]]);
+      expect(signatures).toBe(1);
+      expect(doneOf(l, 3)[0]?.data).toMatchObject({ imported: true, classification: "withdrawn", withdrawn: (2n * USDC).toString() });
+      expect(doneOf(l, 4)[0]?.data).toMatchObject({ skipped: true, retryable: true, withdrawn: "0" });
+      expect(await nearSide(ownerE.id)).toEqual({ usdc: 2n * USDC, wnear: 0n });
+      expect(await balances(world, ownerE.id)).toEqual({ usdc: 0n, wnear: 1n * WNEAR });
+      // The owner registers on wNEAR outside the run; the resume retries the withdrawal as attempt 2.
+      await register(ownerE.id, "wnear");
+      await settleFinal();
+      const r2 = await resume(path, { handoff: counting });
+      expect([r2.exitCode, r2.message]).toEqual([0, "completed"]);
+      l = ledgerOf(path);
+      expect(kinds(l, "tx-intent")).toEqual(["recover", "recover", "register_storage"]);
+      expect(l.ofKind("external-intent").map((e) => [e.data.step, e.data.attempt])).toEqual([
+        [3, 1],
+        [4, 2],
+      ]);
+      expect(signatures).toBe(2);
+      expect(doneOf(l, 4).map((e) => [e.data.attempt, e.data.withdrawn])).toEqual([
+        [1, "0"],
+        [2, (1n * WNEAR).toString()],
+      ]);
+      expect(await nearSide(ownerE.id)).toEqual({ usdc: 2n * USDC, wnear: 1n * WNEAR });
+      expect(await balances(world, ownerE.id)).toEqual({ usdc: 0n, wnear: 0n });
+      expect(totals(l).fee_yocto).toBe(actualFees(l));
+    });
+  }, 300_000);
+
+  // gate: WITHDRAW
+  it("a refunded external withdrawal: the resume re-registers, writes an attempt-2 intent, keeps it while awaiting, then imports its handoff file", async () => {
+    const ownerG = await net.createAccount("ownerg");
+    const mg = await deployMandate("mg", ownerG);
+    await fund(mg.id, 2n * USDC, 1n * WNEAR);
+    const steps: LiveManifest["steps"] = [
+      { kind: "recover", asset: "usdc" },
+      { kind: "recover", asset: "wnear" },
+      { kind: "register_storage", asset: "usdc" },
+      { kind: "register_storage", asset: "wnear" },
+      { kind: "withdraw_external", asset: "usdc" },
+      { kind: "withdraw_external", asset: "wnear" },
+    ];
+    const path = pathOf({ ...mg.manifest, steps }, "external-refund");
+    // SANDBOX DOUBLE: the USDC registration is misreported in the first session, so its transfer is refunded.
+    const lie = new LieRegistered(world.client.rpcUrl, world.tokens.usdc, ownerG.id);
+    const r = await live(path, { client: new NearClient(world.client.rpcUrl, lie), handoff: adapter(mg.owner.account) });
+    await cases.retry.check("external-refund-retried-and-imported", async () => {
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toMatch(/completed with findings: step 5 withdraw_external: the token transfer failed and the verifier refunded 2000000 usdc; the Intents balance is intact/);
+      let l = ledgerOf(path);
+      expect(doneOf(l, 4)[0]?.data).toMatchObject({ imported: true, classification: "refunded", retryable: true, withdrawn: "0", attempt: 1 });
+      expect(doneOf(l, 5)[0]?.data).toMatchObject({ imported: true, classification: "withdrawn" });
+      expect(await balances(world, ownerG.id)).toEqual({ usdc: 2n * USDC, wnear: 0n });
+      const firstSession = kinds(l, "tx-intent");
+      expect(firstSession).toEqual(["recover", "recover", "register_storage"]);
+
+      // Resume 1 (honest views, no signer): the USDC registration runs first, then the attempt-2 intent is written.
+      const r2 = await resume(path);
+      expect(r2.exitCode).toBe(1);
+      expect(r2.awaiting).toMatchObject({ step: 5, kind: "withdraw_external", attempt: 2 });
+      l = ledgerOf(path);
+      expect(kinds(l, "tx-intent")).toEqual([...firstSession, "register_storage"]);
+      expect(l.ofKind("tx-intent").at(-1)?.data).toMatchObject({ step: 2, attempt: 2 });
+      expect(l.ofKind("external-intent").filter((e) => e.data.step === 4).map((e) => e.data.attempt)).toEqual([1, 2]);
+
+      // Resume 2, still unsigned: the pending attempt-2 intent is kept; registration is not run or charged again.
+      const r3 = await resume(path);
+      expect(r3.exitCode).toBe(1);
+      expect(r3.awaiting).toEqual(r2.awaiting);
+      const mid = ledgerOf(path);
+      expect([mid.ofKind("tx-intent").length, mid.ofKind("external-intent").length]).toEqual([l.ofKind("tx-intent").length, l.ofKind("external-intent").length]);
+
+      // The console signs attempt 2 and writes the handoff file next to the intent; resume 3 imports it before the
+      // nonce check (importAvailable): an unimported owner transaction would otherwise refuse the resume.
+      const awaiting = r2.awaiting;
+      if (awaiting === undefined) throw new Error("not awaiting");
+      const intent = ExternalIntent.parse(JSON.parse(readFileSync(awaiting.intent_path, "utf8")));
+      writeFileSync(awaiting.handoff_path, JSON.stringify(await handoff(intent, await sign(intent, mg.owner.account))));
+      const r4 = await resume(path);
+      expect([r4.exitCode, r4.message]).toEqual([0, "completed"]);
+      l = ledgerOf(path);
+      expect(kinds(l, "tx-intent")).toEqual([...firstSession, "register_storage"]);
+      expect(doneOf(l, 4).map((e) => [e.data.attempt, e.data.classification, e.data.withdrawn])).toEqual([
+        [1, "refunded", "0"],
+        [2, "withdrawn", (2n * USDC).toString()],
+      ]);
+      expect(doneOf(l, 5).length).toBe(1);
+      expect(await nearSide(ownerG.id)).toEqual({ usdc: 2n * USDC, wnear: 1n * WNEAR });
+      expect(await balances(world, ownerG.id)).toEqual({ usdc: 0n, wnear: 0n });
+      expect(totals(l).fee_yocto).toBe(actualFees(l));
+      const ids = r4.evidence?.assertions.filter((a) => a.id.startsWith("step-5-withdraw_external")).map((a) => [a.id, a.passed]);
+      expect(ids).toEqual([
+        ["step-5-withdraw_external", false],
+        ["step-5-withdraw_external-attempt-2", true],
+      ]);
+    });
+  }, 300_000);
+
+  // gate: WITHDRAW
+  it("a verifier-side failure (prepaid gas too low for ft_withdraw) is classified failed, not refunded; the retry at the intent's gas bound withdraws once", async () => {
+    const ownerH = await net.createAccount("ownerh");
+    const mh = await deployMandate("mh", ownerH);
+    await fund(mh.id, 1n * USDC, 0n);
+    await register(ownerH.id, "usdc");
+    await settleFinal();
+    // The approved gas for ft_withdraw is deliberately too low; the intent still allows up to 20 TGas more.
+    const m: LiveManifest = { ...mh.manifest, gas_tgas: { ...mh.manifest.gas_tgas, withdraw: LOW_WITHDRAW_TGAS }, steps: [{ kind: "recover", asset: "usdc" }, { kind: "withdraw_external", asset: "usdc" }] };
+    const path = pathOf(m, "external-failed");
+    const atBound = (bound: "gas" | "gas_max") => async (intent: ExternalIntent) =>
+      handoff(intent, await sign(intent, mh.owner.account, (a) => a.map(() => actions.functionCall(intent.actions[0]?.method ?? "-", intent.actions[0]?.args ?? {}, BigInt(intent.actions[0]?.[bound] ?? "0"), BigInt(intent.actions[0]?.deposit ?? "0")))));
+    const r = await live(path, { handoff: atBound("gas") });
+    await cases.retry.check("verifier-failure-classified-failed", async () => {
+      expect(r.exitCode).toBe(1);
+      expect(r.message).toMatch(/completed with findings: step 2 withdraw_external: ft_withdraw failed on the verifier: .*; the Intents balance is intact/);
+      let l = ledgerOf(path);
+      const first = doneOf(l, 1)[0];
+      expect(first?.data).toMatchObject({ imported: true, classification: "failed", retryable: true, withdrawn: "0" });
+      const failed = (first?.data.verification as { failed_receipts: { executor_id: string }[] }).failed_receipts.map((x) => x.executor_id);
+      expect(failed).toEqual([world.verifier.id]);
+      expect(await balances(world, ownerH.id)).toEqual({ usdc: 1n * USDC, wnear: 0n });
+      expect(await nearSide(ownerH.id)).toEqual({ usdc: 0n, wnear: 0n });
+      const r2 = await resume(path, { handoff: atBound("gas_max") });
+      expect([r2.exitCode, r2.message]).toEqual([0, "completed"]);
+      l = ledgerOf(path);
+      expect(doneOf(l, 1).map((e) => [e.data.attempt, e.data.classification, e.data.withdrawn])).toEqual([
+        [1, "failed", "0"],
+        [2, "withdrawn", (1n * USDC).toString()],
+      ]);
+      expect(await nearSide(ownerH.id)).toEqual({ usdc: 1n * USDC, wnear: 0n });
+      expect(await balances(world, ownerH.id)).toEqual({ usdc: 0n, wnear: 0n });
+      expect(totals(l).fee_yocto).toBe(actualFees(l));
+    });
+  }, 300_000);
+});
+
+/** Prepaid gas (TGas) too low for the pinned verifier's ft_withdraw in sandbox (fails at <= 35, succeeds at >= 40 when measured); 50 with the slack. */
+const LOW_WITHDRAW_TGAS = 30;
 
 describe("primary template (live agent, console-signed owner actions, withdrawals) on the exact deployment binary", () => {
   // gate: LIVE
