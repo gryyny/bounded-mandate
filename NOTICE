@@ -49,5 +49,6 @@ Tools used to build, test or record, not included in this repository:
   Claude Code (AI coding assistant, implementation) and OpenAI Codex (AI coding
   assistant, independent review); see README "Disclosures". Rust 1.97.1,
   cargo-near 0.22.0 and the sourcescan/cargo-near Docker image, the NEAR sandbox
-  binary (nearcore 2.13.4) downloaded at test time, Node.js, and, for the demo
+  binary (nearcore 2.13.4) downloaded at test time, Playwright's pinned headless
+  Chromium installed by make test and make demo, Node.js, and, for the demo
   video only, ffmpeg, Google Chrome and playwright-core.

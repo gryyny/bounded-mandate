@@ -2,7 +2,7 @@
 
 **Let an AI agent trade a USDC/wNEAR treasury on NEAR Intents within limits a contract enforces. Revoke the grant and every order it already signed fails once the key removal is confirmed, withheld ones included; then take the assets back without the agent.**
 
-Sandbox-certified at revision f60f999. No mainnet transaction has been executed.
+Sandbox-certified at revision f60f999. The owner console, owner withdrawal, Sputnik DAO owner and live-agent budgets were added after it; they pass in sandbox and their certification is recorded in [evidence/index.json](evidence/index.json) once a revision containing them is certified. No mainnet transaction has been executed.
 
 ## What you get
 
@@ -38,7 +38,7 @@ Each property above rests on a NEAR primitive:
 - **The NEAR Intents verifier** keeps each account's signing keys on chain (`add_public_key`, `remove_public_key`) and checks that the key exists when it executes a signed intent. Removing one key voids every order signed with it; anyone can check the key with a view call.
 - **Function-call access keys** restrict the agent's account at the protocol level: calls to other methods, deposits, transfers and key changes are refused before the contract runs (ten of the certified cases in the [attack log](#attack-log)).
 - **Permissionless `execute_intents`** lets our filler, or anyone, settle the exact signed bundle; no hosted relayer is trusted.
-- **Sputnik DAO** can be the owner, so grant, revoke and recovery become threshold-voted proposals (in progress, below).
+- **Sputnik DAO** can be the owner, so grant, revoke, recovery and withdrawal become threshold-voted proposals (sandbox; certification pending, see [evidence/index.json](evidence/index.json); see [Status](#status)).
 
 ## Reproduce
 
@@ -48,10 +48,28 @@ Requires Rust via rustup, `cargo-near` 0.22.0, Node.js 24 and npm ([requirements
 git clone https://github.com/gryyny/bounded-mandate.git   # private until the lead publishes it
 cd bounded-mandate
 make test    # every acceptance gate; from a clean tree ends with "CERTIFIED: run <id>"
-make demo    # unfunded sandbox story; ends with "56/56 assertions passed" and writes out/page/index.html
+make demo    # unfunded sandbox story; ends with "59/59 assertions passed" and writes out/page/index.html and out/console/index.html
 ```
 
-Measured at f60f999 in an independent fresh clone (macOS arm64): `make test` took 1395 s cold, including dependency downloads and the first build; `make demo` then took 55 s on the warm build. GitHub Actions (ubuntu-24.04) passed both. These figures are refreshed after each certification. `make demo` alone renders the gates as not certified; the page shows them certified only after `make test` passed on the same clean revision.
+Both targets first install Playwright's pinned headless Chromium (downloaded on the first run, reused afterwards), because the gates and the demo drive the owner console in it.
+
+Measured at f60f999, before the console, withdrawal and DAO stages and the Chromium install were added, in an independent fresh clone (macOS arm64): `make test` took 1395 s cold, including dependency downloads and the first build; `make demo` then took 55 s on the warm build. GitHub Actions (ubuntu-24.04) passed both. **Pending:** timings at the next certified revision are recorded in [evidence/index.json](evidence/index.json) after certification. `make demo` alone renders the gates as not certified; the page shows them certified only after `make test` passed on the same clean revision.
+
+### What the demo runs
+
+Nine stages, in order, on a local sandbox with labelled test doubles and recorded model output:
+
+1. **Grant and limits.** The owner grants; the contract registers the grant's derived key on the verifier, and the initial reference value matches the deposits at the posted prices.
+2. **Console review.** The owner console, in headless Chromium, shows the grant status, limits, key presence, fixed accounts and balances exactly as the chain views read them.
+3. **Bounded proposal and trade.** The recorded genuine model proposal reaches `propose_order` and is signed; the filler fills it on the pinned verifier and the reservation is released on settlement.
+4. **Withheld order.** A second, scripted order is signed; the filler counter-signs a complete bundle, `simulate_intents` accepts it, and it is held back.
+5. **Hostile requests.** Every case of the attack suite and the recorded response to an injected prompt is stopped at its boundary.
+6. **Revocation through the console.** The owner checks the exact preview and presses Revoke; the transaction is signed by the local sandbox test signer, not a wallet. Removal of the grant's key is confirmed and the withheld order's reservation is released.
+7. **Withheld relay rejected.** Another account relays the withheld bundle while it is still unexpired; the verifier rejects it for the removed key, before its deadline, with no balance change.
+8. **Recovery.** With the agent stopped, the oracle failing and the MPC on hold, direct owner `recover` calls (not through the console) move both assets to the owner's Intents account.
+9. **Owner withdrawal.** Direct owner `ft_withdraw` calls move both assets to the owner's NEAR account, registering wNEAR storage first because the demo starts the owner unregistered there. This is outside every recovery claim.
+
+The 59 assertions are story checks, not acceptance results; their total is derived at run time.
 
 ## Evaluate in 5 minutes
 
@@ -59,7 +77,7 @@ Measured at f60f999 in an independent fresh clone (macOS arm64): `make test` too
 | --- | --- | --- |
 | Video | Watch the short cut (about 65 s): `VIDEO_URL_PENDING`. A longer technical walkthrough (about 140 s) covers the same run plus the attack suite. | The revocation story from one sandbox run: balances, trading limits, a recorded model proposal traded, a signed order withheld, confirmed revocation, the withheld order rejected, balances recovered. |
 | Evidence page | Open [evidence/f60f999/page/index.html](evidence/f60f999/page/index.html) in a browser (self-contained, no network). Planned hosted copy, **unpublished**: `https://gryyny.github.io/bounded-mandate/` | The outcome against the agent's 50/50 objective, the withheld order's identity and its rejection, the regrant and disclosed-signature sandbox cases, acceptance gates, matched baseline, claims and non-claims, policy and provenance. An opt-in panel (§V) runs read-only checks against a mainnet RPC from the browser; nothing is requested before you press its button. `make demo` regenerates the page at `out/page/index.html`. |
-| Owner console (in development, not yet certified) | After `make demo`, open `out/console/index.html`. Planned hosted copy, **unpublished**: `https://gryyny.github.io/bounded-mandate/console/` | A static console with no backend. Visitors get a read-only view of policy, grant status, key presence, orders, balances and evidence provenance. The owner's revoke, recover and withdrawal actions are previewed exactly and signed outside the page; the page holds no key or model credential and never resubmits on its own. Its browser flow is tested against the sandbox only through a labelled local signing adapter, which does not establish compatibility with any external wallet. |
+| Owner console (sandbox; certification pending, see [evidence/index.json](evidence/index.json)) | After `make demo`, open `out/console/index.html`. Planned hosted copy, **unpublished**: `https://gryyny.github.io/bounded-mandate/console/` | A static console with no backend. Visitors get a read-only view of policy, grant status, key presence, orders, balances and evidence provenance. The owner's revoke, recover and withdrawal actions are previewed exactly and signed outside the page; the page holds no key or model credential and never resubmits on its own. Its browser flow is tested in headless Chromium against the sandbox only, through the labelled local test signer; external wallets are untested. |
 | Mainnet receipts (pending the approved mainnet run) | Run the read-only commands in [Verify on mainnet](#verify-on-mainnet-read-only) with `curl` and `jq`; no wallet, key or funds | Today: the verifier we test against is byte-identical to the code at `intents.near`. After the approved run: the withheld order's relay receipt failing for the removed key before its deadline, and the recovery receipts: `<MAINNET_RECEIPT_TBD>`. |
 | Attack log | Read the [attack log](#attack-log) | Each malicious request, the layer that stopped it, the enforcing source line and the certified result. |
 
@@ -105,10 +123,10 @@ The two views above show current state only. The historical proof is the relay t
 | Core mandate: bounded trading, grant-wide revocation, regrant, conservative accounting, recovery | **Certified in sandbox** at f60f999: every required case of every gate passed in one run of a clean tree, in an independent fresh clone and in CI. Our contract and the exact mainnet Intents verifier WASM execute; the MPC signer, oracle and tokens are labelled test doubles. |
 | Model input | A genuine recorded `claude-haiku-5-5` interaction is replayed into `propose_order` (MODEL gate). No gate or demo calls a model. |
 | Mainnet | **Not run.** It needs the lead's separate setup and runner approvals of exact accounts and budget. Receipts: `<MAINNET_RECEIPT_TBD>`. |
-| Static owner console | In development; not part of the f60f999 certification. |
-| Owner withdrawal of both assets from the owner's Intents account to its NEAR account (`ft_withdraw`) | In development. The owner's own action, outside the contract and outside every recovery claim. |
-| Sputnik DAO as owner | **In progress.** Claimed only once the sandbox case against the pinned Sputnik code passes; withdrawn rather than weakened if it cannot. |
-| Optional live agent with per-order and cumulative sale budgets | Implemented and tested locally only. A no-transaction rehearsal exercises the provider path; it does not qualify a live provider, and no paid inference has run. |
+| Static owner console | Implemented; sandbox; certification pending, see [evidence/index.json](evidence/index.json). Tested in headless Chromium against the sandbox through the labelled local test signer, not a wallet: CONSOLE.browser-sandbox (revoke, recovery and withdrawal of both assets through the console, each imported and verified by the runner) and CONSOLE.access-controls (a wrong owner, network or deployment disables every control; a cancelled signature, a rejected transaction and a reload during a pending action resubmit nothing). External wallets are untested. |
+| Owner withdrawal of both assets from the owner's Intents account to its NEAR account (`ft_withdraw`) | Implemented; sandbox; certification pending, see [evidence/index.json](evidence/index.json). Runner-signed and imported external steps (WITHDRAW.both-assets, WITHDRAW.unregistered-owner, WITHDRAW.failed-receipt-retry). The owner's own action, outside the contract and outside every recovery claim. |
+| Sputnik DAO as owner | Sandbox; certification pending, see [evidence/index.json](evidence/index.json). DAO.sputnik-owner passes in sandbox against the pinned mainnet factory code (sputnikdao2 2.3.1) with a council of three and 2-of-3 threshold voting: one approval executes nothing; two execute grant, revoke, recovery to the DAO's Intents account and the DAO's own withdrawal. In sandbox the DAO code is deployed onto the owner account rather than created by the `sputnik-dao.near` factory, and the DAO's token storage registration was tested only on the mock token, not on mainnet tokens. |
+| Optional live agent with per-order and cumulative sale budgets | Sandbox; certification pending, see [evidence/index.json](evidence/index.json). The runner's remaining budgets are in the agent's snapshot, prompt and validation (AGENT.budget-bounds); the no-transaction rehearsal has run with stub providers only (AGENT.rehearsal); LIVE.agent-template runs the primary template's whole sequence in sandbox with a synthetic provider answer. No live provider is qualified and no paid inference has run. |
 
 Certified results are committed under [evidence/](evidence/) and indexed by source revision in [evidence/index.json](evidence/index.json). Each entry records:
 - the acceptance verdict, with every required case of every gate bound to that revision and to the spec, fixture and WASM hashes;
@@ -116,6 +134,28 @@ Certified results are committed under [evidence/](evidence/) and indexed by sour
 - an independent fresh-clone run without funds, model credentials or private-repository access.
 
 `evidence/426914d` is an earlier bundle in the legacy report format, kept unchanged; current rules do not certify it. See [SPEC.md](SPEC.md) for the requirements.
+
+### Required gates
+
+A gate passes only when every one of its required cases ([tools/src/evidence/required.ts](tools/src/evidence/required.ts)) passed in one run of a clean revision. T1 to DEPLOY were certified at f60f999; DAO to CONSOLE are pending certification (see [evidence/index.json](evidence/index.json)).
+
+- **T1**: a withheld signed order relayed after revocation, after regrant, during pending signing and activation, and after failed removal and retry.
+- **T2**: seeded randomized interleavings, in unit tests and in sandbox, with no cap violation and no double release.
+- **T2b**: a signature disclosed while the mandate's callback fails stays accounted for when relayed independently.
+- **T3**: the 0.5% concession bound on every fill, feed and timing checks, and the loss breaker.
+- **T4**: recovery with the agent, oracle and MPC unavailable, at the record bound and the open-order limit, and after registration reconciliation.
+- **T5**: the matched baseline.
+- **BOUNDARY**: the contract's own boundary cases and the attack suite.
+- **MODEL**: a recorded genuine model proposal reaches `propose_order`.
+- **DEPLOY**: the proposed deployment binary (reproducible-build fixture) exercised in sandbox.
+- **DAO**: a pinned Sputnik DAO (mainnet factory code) as the fixed owner, threshold-voted, in sandbox.
+- **AGENT**: the runner's sale budgets in the agent's snapshot, prompt and validation, and the no-transaction provider rehearsal with stub providers.
+- **HANDOFF**: external owner actions persisted as intents and imported by transaction hash; refusals of altered, unrelated and duplicate imports; lost-response resume; an unrecorded owner transaction stops the run.
+- **WITHDRAW**: the owner's `ft_withdraw` of both assets after recovery, with an unregistered owner and a failed receipt retried, outside recovery claims.
+- **LIVE**: the primary live-agent template's full sequence in sandbox on the exact deployment binary, with a synthetic provider answer.
+- **CONSOLE**: the owner console in headless Chromium against sandbox through the labelled local test signer, not an external wallet.
+
+The owner-key rescue (RESCUE.owner-key) is reported separately and never counts toward a gate.
 
 ## What it guarantees, and what it does not
 
@@ -125,16 +165,16 @@ Not guaranteed: principal, profit, execution availability or a maximum total los
 
 ## Attack log
 
-Every row is a request the certified attack suite ([tools/src/attacks/suite.ts](tools/src/attacks/suite.ts)) or a revocation gate sent in the sandbox at f60f999. "Stopped by" is the layer that actually refused it, classified from the observed error rather than assumed, and each case also checks that grant, orders, balances and keys were unchanged. Results: [BOUNDARY.attacks](evidence/f60f999/tests/BOUNDARY.attacks.json) (39 of 39 cases stopped at the expected layer and contained) and the T1 and T2b reports linked below. Source lines are at revision 224f25d; the contract source is unchanged since the certified revision, and the tools lines were rechecked there.
+Every row is a request the certified attack suite ([tools/src/attacks/suite.ts](tools/src/attacks/suite.ts)) or a revocation gate sent in the sandbox at f60f999. "Stopped by" is the layer that actually refused it, classified from the observed error rather than assumed, and each case also checks that grant, orders, balances and keys were unchanged. Results: [BOUNDARY.attacks](evidence/f60f999/tests/BOUNDARY.attacks.json) (39 of 39 cases stopped at the expected layer and contained) and the T1 and T2b reports linked below. Source lines are at revision 78e2832; the contract source is unchanged since the certified revision, and the tools lines were rechecked there.
 
 | Attack | Cases | Stopped by | Enforcing source | Certified result |
 | --- | --- | --- | --- | --- |
 | Model output that adds a recipient, raw payload, MPC path, public key or raw token id, names a forbidden asset, a negative amount or an out-of-range concession, asks for a withdrawal, or is not JSON | 10 `adapter-*` | Adapter schema, before any transaction | Strict decision union [tools/src/agent/decision.ts#L7-L10](tools/src/agent/decision.ts#L7-L10); proposal shape [tools/src/types.ts#L12-L18](tools/src/types.ts#L12-L18); [`judge`](tools/src/agent/decision.ts#L66-L71) | Rejected; nothing sent |
 | The same requests sent straight to the chain with the agent's key, plus an amount of 2^128 | 7 `direct-*` | Contract input schema | `Proposal` with `deny_unknown_fields`, `Asset` enum and `U128` [contract/src/types.rs#L27-L38](contract/src/types.rs#L27-L38) | Deserialization fails; state unchanged |
 | Zero amount, amount 2^128-1, 400 USDC above the 20% per-order cap, 51 bps concession | 4 `direct-*` | Contract policy | [contract/src/lib.rs#L429-L430](contract/src/lib.rs#L429-L430) (amount), [#L440-L443](contract/src/lib.rs#L440-L443) (concession), [#L461](contract/src/lib.rs#L461) and [#L903-L906](contract/src/lib.rs#L903-L906) (per-order cap) | Panics with the named limit; state unchanged |
-| Agent key calls `revoke`, `grant`, `recover`, `on_signed` or `settle_order`, attaches a deposit, calls `mt_transfer` or `add_public_key` on the verifier, sends NEAR, or adds a full-access key | 9 `agent-*` and `direct-deposit` | NEAR protocol: the agent's function-call key (receiver mandate, method `propose_order`, no deposit) | Enforced by nearcore before any contract runs. Our setup creates the key at [tools/src/demo/world.ts#L109-L113](tools/src/demo/world.ts#L109-L113) via [tools/src/near/sandbox.ts#L59](tools/src/near/sandbox.ts#L59); the live preflight refuses any other agent key ([tools/src/live/preflight.ts#L162](tools/src/live/preflight.ts#L162)) | Transaction refused; not executed |
+| Agent key calls `revoke`, `grant`, `recover`, `on_signed` or `settle_order`, attaches a deposit, calls `mt_transfer` or `add_public_key` on the verifier, sends NEAR, or adds a full-access key | 9 `agent-*` and `direct-deposit` | NEAR protocol: the agent's function-call key (receiver mandate, method `propose_order`, no deposit) | Enforced by nearcore before any contract runs. Our setup creates the key at [tools/src/demo/world.ts#L119-L123](tools/src/demo/world.ts#L119-L123) via [tools/src/near/sandbox.ts#L59](tools/src/near/sandbox.ts#L59); the live preflight refuses any other agent key ([tools/src/live/preflight.ts#L236-L247](tools/src/live/preflight.ts#L236-L247)) | Transaction refused; not executed |
 | Another account calls `propose_order`, `grant`, `revoke` or `recover` | 4 `attacker-*` | Contract role check | [contract/src/lib.rs#L420-L423](contract/src/lib.rs#L420-L423) (agent only); [`assert_owner`](contract/src/lib.rs#L927-L932), called first by [`grant`](contract/src/lib.rs#L283-L284), [`revoke`](contract/src/lib.rs#L325-L326) and [`recover`](contract/src/lib.rs#L384-L385) | "only the agent may propose" / "only the owner"; state unchanged |
-| Another account calls a callback (`on_signed`, `on_key_removed`, `on_recovery_transferred`) | 3 `attacker-callback-*` | Contract: `#[private]` callbacks | [#L656-L657](contract/src/lib.rs#L656-L657), [#L727-L728](contract/src/lib.rs#L727-L728), [#L829-L830](contract/src/lib.rs#L829-L830) | "Method ... is private"; state unchanged |
+| Another account calls a callback (`on_signed`, `on_key_removed`, `on_recovery_transferred`) | 3 `attacker-callback-*` | Contract: `#[private]` callbacks | [`on_signed`](contract/src/lib.rs#L727-L728), [`on_key_removed`](contract/src/lib.rs#L656-L657), [`on_recovery_transferred`](contract/src/lib.rs#L829-L830) | "Method ... is private"; state unchanged |
 | A relayer submits a transfer-to-attacker intent claiming the mandate as signer, signed by an unregistered key | `forged-mandate-transfer` | NEAR Intents verifier (exact mainnet WASM [fixtures/verifier/defuse-0.4.5.wasm](fixtures/verifier/defuse-0.4.5.wasm)) | Key check in the declared source, [near/intents@16d04f6 engine/mod.rs#L70-L73](https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/engine/mod.rs#L70-L73) | "public key ... doesn't exist for account"; nothing moved |
 | A signed order is withheld, the owner revokes, and another account relays it before its deadline; again after a regrant | T1 withheld-regrant | Verifier key check after confirmed removal; a new derivation path per grant | Revocation [contract/src/lib.rs#L325](contract/src/lib.rs#L325), release on confirmed removal [#L1001-L1002](contract/src/lib.rs#L1001-L1002), path `mandate/v1/<epoch>` [contract/src/state.rs#L54](contract/src/state.rs#L54); verifier check as above | [Rejected; zero executions after confirmed removal, none revived after regrant](evidence/f60f999/tests/T1.withheld-regrant.json) |
 | The MPC publishes a valid signature while the mandate's callback fails, and the order is relayed independently | T2b | Contract accounting: no release without trusted evidence | Release rules [contract/src/lib.rs#L53-L59](contract/src/lib.rs#L53-L59); unknown signing outcome stays reserved [#L757-L759](contract/src/lib.rs#L757-L759) | [Order stays reserved, settles on evidence and fails after removal](evidence/f60f999/tests/T2b.callback-failed-after-disclosure.json) |
@@ -149,7 +189,7 @@ The contract's own boundary cases (67 sandbox cases, all rejected at their bound
 - **Revocation.** Key registration and removal are serialized. Revocation stops new authorization at once (`revoking`); confirmed removal (`revoked`) releases every reservation of that grant. Failed removal can be retried.
 - **Unresolved registration.** If the key-registration callback fails, the owner calls `reconcile_registration`. It resolves only on observing the grant key registered on the verifier; absence or elapsed time never resolves it, because a pending registration could still land. If both the registration and its callback failed, an emergency rescue is needed: confirm from final receipt outcomes that nothing can still register, re-add the key with an owner-held key on the mandate account, then reconcile and revoke. That rescue is reported separately from ordinary recovery and is impossible for a keyless deployment.
 - **Recovery.** With the grant revoked, the owner moves each asset's verifier balance to the owner's Intents account with `mt_transfer`. No price read, signature or agent action is involved. This is not a withdrawal to an external wallet; moving funds out of Intents is the owner's own later action.
-- **Owner withdrawal (in development).** After recovery the owner, not the contract, withdraws each asset from its own Intents account to its NEAR account with `ft_withdraw` on the verifier, registering token storage only where needed. A failed withdrawal leaves the Intents balance intact and is retried without double counting. It is outside every recovery claim.
+- **Owner withdrawal (sandbox; certification pending, see [evidence/index.json](evidence/index.json)).** After recovery the owner, not the contract, withdraws each asset from its own Intents account to its NEAR account with `ft_withdraw` on the verifier, registering token storage only where needed. A failed withdrawal leaves the Intents balance intact and is retried without double counting. It is outside every recovery claim.
 - **Filler.** Our own separately keyed account signs the matching side, pays the verifier fee, and submits both payloads through permissionless `execute_intents`. It never builds a replacement order after an ambiguous result.
 
 Demo policy: per-order and outstanding caps 20% of the initial reference value, turnover cap 100%, concession at most 0.5%, oracle age at most 60 s, confidence at most 0.5%, loss breaker at 2% drawdown, deadline at most 60 s, and a per-proposal charge of 0.5%. These are demonstration settings, not proven production risk limits. With this policy, the measured storage requirement for a full grant (200 proposals of about 780 bytes each, plus grant state) is about 4.67 NEAR in total for the mandate account, including about 3.1 NEAR for the contract code.
@@ -223,13 +263,14 @@ Sources:
 
 - Rust via rustup (toolchain pinned in `rust-toolchain.toml`) and `cargo-near` 0.22.0 (`cargo install cargo-near --version 0.22.0 --locked`; on Linux install `libudev-dev` and `pkg-config` first).
 - Node.js 24 and npm.
-- Network access for dependency installation and the first download of the NEAR sandbox binary. No funds, model key or private repository access.
+- Network access for dependency installation and the first downloads of the NEAR sandbox binary and Playwright's pinned headless Chromium. No funds, model key or private repository access.
+- On Linux, Chromium's system libraries: `cd tools && npm ci --ignore-scripts && npx --no-install playwright install --with-deps chromium` once (as in CI).
 
 ## Commands
 
 ```sh
 make test   # all local gates (1395 s cold in the f60f999 fresh clone)
-make demo   # unfunded sandbox scenario, out/evidence/demo.json and out/page/index.html (55 s warm at f60f999)
+make demo   # unfunded sandbox scenario, out/evidence/demo.json, out/page/index.html and out/console/index.html (55 s warm at f60f999)
 MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live   # opt-in; not spending approval
 ```
 
@@ -237,22 +278,37 @@ MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live   # opt-in; n
 
 `make live` refuses a manifest that does not match the chain: network, the code hashes of the mandate, verifier, signer, oracle and both token contracts, the verifier, signer and oracle versions, the mandate configuration, keys and allowances. Token decimals are compared with the mandate's configuration, not read from `ft_metadata`; that comparison is a manual pre-approval check. It enforces fee, deposit, inventory and filler caps through a hash-chained ledger that survives restarts. It verifies each step's end state from state and receipts, and stops without any replacement order on an ambiguous outcome. Mainnet also requires `MANDATE_LIVE_CONFIRM=<manifest sha256>`.
 
-The mainnet template ([tools/src/live/manifest.example.json](tools/src/live/manifest.example.json)) runs the whole revocation story with small amounts:
+A mainnet manifest must list `expected_owner_keys`: the owner account's complete access-key list (public key, permission and nonce) read at approval. A fresh start refuses any difference; a sandbox run without the list snapshots it at preflight. Before every runner-signed transaction and every import, the signing key's chain nonce must equal the ledger's expectation exactly (an imported transaction's nonce must be the next one), and the owner's key list must still match the snapshot. An added or removed key, a changed permission, or a nonce change on a key the ledger does not track stops the run, so an owner transaction the ledger does not record is never absorbed. Resumes check the same.
+
+Preflight also checks each signer's signing float. Before each of its pending transactions, a signer must still hold that transaction's prepaid gas at the purchase price, the higher of the gas price and the runtime's `min_gas_purchase_price`, after the worst-case fees of its earlier steps. This covers the agent's allowance and balance and the filler's and owner's balances. The prepaid gas that is not burnt is refunded later.
+
+There are two mainnet templates, both unapproved; every `REPLACE_ME` value must be filled in, and the runner refuses a template as is. The primary template, [tools/src/live/manifest.live-agent.example.json](tools/src/live/manifest.live-agent.example.json), runs the whole revocation story with small amounts, with the owner's actions signed outside the runner:
 1. Grant, then one deliberately forbidden proposal that the mandate itself must refuse.
-2. One valid trade, filled and settled.
-3. A second signed order, withheld: the filler counter-signs a complete bundle, `simulate_intents` accepts it, and the exact bundle is kept in the ledger.
-4. Revoke, then relay that bundle before its deadline.
-5. Recover both assets to the owner's Intents account.
+2. One live agent decision, filled and settled if the agent trades.
+3. A second signed order, a fixed proposal from the manifest, withheld: the filler counter-signs a complete bundle, `simulate_intents` accepts it, and the exact bundle is kept in the ledger.
+4. Revoke (`revoke_external`), then relay that bundle before its deadline.
+5. Recover both assets to the owner's Intents account (`recover_external`).
+6. Outside every recovery claim: register the owner's token storage only where it is missing (`register_storage`, runner-signed with the owner key), then withdraw both assets to the owner's NEAR account (`withdraw_external`).
+
+The fallback, [tools/src/live/manifest.example.json](tools/src/live/manifest.example.json), is labelled separately and stays unapproved until the owner authorizes it: the same story with a fixed proposal instead of the agent, runner-signed `revoke` and `recover`, and no owner withdrawals.
+
+**External owner steps.** `revoke_external`, `recover_external` and `withdraw_external` are signed outside the runner, in the owner console or a wallet; `withdraw` is the runner-signed form of the withdrawal. Before the owner signs, the runner records an intent in its ledger and writes it to `out/live/<manifest sha256>/external/step-<n>-<kind>-attempt-<k>.intent.json`. The intent names the signer, the approved key (`keys.owner_external`, else `keys.owner`), the receiver, the complete action list with exact arguments, gas and deposit bounds, and the expected end state. The signer writes `{intent_sha256, tx_hash, signer_id}` to the matching `.handoff.json` file next to it. Until then the run stops as awaiting the owner's signature. `MANDATE_LIVE_HANDOFF_WAIT_SEC` makes it poll for the file first (default 0), a rerun with `MANDATE_LIVE_RESUME=1` imports the file, and `MANDATE_LIVE_HANDOFF=<file>` supplies handoffs to an existing ledger (with `MANDATE_LIVE_RESUME=1`). The runner never submits anything for the owner.
+
+The import looks the hash up at final finality and checks the chain, signer, approved key, receiver, every action and argument, gas and deposit bounds, the key's nonce, the final receipt tree and the expected state and balance changes, then charges the actual fee once. An unrelated, altered or duplicate hash, or a second hash for an intent already handed off, is refused: recorded as refused, never as success, and the run stops. If a refused handoff's transaction is final on chain and the owner paid for it, its fee is recorded and charged once against the fee cap. A transaction that is not yet final records nothing.
+
+**Withdrawals.** Each withdrawal attempt is classified from its final receipts and the token balances before and after: withdrawn, refunded (the token transfer failed and the verifier restored the Intents balance), failed, or inconsistent. A refunded or failed attempt is a finding that leaves the Intents balance intact; a resume retries it once under a new attempt, re-running that asset's storage registration first, and counts no unit twice. The other asset's withdrawal is neither blocked nor repeated.
 
 The relay is checked twice: before the bundle is prepared, and again after signing, immediately before the broadcast. Each check requires confirmed revocation (grant revoked, no key operation in flight, signing key absent) and at least `min_remaining_sec` (10 s) left before the order's deadline by the final block's time. Unconfirmed revocation stops the run; nothing is sent. Too little remaining time skips the relay and records it as inconclusive. A relay that is sent passes only if the verifier rejects it for the removed key, before the order's deadline, with both nonces unused and balances unchanged. An expired order, missing filler funds, a different signature error or an unreadable execution time is inconclusive, never a pass; execution counts as a revocation failure.
 
-Classified terminal outcomes, whether passed, inconclusive, failed or skipped, are recorded and the run proceeds to recovery, exiting nonzero unless every step passed. Unresolved outcomes stop the run without resubmitting anything: a lost response, an outcome that is not final, or an RPC interruption. `MANDATE_LIVE_RESUME=1` reconciles the stopped run from chain state, then continues. The relay's evidence records the deadline-sensitive phases (withheld order proposed, propose confirmed by runner, bundle simulated, revoke sent, revoke confirmed by runner, relay pre-check, prepared, broadcast) with runner wall-clock times and, where read, the final block's time remaining before the deadline. "Confirmed by runner" is when the step's terminal verification was recorded; after a lost response it is the reconciling resume, never the ambiguous response.
+Classified terminal outcomes, whether passed, inconclusive, failed or skipped, are recorded and the run proceeds to recovery, exiting nonzero unless every step passed. Unresolved outcomes stop the run without resubmitting anything: a lost response, an outcome that is not final, or an RPC interruption. `MANDATE_LIVE_RESUME=1` reconciles the stopped run from chain state, then continues; a resume never resubmits a transaction whose response was lost, and no step is charged or executed twice. The relay's evidence records the deadline-sensitive phases (withheld order proposed, propose confirmed by runner, bundle simulated, revoke sent, revoke confirmed by runner, relay pre-check, prepared, broadcast) with runner wall-clock times and, where read, the final block's time remaining before the deadline. "Confirmed by runner" is when the step's terminal verification was recorded; after a lost response it is the reconciling resume, never the ambiguous response.
 
 Regrant resistance and broken-oracle or broken-MPC scenarios stay in the sandbox gates. On mainnet, recovery only shows that its receipts call no agent, oracle or MPC; it cannot show those shared services disabled. The template's RPC is `https://free.rpc.fastnear.com`, because `rpc.mainnet.near.org` is deprecated and heavily rate-limited. For lookups of older receipts, such as the verification commands above, use the archival endpoint `https://archival-rpc.mainnet.fastnear.com`.
 
 `make demo` replays the recorded model output, so it needs no API key. To record a new model interaction, run `tools/src/agent/record.ts` with a model provider, then list the file in `fixtures/manifest.json`.
 
-Optional live agent, implemented and tested locally only; it has not run against a real model or on mainnet. [tools/src/live/manifest.live-agent.example.json](tools/src/live/manifest.live-agent.example.json) is the mainnet template with one change: the trade is proposed by a model (`provider: "near-ai"`, NEAR AI Cloud, the only live provider, key in `NEAR_AI_API_KEY`; an explicit model id, timeout and token limit are required, with one attempt and no fallback). Before deciding, the runner reads fresh oracle prices and the mandate's balances at one final block and records them. If the USD split is within 2 percentage points of 50/50 it records no action without calling the model. Otherwise it accepts only a proposal that sells the overweight asset, no more than needed to reach 50/50 at current prices plus 1% of that amount, within the grant's limits. A decline sends nothing. Truncated or invalid output, a reply naming a different model or a timeout is rejected locally before submission: no proposal transaction is sent, and it is recorded as a failed finding. Immediately before signing, the runner reads the prices and balances again and repeats these checks, requiring each price to stay fresh for at least `min_remaining_sec` + 15 s more; a failure there is also a local rejection. If the proposal transaction is submitted and the mandate itself refuses it (its own receipt fails with the grant unchanged, or it rejects the order while pricing), that transaction can consume gas and no trade is filled; the refusal is recorded as a failed finding, and the run continues to revocation and recovery. When no order is made, the following fill and settle are recorded as skipped, never applied to an earlier order. An ambiguous outcome stops the run for reconciliation. The request and the exact response are written to the ledger before any signing. On resume, a recorded decision is reused; a request without a recorded response stops by default, and `MANDATE_LIVE_ALLOW_NEW_DECISION=1` explicitly permits a new, recorded decision, which may incur another inference charge. This 50/50 rule is the agent's objective, not a limit the contract enforces, and model quality, latency and any NEAR AI attestation are not verified here.
+Optional live agent, tested in sandbox only with synthetic provider answers; it has not run against a real model or on mainnet, and no live provider is qualified. In the primary template the trade is proposed by a model (`provider: "near-ai"`, NEAR AI Cloud, the only live provider, key in `NEAR_AI_API_KEY`; an explicit model id, timeout and token limit are required, with one attempt and no fallback). Before deciding, the runner reads fresh oracle prices and the mandate's balances at one final block and records them. If the USD split is within 2 percentage points of 50/50 it records no action without calling the model. Otherwise it accepts only a proposal that sells the overweight asset, no more than needed to reach 50/50 at current prices plus 1% of that amount, within the grant's limits and the runner's remaining per-order and cumulative sale budgets. Those budgets are also in the agent's snapshot and prompt; a proposal above them is rejected, never clipped, while a partial rebalance within the tighter cap is valid. A decline sends nothing. Truncated or invalid output, a reply naming a different model or a timeout is rejected locally before submission: no proposal transaction is sent, and it is recorded as a failed finding. Immediately before signing, the runner reads the prices and balances again and repeats these checks, requiring each price to stay fresh for at least `min_remaining_sec` + 15 s more; a failure there is also a local rejection. If the proposal transaction is submitted and the mandate itself refuses it (its own receipt fails with the grant unchanged, or it rejects the order while pricing), that transaction can consume gas and no trade is filled; the refusal is recorded as a failed finding, and the run continues to revocation and recovery. When no order is made, the following fill and settle are recorded as skipped, never applied to an earlier order. An ambiguous outcome stops the run for reconciliation. The request and the exact response are written to the ledger before any signing. On resume, a recorded decision is reused; a request without a recorded response stops by default, and `MANDATE_LIVE_ALLOW_NEW_DECISION=1` explicitly permits a new, recorded decision, which may incur another inference charge. This 50/50 rule is the agent's objective, not a limit the contract enforces, and model quality, latency and any NEAR AI attestation are not verified here.
+
+[tools/src/agent/rehearsal.ts](tools/src/agent/rehearsal.ts) rehearses the provider path without any transaction: from given observations, the sale budget and the planned inventory (recorded separately from observed balances), it builds the same snapshot and prompt, makes at most one provider call and validates the reply as the runner does. It has run with stub providers only, which do not qualify a provider; a real provider call is paid inference and refuses to run without the owner's explicit approval.
 
 ## Known limits
 
@@ -260,6 +316,7 @@ Optional live agent, implemented and tested locally only; it has not run against
 - A transaction's top-level result can arrive before its detached key-registration or removal receipts finish; tools poll `get_grant` until no key operation is in flight.
 - Registration presence is evidence of our registration or of a verifier-admin key addition; verifier admins can already lock or alter the account, so this adds no new trust.
 - Sandbox timing does not represent mainnet latency.
+- The owner console has been exercised only through the local sandbox test signer; no external wallet has been tested with it.
 
 ## Disclosures
 
@@ -293,7 +350,7 @@ Optional live agent, implemented and tested locally only; it has not run against
 | `typescript` / `tsx` | 6.0.3 / 4.23.15 | Apache-2.0 / MIT | build and script runner |
 | `vitest` | 5.0.5 | MIT | TypeScript tests |
 | `eslint` / `typescript-eslint` / `@eslint/js` / `@types/node` | 10.13.0 / 8.72.0 / 10.0.1 / 26.6.5 | MIT | lint and types |
-| `playwright` | 1.64.1 | Apache-2.0 | browser tests of the console (dev only) |
+| `playwright` | 1.64.1 | Apache-2.0 | drives the owner console in headless Chromium in `make test` and `make demo` (dev only) |
 | `wee_alloc` / `memory_units` | 0.4.5 / 0.4.0 | MPL-2.0 | WASM allocator that `near-sdk` enables by default; compiled unmodified into the contract WASM (source on crates.io) |
 
 **Upstream code and data in this repository**, also listed in [NOTICE](NOTICE):
@@ -305,7 +362,7 @@ Optional live agent, implemented and tested locally only; it has not run against
 
 **Tooling, not distributed:**
 - Build: Rust 1.97.1, `cargo-near` 0.22.0 and the `sourcescan/cargo-near:0.22.0-rust-1.97.1` image for reproducible builds.
-- Tests and demo: the NEAR sandbox binary (nearcore 2.13.4), which `near-workspaces` and `near-sandbox` download at test time. Node.js 24.
+- Tests and demo: the NEAR sandbox binary (nearcore 2.13.4), which `near-workspaces` and `near-sandbox` download at test time, and Playwright's pinned headless Chromium, which `make test` and `make demo` install on first run. Node.js 24.
 - Video only, in `tools/src/video/make.ts`: ffmpeg, Google Chrome and `playwright-core`.
 
 ## License
