@@ -114,6 +114,9 @@ function mismatches(found: Found, run: RunRecord, wasm: WasmRecord | null, fixtu
   if (r.fixture_manifest_sha256 !== run.fixture_manifest_sha256) {
     out.push(`fixture_manifest_sha256 ${r.fixture_manifest_sha256} != run ${run.fixture_manifest_sha256}`);
   }
+  // Committed evidence must not carry machine-local paths (user, session or checkout location).
+  const local = r.command.split(" ").filter((arg) => arg.startsWith("/"));
+  if (local.length > 0) out.push(`command records ${String(local.length)} machine-local absolute path(s)`);
   // Sandbox execution must be bound to the binaries it ran; only unit-VM reports run without WASM.
   if (r.mode === "sandbox" && Object.keys(r.wasm_sha256).length === 0) out.push("sandbox report binds no WASM hash");
   // A stem outside the run's target/near record is checked against a fixture of that stem (covered by the manifest hash).

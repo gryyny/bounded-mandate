@@ -1066,7 +1066,7 @@ async fn t5_baseline_threat_model() -> Result<()> {
         "spec_sha256": sha256_hex(&std::fs::read(root_dir().join("SPEC.md"))?),
         "fixture_manifest_sha256": sha256_hex(&std::fs::read(root_dir().join("fixtures/manifest.json"))?),
         "wasm_sha256": env.wasm_sha256,
-        "command": std::env::args().collect::<Vec<_>>().join(" "),
+        "command": portable_command(&root_dir()),
         "generated_at_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default(),
         "data": data,
     });
@@ -1164,4 +1164,26 @@ fn t5_report_writer_never_overwrites() -> Result<()> {
     );
     std::fs::remove_dir_all(&dir)?;
     Ok(())
+}
+
+/// The invoking command with machine-local paths removed: an absolute argument inside the repository is
+/// shown relative to it, any other absolute argument by its file name.
+fn portable_command(root: &std::path::Path) -> String {
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    std::env::args()
+        .map(|a| {
+            let p = std::path::Path::new(&a);
+            if !p.is_absolute() {
+                return a.clone();
+            }
+            let resolved = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+            match resolved.strip_prefix(&canonical) {
+                Ok(rel) => rel.display().to_string(),
+                Err(_) => p
+                    .file_name()
+                    .map_or_else(|| a.clone(), |f| f.to_string_lossy().into_owned()),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }

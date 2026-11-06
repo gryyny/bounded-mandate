@@ -178,6 +178,18 @@ describe("acceptance", () => {
     expect(a.complete).toBe(false);
   });
 
+  it("a report whose command records a machine-local path does not count", () => {
+    const root = tempRepo();
+    const { run, wasm } = fullRun(root, ["T2b.callback-failed-after-disclosure"]);
+    put(root, "T2b.callback-failed-after-disclosure.json", report(run, wasm, "T2b.callback-failed-after-disclosure", { command: "/Users/someone/clone/target/debug/deps/t2b-0123" }));
+    const a = evaluate(root);
+    const c = a.cases.find((x) => x.id === "T2b.callback-failed-after-disclosure");
+    expect(c?.status).toBe("mismatched");
+    expect(c?.reason).toMatch(/command records 1 machine-local absolute path\(s\)/);
+    expect(c?.reason).not.toContain("someone");
+    expect(a.complete).toBe(false);
+  });
+
   it("reports from another run are listed, never counted", () => {
     const root = tempRepo();
     const { run, wasm } = fullRun(root, ["T1.withheld-regrant"]);

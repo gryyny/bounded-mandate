@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CaseRecorder, wasmHashes, writeGateReport } from "../src/evidence/report.js";
+import { CaseRecorder, portableCommand, wasmHashes, writeGateReport } from "../src/evidence/report.js";
 import { GateReportV2 } from "../src/evidence/schema.js";
 
 const repo = resolve(import.meta.dirname, "../..");
@@ -54,6 +54,22 @@ describe("gate report writer", () => {
         { path: "fixtures/verifier/defuse-0.4.5.wasm", sha256: "2".repeat(64) },
       ]),
     ).toEqual({ bounded_mandate: "1".repeat(64) });
+  });
+});
+
+describe("recorded command", () => {
+  it("keeps no machine-local path: repository paths become relative, other absolute paths their file name", () => {
+    const root = "/home/someone/clone";
+    expect(portableCommand(["/opt/node/bin/node", "/home/someone/clone/tools/node_modules/vitest/vitest.mjs", "run", "test/x.test.ts"], root)).toBe(
+      "node tools/node_modules/vitest/vitest.mjs run test/x.test.ts",
+    );
+    expect(portableCommand(["/home/someone/clone-other/a.js", "/home/someone/clone"], root)).toBe("a.js clone");
+  });
+
+  it("records the writer's own command without the checkout's absolute path", () => {
+    const report = read(writeGateReport({ root: tempRoot(), gate: "T1", case: "portable", passed: true, mode: "unit", wasm: {}, data: {} }));
+    expect(report.command).not.toContain(repo);
+    expect(report.command.split(" ").filter((a) => a.startsWith("/"))).toEqual([]);
   });
 });
 

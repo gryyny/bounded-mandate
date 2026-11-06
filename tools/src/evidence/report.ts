@@ -3,7 +3,7 @@
 // checks can never produce a passing report.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { sha256File } from "../checks/integrity.js";
 import { REPORT_SCHEMA, type GateReportV2 } from "./schema.js";
 
@@ -16,6 +16,16 @@ export const git = (root: string, args: string[]): string | null => {
     return null;
   }
 };
+
+/** The command with machine-local paths removed: an absolute argument inside the repository is shown relative to it, any other by its file name. */
+export const portableCommand = (argv: readonly string[], root: string): string =>
+  argv
+    .map((a) => {
+      if (!isAbsolute(a)) return a;
+      const rel = relative(resolve(root), a);
+      return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) ? rel : basename(a);
+    })
+    .join(" ");
 
 export function treeState(root: string): { revision: string | null; dirty: boolean } {
   const revision = git(root, ["rev-parse", "HEAD"]);
@@ -57,7 +67,7 @@ export function writeGateReport(input: ReportInput): string {
     spec_sha256: sha256File(join(root, "SPEC.md")),
     fixture_manifest_sha256: sha256File(join(root, "fixtures/manifest.json")),
     wasm_sha256: input.wasm,
-    command: process.argv.join(" "),
+    command: portableCommand(process.argv, root),
     generated_at_unix: Math.floor(Date.now() / 1000),
     data: input.data,
   };
