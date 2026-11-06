@@ -8,7 +8,7 @@
 //   cd tools && npx --no-install tsx src/video/make.ts [--log ../out/video/demo.log]
 //
 // Inputs: out/evidence/demo.json, out/evidence/acceptance.json (optional), out/page/index.html, the demo log,
-// fixtures/model/normal.json. Outputs in out/video/: bounded-mandate-short.mp4 with captions-short.srt and
+// fixtures/model/normal.json, and the console screenshots demo.json records (out/console/screens/demo-*.png, by sha256). Outputs in out/video/: bounded-mandate-short.mp4 with captions-short.srt and
 // frames-short/*.png; bounded-mandate-demo.mp4 (walkthrough) with captions.srt and frames/*.png; video.json
 // (source hashes, revision, certification, and per cut its output hashes, duration and frame list).
 //
@@ -31,7 +31,7 @@ import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
 import { GATE_LABEL, HEADLINE, SUBTITLE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, modelReason, priceText, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type Stage, type StageKey } from "../page/story.js";
-import { ConsoleReview, PLANNED_LABEL, PLANNED_URLS, demoSteps, type StepState } from "../evidence/journey.js";
+import { CONSOLE_BROWSER_LABEL, ConsoleReview, ConsoleRevoke, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, demoSteps, type Screenshot, type StepState } from "../evidence/journey.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
@@ -95,7 +95,7 @@ interface Scene {
 
 const list = (items: string[]): string => `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
 const kv = (rows: [string, string][]): string => `<table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>`;
-const img = (png: Buffer): string => `<img class="shot" src="data:image/png;base64,${png.toString("base64")}" alt="">`;
+const img = (png: Buffer, cls = ""): string => `<img class="shot${cls === "" ? "" : ` ${cls}`}" src="data:image/png;base64,${png.toString("base64")}" alt="">`;
 
 /** The only place the video may say "certified": a certified acceptance run bound to this demo. */
 function certification(binding: DemoBinding): { chip: string; sentence: string } {
@@ -230,28 +230,34 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     },
     {
       kind: "demo",
-      labels: ["Read-only console view"],
-      title: outcomeTitle("console", "1", "Mandate reviewed in the console", "Console review"),
-      body:
-        (review.success
-          ? kv([
-              ["Owner (fixed)", review.data.config.owner],
-              ["Agent", review.data.config.agent],
-              ["Verifier", review.data.config.verifier],
-              ["Tokens", `${review.data.config.usdc_token}, ${review.data.config.wnear_token}`],
-              ["Console view", review.data.view.local_path ?? "not rendered by this run (chain state shown instead)"],
-              ["Console URL", `${review.data.view.planned_url} (${review.data.view.planned_label})`],
-            ])
-          : "") + checks(consoleStep),
-      captions: [narrate("console", story.get("console")?.caption ?? "")],
-      strip: stateAfter("Mandate reviewed in the console"),
-    },
-    {
-      kind: "demo",
-      title: outcomeTitle("limits", "2", "Grant and limits", "Grant and limits"),
+      title: outcomeTitle("limits", "1", "Grant and limits", "Grant and limits"),
       body: txs(/grant/) + checks(grantStep),
       captions: [narrate("limits", `The owner grants the mandate. Initial reference value: $${units(initial, 12, 2)}. Limits are fixed for the grant; the agent cannot change them.`)],
       strip: stateAfter("Grant and limits"),
+    },
+    {
+      kind: "demo",
+      labels: [sentenceCase(CONSOLE_BROWSER_LABEL)],
+      title: outcomeTitle("console", "2", "Mandate reviewed in the console", "Console review"),
+      body: (() => {
+        const shown = review.success ? review.data.rendered : undefined;
+        const rows: [string, string][] =
+          shown === undefined
+            ? review.success
+              ? [["Console", "this evidence records no values read from the rendered console"]]
+              : []
+            : [
+                ["Console read", `${/final block #[0-9]+/.exec(shown.badge)?.[0] ?? "block not shown"} of the sandbox`],
+                ["Grant", `${shown.grant_status} · key ${shown.key_on_verifier}`],
+                ["Largest order", shown.limits.find(([k]) => k === "Largest single order")?.[1] ?? "not shown"],
+                ["Mandate holds", `${shown.mandate_balances.USDC ?? "?"} USDC, ${shown.mandate_balances.wNEAR ?? "?"} wNEAR`],
+                ["Signer", OWNER_CONTROLS_LABEL],
+              ];
+        const shot = shots.consoleReview;
+        return shot === undefined ? kv(rows) + checks(consoleStep) : `<div class="split"><div>${kv(rows)}${checks(consoleStep)}</div>${img(shot, "side")}</div>`;
+      })(),
+      captions: [narrate("console", story.get("console")?.caption ?? "")],
+      strip: stateAfter("Mandate reviewed in the console"),
     },
     {
       kind: "demo",
@@ -298,9 +304,14 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     ...attackScenes,
     {
       kind: "demo",
-      title: outcomeTitle("revoked", "6", "Owner revokes; key removal confirmed", "Owner revokes"),
-      body: txs(/^owner revoke/) + checks(revoke),
-      captions: [narrate("revoked", "The owner revokes. The verifier confirms the grant key is removed; only then is the withheld order's reservation released.")],
+      labels: story.get("revoked")?.labels.map(sentenceCase) ?? [],
+      title: outcomeTitle("revoked", "6", "Owner revokes in the console; key removal confirmed", "Owner revokes"),
+      body: (() => {
+        const facts = kv((story.get("revoked")?.facts ?? []).filter(([k]) => ["Through", "Preview", "Sign requests"].includes(k)));
+        const shot = shots.revokePreview;
+        return shot === undefined ? facts + txs(/^owner revoke/) + checks(revoke) : `<div class="split"><div>${facts}${txs(/^owner revoke/)}${checks(revoke)}</div>${img(shot, "side")}</div>`;
+      })(),
+      captions: [narrate("revoked", story.get("revoked")?.caption ?? "The owner revokes.")],
       strip: stateAfter("Owner revokes"),
     },
     {
@@ -480,6 +491,8 @@ table.cases th { text-align: left; padding: 3px 20px 3px 0; font: 700 22px "SF M
 .claim { font-size: 40px; line-height: 1.35; max-width: 1600px; }
 .note { font-size: 22px; color: #e6b450; margin: 4px 0 8px; } table.cases small { font: 500 15px -apple-system, sans-serif; color: #a39d8f; }
 img.shot { width: 100%; height: 690px; object-fit: contain; object-position: top center; border: 1px solid #2a3039; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; } .split table.kv td { font-size: 21px; } .split li { font-size: 20px; margin: 3px 0; }
+img.shot.side { height: 510px; object-position: top left; }
 ol.rail { list-style: none; display: flex; gap: 10px; padding: 0; margin: 0 0 22px; } ol.rail li { flex: 1; font: 600 16px/1.25 -apple-system, "Helvetica Neue", sans-serif; color: #6d6a62; border-top: 6px solid #2a3039; padding-top: 8px; }
 ol.rail li b { font-family: "SF Mono", Menlo, monospace; } ol.rail li.past { color: #a39d8f; border-color: #6fcf9f; } ol.rail li.now { color: #ece6d8; border-color: #e0866f; }
 .objective { font-size: 26px; color: #c9d6e3; margin: 0 0 10px; }
@@ -506,7 +519,7 @@ function stripHtml(st: StepState | null, stage: string): string {
 
 function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
   const labels = [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])];
-  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary|Owner action|Read-only)/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
+  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary|Owner action|Owner controls|Owner console|Read-only)/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
   const status = certification(binding);
   const reason = binding.certified ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
   const strip = s.strip === undefined ? "" : stripHtml(s.strip, s.stage ?? s.title);
@@ -547,6 +560,24 @@ async function pageShots(browser: PwBrowser, pagePath: string): Promise<Record<s
   }
   await page.close();
   return shots;
+}
+
+/** The console screenshots the demo recorded, each refused unless its bytes match the sha256 in demo.json. */
+export function consoleShots(ev: Evidence): { shots: Record<string, Buffer>; files: Record<string, Screenshot> } {
+  const review = ConsoleReview.safeParse(ev.assertions.find((a) => a.id === "console-review")?.observed);
+  const revoke = ConsoleRevoke.safeParse(ev.assertions.find((a) => a.id === "revoke-through-console")?.observed);
+  const files: Record<string, Screenshot> = {};
+  if (review.success && review.data.rendered !== undefined) files.consoleReview = review.data.rendered.screenshot;
+  if (revoke.success && revoke.data.screenshot !== null) files.revokePreview = revoke.data.screenshot;
+  const shots: Record<string, Buffer> = {};
+  for (const [name, f] of Object.entries(files)) {
+    const path = join(REPO_ROOT, f.path);
+    if (!existsSync(path)) throw new Error(`missing ${f.path}, recorded by the demo run`);
+    const bytes = readFileSync(path);
+    if (sha256(bytes) !== f.sha256) throw new Error(`${f.path} is not the screenshot of the demo.json run (sha256 differs)`);
+    shots[name] = bytes;
+  }
+  return { shots, files };
 }
 
 /** Packs whole sentences into frames of at most 24 words, so each burned-in caption stays readable. */
@@ -662,7 +693,7 @@ async function main(): Promise<void> {
   const browser = await loadPlaywright().chromium.launch({ channel: process.env.PW_CHANNEL ?? "chrome", headless: true });
   const outputs: Partial<Record<Cut["name"], CutOutput>> = {};
   try {
-    const shots = await pageShots(browser, files.page);
+    const shots = { ...(await pageShots(browser, files.page)), ...consoleShots(ev).shots };
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
     const cuts: Cut[] = [
       { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown), pace: shortPace, range: SHORT_RANGE_S },
@@ -684,8 +715,11 @@ async function main(): Promise<void> {
     acceptance: acc === null ? null : { run_id: acc.run_id, revision: acc.revision, certified: acc.certified, complete: acc.complete },
     certification: { certified_for_this_demo: binding.certified, reasons: binding.reasons, inputs: binding.inputs },
     mainnet_receipts_shown: mainnetShown,
-    sources: Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),
-    demo_timing_ms: { setup: setupMs, story: storyMs },
+    sources: {
+      ...Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),
+      ...Object.fromEntries(Object.entries(consoleShots(ev).files).map(([k, f]) => [k, f])),
+    },
+    demo_timing_ms: { setup: setupMs, story: storyMs, browser_start: ev.environment.browser_start_ms === undefined ? null : Number(ev.environment.browser_start_ms) },
     tools: { ffmpeg: execFileSync(process.env.FFMPEG ?? "ffmpeg", ["-version"], { encoding: "utf8" }).split("\n")[0] ?? "unknown" },
     cuts: outputs,
   };

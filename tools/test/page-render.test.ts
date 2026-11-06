@@ -11,8 +11,8 @@ import { LIVE_MAINNET_PATH, isTxHash, loadLive } from "../src/page/mainnet.js";
 import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/page/render.js";
 import { clientScript, scriptHash } from "../src/page/verify.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
-import { ATTACKS, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
-import { PLANNED_LABEL, PLANNED_URLS } from "../src/evidence/journey.js";
+import { ATTACKS, CONSOLE_RENDERED, CONSOLE_REVOKE, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
+import { CONSOLE_BROWSER_LABEL, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../src/evidence/journey.js";
 import { revocationStory } from "../src/page/story.js";
 
 const REV = "a".repeat(40);
@@ -328,7 +328,7 @@ describe("evidence page: revocation story", () => {
 
   it("shows the nine journey stages in order with values bound to the evidence", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
-    expect(stages(html)).toEqual(["console held", "limits held", "trade held", "withheld held", "attacks held", "revoked held", "rejected held", "recovered held", "withdrawn held"]);
+    expect(stages(html)).toEqual(["limits held", "console held", "trade held", "withheld held", "attacks held", "revoked held", "rejected held", "recovered held", "withdrawn held"]);
     // Expected text derived from the SYNTHETIC raw inputs (6 USDC decimals, 24 wNEAR decimals, 12 value decimals).
     const s = STORY;
     expect(s.before.usdc).toBe(2_000n * 10n ** 6n);
@@ -551,10 +551,49 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
 
   it("keeps older evidence without the identity held, and says what is not recorded", () => {
     const older = renderHtml(olderStoryEvidence(), { acceptance: null, live: null });
-    expect(stages(older).every((s) => s.endsWith(" held"))).toBe(true);
+    // An older demo never opened the console: its review is inconclusive and its revocation is a direct owner call.
+    expect(stages(older).filter((s) => !s.endsWith(" held"))).toEqual(["console inconclusive"]);
+    expect(older).toContain(escapeHtml("inconclusive: this evidence records no values read from the rendered console"));
+    expect(older).toContain(escapeHtml("a direct owner call (not through the console)"));
+    expect(older).not.toContain(escapeHtml(OWNER_CONTROLS_LABEL));
     expect(older).toContain("order nonce, deadline and bundle hash are not recorded in this evidence");
     expect(older).toContain("Block time before relay");
     expect(older).toContain(escapeHtml("rejected 38 s before its deadline"));
+  });
+
+  it("narrates a malformed signature or an order expired at its rejection block as inconclusive, never as rejection by revocation", () => {
+    // SYNTHETIC: the demo marks both as not held (relayRejectionProblems); the page must not narrate them as evidence.
+    const malformed = withObserved(storyEvidence(), "withheld-rejected", (o) => ({ ...o, error: "SYNTHETIC Smart contract panicked: invalid signature" }));
+    const expiredAtBlock = withObserved(storyEvidence(), "withheld-rejected", (o) => ({
+      ...o,
+      relay_block_time_ns: (STORY.deadlineNs - 1_000_000_000n).toString(),
+      verifier_receipt: { id: "SYNTHETICreceipt", block_hash: "SYNTHETICblock", block_time_ns: (STORY.deadlineNs + 500_000_000n).toString() },
+    }));
+    const cases: [Evidence, string][] = [
+      [malformed, "the verifier error does not name the removed grant key"],
+      [expiredAtBlock, "the withheld order was relayed 0.5 s after its deadline"],
+    ];
+    for (const [ev, reason] of cases) {
+      const failed = { ...ev, assertions: ev.assertions.map((a) => (a.id === "withheld-rejected" ? { ...a, passed: false } : a)) };
+      const h = renderHtml(failed, { acceptance: null, live: null });
+      expect(stages(h)).toContain("rejected inconclusive");
+      expect(h).toContain(escapeHtml(reason));
+      expect(h).toContain("withheld-rejected</a> <strong>did not hold</strong>");
+      expect(h).not.toMatch(/rejected -?\d+ s before its deadline/);
+      expect(h).not.toContain(escapeHtml("The verifier rejects it: the signing key no longer exists."));
+    }
+  });
+
+  it("narrates a console review that differs from the chain as inconclusive, and a failed console revocation as not held", () => {
+    const differs = withObserved(storyEvidence(), "console-review", (o) => ({ ...o, mismatches: ["grant status: console shows \"active\", chain \"revoked\""] }));
+    const h = renderHtml(differs, { acceptance: null, live: null });
+    expect(stages(h)).toContain("console inconclusive");
+    expect(h).toContain(escapeHtml("the console showed values that differ from the chain"));
+    const ev = storyEvidence();
+    const twice = { ...ev, assertions: ev.assertions.map((a) => (a.id === "revoke-through-console" ? { ...a, passed: false } : a)) };
+    const t = renderHtml(twice, { acceptance: null, live: null });
+    expect(stages(t)).toContain("revoked failure");
+    expect(t).toContain("revoke-through-console</a> <strong>did not hold</strong>");
   });
 
   it("narrates as inconclusive a rejection that does not name the key, a different bundle, or a different simulated order", () => {
@@ -648,13 +687,26 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
     return html.slice(start, html.indexOf("</section>", start));
   };
 
-  it("opens the journey with the console review, showing the console view's state and its planned URL as planned", () => {
+  it("follows the grant with the console review read from the rendered console, and labels the console revocation", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
     const card = stageHtml(html, "console");
-    for (const text of ["2,000.00 USDC + 100.0000 wNEAR", "owner.synthetic", "propose_order on mandate.synthetic", "not rendered by this run", `${PLANNED_URLS.console} (${PLANNED_LABEL})`, "read-only console view"]) {
+    const shown = CONSOLE_RENDERED;
+    for (const text of [
+      `grant ${shown.grant_status} · key registered · ${shown.mandate_balances.USDC} USDC + ${shown.mandate_balances.wNEAR} wNEAR`,
+      "final block #42 of the sandbox",
+      "owner.synthetic",
+      "propose_order on mandate.synthetic",
+      shown.screenshot.path,
+      OWNER_CONTROLS_LABEL,
+      "not rendered by this run",
+      `${PLANNED_URLS.console} (${PLANNED_LABEL})`,
+      CONSOLE_BROWSER_LABEL,
+    ]) {
       expect(card).toContain(escapeHtml(text));
     }
-    expect(card).toContain("grant none · no grant key · open orders 0");
+    expect(card).toContain("grant active · key registered · open orders 0");
+    const revoked = stageHtml(html, "revoked");
+    for (const text of [`the console's Revoke control, ${OWNER_CONTROLS_LABEL}`, "Sign requests</dt><dd>1", CONSOLE_REVOKE.tx_hash]) expect(revoked).toContain(text.includes("<") ? text : escapeHtml(text));
   });
 
   it("separates the owner's withdrawal from recovery, with registration only where it was needed", () => {

@@ -55,6 +55,37 @@ export const PLANNED_LABEL = "planned, unpublished";
 /** Where `make demo` writes the console view, relative to the repository root. */
 export const CONSOLE_LOCAL_PATH = "out/console/index.html";
 
+/** How the demo's owner actions in the console are signed; shown wherever such an action is narrated. */
+export const OWNER_CONTROLS_LABEL = "owner controls via the local sandbox test signer (not a wallet)";
+/** Where the demo's console review is read from. */
+export const CONSOLE_BROWSER_LABEL = "owner console in headless Chromium";
+
+/** A screenshot written by the demo, bound to its bytes. */
+export const Screenshot = z.object({ path: z.string(), sha256: z.string().regex(/^[0-9a-f]{64}$/) });
+export type Screenshot = z.infer<typeof Screenshot>;
+
+/** Values read from the rendered console's DOM in headless Chromium, as the owner sees them. */
+export const ConsoleRendered = z.object({
+  browser: z.string(),
+  origin: z.string(),
+  live_status: z.string(),
+  /** The live badge, e.g. "live · Local sandbox · final block #123". */
+  badge: z.string(),
+  chain_verified: z.boolean(),
+  deployment_matches: z.boolean(),
+  owner_controls: z.string(),
+  grant_status: z.string(),
+  grant_line: z.string(),
+  grant_key: z.string(),
+  key_on_verifier: z.string(),
+  limits: z.array(z.tuple([z.string(), z.string()])),
+  mandate: z.array(z.tuple([z.string(), z.string()])),
+  /** Mandate's Intents balance cell per asset label ("USDC", "wNEAR"). */
+  mandate_balances: z.record(z.string(), z.string()),
+  screenshot: Screenshot,
+});
+export type ConsoleRendered = z.infer<typeof ConsoleRendered>;
+
 /** Observed values of the console-review assertion. */
 export const ConsoleReview = z.object({
   state: StepState,
@@ -65,8 +96,63 @@ export const ConsoleReview = z.object({
     planned_url: z.string(),
     planned_label: z.literal(PLANNED_LABEL),
   }),
+  /** Read from the rendered console; absent in older evidence, whose review compared Node views only. */
+  rendered: ConsoleRendered.optional(),
+  /** DOM values that differ from the chain views read in Node; empty when the console showed the chain state. */
+  mismatches: z.array(z.string()).optional(),
 });
 export type ConsoleReview = z.infer<typeof ConsoleReview>;
+
+/** Observed values of the revoke-through-console assertion. */
+export const ConsoleRevoke = z.object({
+  via: z.literal(OWNER_CONTROLS_LABEL),
+  /** The review panel's rows as shown before signing. */
+  preview: z.array(z.tuple([z.string(), z.string()])),
+  /** Rows of the preview that differ from the independently derived intent; empty when exact. */
+  preview_problems: z.array(z.string()),
+  intent_sha256: z.string(),
+  sign_requests: z.array(z.object({ intent_sha256: z.string().nullable(), status: z.string(), tx_hash: z.string().nullable() })),
+  tx_hash: z.string().nullable(),
+  ui_final: z.string().nullable(),
+  outcome: z.enum(["success", "failure", "not-found"]),
+  screenshot: Screenshot.nullable(),
+});
+export type ConsoleRevoke = z.infer<typeof ConsoleRevoke>;
+
+/** What the withheld relay's rejection must show to count as the effect of revocation. */
+export interface RelayRejectionInput {
+  relaySucceeded: boolean;
+  /** Error of the verifier's failed receipt; null when no verifier receipt failed. */
+  verifierError: string | null;
+  revokedKey: string;
+  mandate: string;
+  deadlineNs: bigint | null;
+  /** Block time of the failed verifier receipt; null when not known. */
+  rejectedAtNs: bigint | null;
+  nonceUsed: boolean;
+  balancesUnchanged: boolean;
+}
+
+/** The verifier's exact text for a signature by a key the account does not hold (defuse v0.4.5). */
+export const removedKeyError = (key: string, account: string): string => `public key '${key}' doesn't exist for account '${account}'`;
+
+/**
+ * Why a relayed withheld order's failure is not evidence of revocation; empty when it is. Only the verifier's exact
+ * removed-key error, at a block before the order's deadline, with the nonce unused and no balance change counts: a
+ * malformed signature, an expired order or an unrelated failure never does.
+ */
+export function relayRejectionProblems(r: RelayRejectionInput): string[] {
+  const out: string[] = [];
+  if (r.relaySucceeded) out.push("the relay succeeded");
+  if (r.verifierError === null) out.push("no verifier receipt failed");
+  else if (!r.verifierError.includes(removedKeyError(r.revokedKey, r.mandate))) out.push(`the verifier error does not name the removed key: expected "${removedKeyError(r.revokedKey, r.mandate)}"`);
+  if (r.deadlineNs === null) out.push("the order's deadline is not known");
+  if (r.rejectedAtNs === null) out.push("the rejection's block time is not known");
+  if (r.deadlineNs !== null && r.rejectedAtNs !== null && r.rejectedAtNs >= r.deadlineNs) out.push("the rejection's block is at or after the order's deadline");
+  if (r.nonceUsed) out.push("the order's nonce was used");
+  if (!r.balancesUnchanged) out.push("the mandate's balances changed");
+  return out;
+}
 
 /**
  * Enforcement layer of an attack, from the boundary the attack suite classified from the observed result

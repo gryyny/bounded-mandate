@@ -2,6 +2,7 @@
 // invented here for testing the renderers and is labelled as such; none is a recorded run.
 import { createHash } from "node:crypto";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
+import { OWNER_CONTROLS_LABEL, removedKeyError } from "../src/evidence/journey.js";
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -67,6 +68,38 @@ export const STORY = {
   bundleSha256: "9".repeat(64),
 } as const;
 
+/** SYNTHETIC values "read from the rendered console" (nothing was rendered). */
+export const CONSOLE_RENDERED = {
+  browser: "SYNTHETIC chromium",
+  origin: "http://127.0.0.1:1",
+  live_status: "Read from http://127.0.0.1:2 at SYNTHETIC. Live chain state, not recorded evidence.",
+  badge: "live · Local sandbox · final block #42",
+  chain_verified: true,
+  deployment_matches: true,
+  owner_controls: "owner controls enabled signer owner.synthetic is the contract's owner on the expected deployment",
+  grant_status: "active",
+  grant_line: "active epoch 1 · active: SYNTHETIC",
+  grant_key: STORY.key,
+  key_on_verifier: "registered on intents.synthetic",
+  limits: [["Largest single order", "20% of the grant's initial reference value"]],
+  mandate: [["Owner", "owner.synthetic"]],
+  mandate_balances: { USDC: "2,000", wNEAR: "100" },
+  screenshot: { path: "out/console/screens/demo-console-review.png", sha256: "5".repeat(64) },
+};
+
+/** SYNTHETIC revocation "through the console's owner controls" (nothing was signed). */
+export const CONSOLE_REVOKE = {
+  via: OWNER_CONTROLS_LABEL,
+  preview: [["Receiver", "mandate.synthetic"], ["Method", "revoke"]],
+  preview_problems: [],
+  intent_sha256: "6".repeat(64),
+  sign_requests: [{ intent_sha256: "6".repeat(64), status: "submitted", tx_hash: txHash(`owner revoke (${OWNER_CONTROLS_LABEL})`) }],
+  tx_hash: txHash(`owner revoke (${OWNER_CONTROLS_LABEL})`),
+  ui_final: "final · success Revoke the grant",
+  outcome: "success",
+  screenshot: { path: "out/console/screens/demo-revoke-preview.png", sha256: "4".repeat(64) },
+};
+
 const price = (id: string, p: { price: bigint; expo: number }) => ({ price_id: id, price: p.price.toString(), conf: "1", expo: p.expo, publish_time_sec: "1000000000" });
 
 /** SYNTHETIC attack results, one per enforcement layer the suite classifies (values invented here). */
@@ -129,20 +162,6 @@ export function storyEvidence(): Evidence {
   });
   const steps: { step: string; receipts: Receipt[]; assertions: Assertion[]; state: ReturnType<typeof state> }[] = [
     {
-      step: "Mandate reviewed in the console",
-      receipts: [],
-      assertions: [
-        held("mandate-no-keys", []),
-        held("agent-one-restricted-key", [{ permission: { FunctionCall: { method_names: ["propose_order"], receiver_id: "mandate.synthetic" } } }]),
-        held("console-review", {
-          state: state("none", null, 0, s.before),
-          config: { owner: "owner.synthetic", agent: "agent.synthetic", verifier: "intents.synthetic", usdc_token: "usdc.synthetic", wnear_token: "wnear.synthetic" },
-          view: { local_path: null, planned_url: "https://gryyny.github.io/bounded-mandate/console/", planned_label: "planned, unpublished" },
-        }),
-      ],
-      state: state("none", null, 0, s.before),
-    },
-    {
       step: "Grant and limits",
       receipts: [tx("owner grant")],
       assertions: [
@@ -154,6 +173,22 @@ export function storyEvidence(): Evidence {
           initial_reference: { usdc: price("SYNTHETIC-usdc", s.reference.usdc), wnear: price("SYNTHETIC-wnear", s.reference.wnear), observed_at_ns: "1000000000000000000" },
         }),
         held("grant-initial-value", { contract: s.initialValue.toString() }),
+      ],
+      state: state("active", true, 0, s.before),
+    },
+    {
+      step: "Mandate reviewed in the console",
+      receipts: [],
+      assertions: [
+        held("mandate-no-keys", []),
+        held("agent-one-restricted-key", [{ permission: { FunctionCall: { method_names: ["propose_order"], receiver_id: "mandate.synthetic" } } }]),
+        held("console-review", {
+          state: state("active", true, 0, s.before),
+          config: { owner: "owner.synthetic", agent: "agent.synthetic", verifier: "intents.synthetic", usdc_token: "usdc.synthetic", wnear_token: "wnear.synthetic" },
+          view: { local_path: null, planned_url: "https://gryyny.github.io/bounded-mandate/console/", planned_label: "planned, unpublished" },
+          rendered: CONSOLE_RENDERED,
+          mismatches: [],
+        }),
       ],
       state: state("active", true, 0, s.before),
     },
@@ -199,8 +234,12 @@ export function storyEvidence(): Evidence {
     },
     {
       step: "Owner revokes; removal confirmed",
-      receipts: [tx("owner revoke")],
-      assertions: [held("revoked", { status: "revoked", key_registered: false, grant_public_key: s.key }), held("withheld-released", { state: "released", reason: "key_removed" })],
+      receipts: [tx(`owner revoke (${OWNER_CONTROLS_LABEL})`, { via: OWNER_CONTROLS_LABEL })],
+      assertions: [
+        held("revoke-through-console", CONSOLE_REVOKE),
+        held("revoked", { status: "revoked", key_registered: false, grant_public_key: s.key }),
+        held("withheld-released", { state: "released", reason: "key_removed" }),
+      ],
       state: state("revoked", false, 0, afterPair),
     },
     {
@@ -208,7 +247,7 @@ export function storyEvidence(): Evidence {
       receipts: [tx("relayer execute_intents (withheld order after revocation)", { signer_id: "relayer.synthetic", events: [] }, "failure")],
       assertions: [
         held("withheld-rejected", {
-          error: `SYNTHETIC Smart contract panicked: public key '${s.key}' doesn't exist for account 'mandate.synthetic'`,
+          error: `SYNTHETIC Smart contract panicked: ${removedKeyError(s.key, "mandate.synthetic")}`,
           relay_block_time_ns: (s.relayNs - 1_000_000_000n).toString(),
           order_deadline_ns: s.deadlineNs.toString(),
           nonce_used: false,
@@ -255,7 +294,10 @@ export function storyEvidence(): Evidence {
   });
 }
 
-/** SYNTHETIC: the same story in the format of demos before the withheld identity and grant reference were recorded. */
+/**
+ * SYNTHETIC: the same story in the format of demos before the withheld identity, the grant reference, the rendered
+ * console review and the console revocation were recorded.
+ */
 export function olderStoryEvidence(): Evidence {
   const ev = storyEvidence();
   const older: Record<string, (o: Record<string, unknown>) => unknown> = {
@@ -263,8 +305,14 @@ export function olderStoryEvidence(): Evidence {
     "withheld-executable": () => "accepted",
     revoked: (o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "grant_public_key")),
     "withheld-rejected": (o) => ({ error: o.error, relay_block_time_ns: o.relay_block_time_ns, order_deadline_ns: o.order_deadline_ns, nonce_used: o.nonce_used }),
+    // Older demos compared Node views only and revoked with a direct owner call.
+    "console-review": (o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "rendered" && k !== "mismatches")),
   };
-  return { ...ev, assertions: ev.assertions.map((a) => (a.id in older ? { ...a, observed: older[a.id]?.(a.observed as Record<string, unknown>) } : a)) };
+  return {
+    ...ev,
+    receipts: ev.receipts.map((r) => (r.label.startsWith("owner revoke") ? { label: "owner revoke", tx_hash: txHash("owner revoke"), outcome: r.outcome, detail: {} } : r)),
+    assertions: ev.assertions.filter((a) => a.id !== "revoke-through-console").map((a) => (a.id in older ? { ...a, observed: older[a.id]?.(a.observed as Record<string, unknown>) } : a)),
+  };
 }
 
 /** SYNTHETIC: the withheld order relayed 4.5 s after its deadline, so the demo marks withheld-rejected as not held. */

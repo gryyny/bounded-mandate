@@ -1,4 +1,4 @@
-// The demo journey in nine stages, each bound to the demo evidence it shows: console review, grant, bounded proposal and
+// The demo journey in nine stages, each bound to the demo evidence it shows: grant, console review, bounded proposal and
 // trade, withheld order, hostile requests, revocation, rejected relay, recovery, and the owner's separate withdrawal.
 // The page's opening sequence and both video cuts read it. Every value comes from one run's assertions, receipts and
 // recorded step states; a stage whose evidence is absent lists what is missing and shows no numbers. A stage whose check
@@ -8,7 +8,18 @@ import { z } from "zod";
 import { SYSTEM_PROMPT } from "../agent/prompt.js";
 import { VALUE_DECIMALS, formatPrice, valueUnits } from "../agent/snapshot.js";
 import { DECIMALS } from "../demo/market.js";
-import { AttackLogFields, ConsoleReview, OwnerWithdrawal, PLANNED_LABEL, demoSteps, enforcementLayer, type StepState } from "../evidence/journey.js";
+import {
+  AttackLogFields,
+  CONSOLE_BROWSER_LABEL,
+  ConsoleReview,
+  ConsoleRevoke,
+  OWNER_CONTROLS_LABEL,
+  OwnerWithdrawal,
+  PLANNED_LABEL,
+  demoSteps,
+  enforcementLayer,
+  type StepState,
+} from "../evidence/journey.js";
 import { Policy, Reference, type Evidence, type Receipt } from "../types.js";
 
 /** Decimal string of integer units with `decimals`, rounded down to `places`. */
@@ -106,6 +117,7 @@ const SHAPES = {
   "model-proposal-on-chain": z.object({ mode: z.string(), decision: z.object({ model: z.string() }).nullable(), order: OrderLike.extend({ concession_bps: z.number() }).nullable() }),
   revoked: z.object({ status: z.string().optional(), key_registered: z.boolean(), grant_public_key: z.string().nullable().optional() }),
   "console-review": ConsoleReview,
+  "revoke-through-console": ConsoleRevoke,
   "owner-withdrawal": OwnerWithdrawal,
   "withheld-released": z.object({ state: z.string(), reason: z.string().optional() }),
   "withheld-rejected": z.object({
@@ -321,34 +333,6 @@ export function revocationStory(ev: Evidence): Stage[] {
   const grantKey = SHAPES["grant-active"].safeParse(ev.assertions.find((a) => a.id === "grant-active")?.observed);
 
   return [
-    stage("console", "Reviewed in the console", (b) => {
-      const review = b.observed("console-review");
-      const keys = b.observed("agent-one-restricted-key");
-      b.check("mandate-no-keys");
-      const methods = keys?.map((k) => k.permission.FunctionCall.method_names.join(", ")).join("; ") ?? "";
-      const st = review?.state;
-      const view = review?.view;
-      return {
-        headline: st === undefined ? null : `${usdc(st.mandate.usdc)} + ${wnear(st.mandate.wnear)}`,
-        facts:
-          review === null
-            ? []
-            : [
-                ["Held by", `${mandate} (its Intents account)`],
-                ["Fixed owner", review.config.owner],
-                ["Agent's only key", methods === "" ? "not recorded" : `${methods} on ${mandate}`],
-                ["Console view", view?.local_path ?? "not rendered by this run; the values here are the chain state it reads"],
-                ["Console URL", `${view?.planned_url ?? ""} (${PLANNED_LABEL})`],
-                ["Mandate account keys", "none: only its contract acts for it"],
-                ["Tokens", `${review.config.usdc_token}, ${review.config.wnear_token}`],
-              ],
-        labels: ["read-only console view"],
-        caption:
-          st === undefined || methods === ""
-            ? null
-            : `The owner reviews the mandate in the console: ${usdc(st.mandate.usdc)} and ${wnear(st.mandate.wnear)}, and an agent key limited to ${methods}.`,
-      };
-    }),
     stage("limits", "Grant and limits", (b) => {
       b.tx(/^owner grant$/);
       const grant = b.observed("grant-active");
@@ -373,6 +357,42 @@ export function revocationStory(ev: Evidence): Stage[] {
           p === undefined || value === null
             ? null
             : `The owner grants fixed limits on ${usd(value.contract)}: at most ${pct(p.per_order_cap_bps)}${cap(p.per_order_cap_bps)} per order and ${pct(p.max_concession_bps)} price concession.`,
+      };
+    }),
+    stage("console", "Reviewed in the console", (b) => {
+      const review = b.observed("console-review");
+      const keys = b.observed("agent-one-restricted-key");
+      b.check("mandate-no-keys");
+      const methods = keys?.map((k) => k.permission.FunctionCall.method_names.join(", ")).join("; ") ?? "";
+      const shown = review?.rendered;
+      // Older demos compared Node views only and never opened the console; that is not a console review.
+      if (review !== null && shown === undefined) b.inconclusive.push("this evidence records no values read from the rendered console");
+      if (review !== null && (review.mismatches ?? []).length > 0) b.inconclusive.push(`the console showed values that differ from the chain: ${(review.mismatches ?? []).join("; ")}`);
+      const view = review?.view;
+      const largest = shown?.limits.find(([k]) => k === "Largest single order")?.[1];
+      return {
+        headline: shown === undefined ? null : `grant ${shown.grant_status} · key ${shown.key_on_verifier.replace(/ on .*$/, "")} · ${shown.mandate_balances.USDC ?? "?"} USDC + ${shown.mandate_balances.wNEAR ?? "?"} wNEAR`,
+        facts:
+          review === null || shown === undefined
+            ? []
+            : [
+                ["Read in", `${CONSOLE_BROWSER_LABEL}, ${shown.browser.replace(/ headless \(playwright\)$/, "")}`],
+                ["Console read", `${/final block #[0-9]+/.exec(shown.badge)?.[0] ?? "block not shown"} of the sandbox; chain and deployment ${shown.chain_verified && shown.deployment_matches ? "matched" : "did not match"}`],
+                ["Limits as shown", `${String(shown.limits.length)} rows${largest === undefined ? "" : `; largest order ${largest}`}`],
+                ["Signer connected", OWNER_CONTROLS_LABEL],
+                ["Grant key as shown", shown.grant_key],
+                ["Fixed owner", review.config.owner],
+                ["Agent's only key", methods === "" ? "not recorded" : `${methods} on ${mandate}`],
+                ["Served at", shown.origin],
+                ["Screenshot", shown.screenshot.path],
+                ["Static console view", view?.local_path ?? "not rendered by this run"],
+                ["Console URL", `${view?.planned_url ?? ""} (${PLANNED_LABEL})`],
+              ],
+        labels: [CONSOLE_BROWSER_LABEL],
+        caption:
+          shown === undefined || methods === ""
+            ? null
+            : `In the console, read from the sandbox, the owner sees the grant ${shown.grant_status}, its key ${shown.key_on_verifier.replace(/ on .*$/, "")} on the verifier, and limits as granted.`,
       };
     }),
     stage("trade", "Bounded proposal and trade", (b) => {
@@ -467,17 +487,33 @@ export function revocationStory(ev: Evidence): Stage[] {
     }),
     stage("revoked", "Owner revocation", (b) => {
       b.tx(/^owner revoke/);
+      // Newer demos revoke through the console's owner controls; older ones called revoke directly.
+      const viaConsole = ev.assertions.some((a) => a.id === "revoke-through-console") ? b.observed("revoke-through-console") : null;
       const revoked = b.observed("revoked");
       const released = b.observed("withheld-released");
       const key = revoked?.grant_public_key ?? (grantKey.success ? grantKey.data.public_key : null);
+      const direct = !ev.assertions.some((a) => a.id === "revoke-through-console");
       return {
         headline: revoked === null ? null : `grant ${revoked.status ?? "revoked"} · key registered: ${revoked.key_registered ? "yes" : "no"}`,
         facts: [
+          ["Through", viaConsole === null ? (direct ? "a direct owner call (not through the console)" : "not recorded") : `the console's Revoke control, ${OWNER_CONTROLS_LABEL}`],
+          ...(viaConsole === null
+            ? []
+            : ([
+                ["Preview", viaConsole.preview_problems.length === 0 ? "exact: receiver, method, arguments, gas and deposit as derived" : `differs: ${viaConsole.preview_problems.join("; ")}`],
+                ["Sign requests", String(viaConsole.sign_requests.length)],
+                ["Transaction", viaConsole.tx_hash ?? "none"],
+              ] as [string, string][])),
           ...(key === null ? [] : [["Removed key", key] as [string, string]]),
           ...(released === null ? [] : [["Withheld order", `${released.state}${released.reason === undefined ? "" : ` (${released.reason})`}`] as [string, string]]),
         ],
-        labels: [],
-        caption: revoked === null ? null : "The owner revokes the grant. The verifier confirms its key is removed; only then is the withheld reservation released.",
+        labels: viaConsole === null ? [] : [OWNER_CONTROLS_LABEL],
+        caption:
+          revoked === null
+            ? null
+            : viaConsole === null
+              ? "The owner revokes the grant with a direct owner call. The verifier confirms its key is removed; only then is the withheld reservation released."
+              : "In the console, after an exact preview, the owner revokes via the local sandbox test signer (not a wallet); the key's removal is confirmed.",
       };
     }),
     stage("rejected", "Withheld order relayed", (b) => {

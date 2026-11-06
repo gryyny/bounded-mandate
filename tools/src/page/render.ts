@@ -18,7 +18,7 @@ import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, priceText, revocationStory, share, shortHash, stateLine, usd, usdc, wnear, type Stage } from "./story.js";
-import { PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
+import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
 import { STYLES } from "./styles.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
@@ -266,6 +266,8 @@ function demonstrationSection(ev: Evidence): string {
         ...(s.receipts.some((r) => /scripted/.test(r.label)) ? ["scripted proposal"] : []),
         ...(/^Recovery/i.test(s.title) ? ["ordinary recovery (not the owner-key rescue)"] : []),
         ...(/withdrawal/i.test(s.title) ? ["owner action, outside recovery claims"] : []),
+        ...(s.checks.some((a) => a.id === "console-review" && ConsoleReview.safeParse(a.observed).data?.rendered !== undefined) ? [CONSOLE_BROWSER_LABEL] : []),
+        ...(s.receipts.some((r) => (r.detail as { via?: unknown } | null)?.via === OWNER_CONTROLS_LABEL) ? [OWNER_CONTROLS_LABEL] : []),
       ];
       const failed = s.receipts.some((r) => r.outcome === "failure" && !/after revocation/.test(r.label)) || s.checks.some((a) => !a.passed);
       return `<li class="${failed ? "failure" : "success"}" style="--i:${String(i)}"><div class="step-head"><strong>${escapeHtml(s.title)}</strong>${modeBadge(ev.mode)}${[...labels, ...base].map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("")}</div>${stepBody(s, ev)}</li>`;

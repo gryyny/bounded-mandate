@@ -3,12 +3,18 @@ import { describe, expect, it } from "vitest";
 import { bindDemo } from "../src/evidence/binding.js";
 import { revocationStory } from "../src/page/story.js";
 import { type Evidence } from "../src/types.js";
-import { SHORT_RANGE_S, chunks, type LogStep, shortPace, shortScenes, walkthroughScenes } from "../src/video/make.js";
-import { ATTACKS, STORY, expiredStoryEvidence, storyEvidence } from "./video-story-specimen.js";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { OWNER_CONTROLS_LABEL } from "../src/evidence/journey.js";
+import { REPO_ROOT } from "../src/evidence/report.js";
+import { SHORT_RANGE_S, chunks, consoleShots, type LogStep, shortPace, shortScenes, walkthroughScenes } from "../src/video/make.js";
+import { ATTACKS, CONSOLE_RENDERED, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence } from "./video-story-specimen.js";
 
 const STEPS: LogStep[] = [
-  "Mandate reviewed in the console",
   "Grant and limits",
+  "Mandate reviewed in the console",
   "Bounded agent proposal",
   "Filler fills",
   "Second signed order withheld",
@@ -39,8 +45,8 @@ describe("short video cut", () => {
     expect(scenes.map((s) => s.title)).toEqual([
       "A withheld signed order, relayed after revocation",
       "Let an AI agent trade within limits a contract enforces",
-      "1 · Reviewed in the console",
-      "2 · Grant and limits",
+      "1 · Grant and limits",
+      "2 · Reviewed in the console",
       "3 · Bounded proposal and trade",
       "4 · Signed order withheld",
       "5 · Hostile requests",
@@ -56,7 +62,8 @@ describe("short video cut", () => {
   it("puts the recorded chain state of each stage in the strip", () => {
     const scenes = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false);
     const strip = (title: string) => scenes.find((s) => s.title === title)?.strip;
-    expect(strip("1 · Reviewed in the console")).toMatchObject({ grant_status: "none", key_present: null, open_orders: 0 });
+    expect(strip("1 · Grant and limits")).toMatchObject({ grant_status: "active", key_present: true, open_orders: 0 });
+    expect(strip("2 · Reviewed in the console")).toMatchObject({ grant_status: "active", key_present: true, open_orders: 0 });
     expect(strip("4 · Signed order withheld")).toMatchObject({ grant_status: "active", key_present: true, open_orders: 1 });
     expect(strip("6 · Owner revocation")).toMatchObject({ grant_status: "revoked", key_present: false, open_orders: 0 });
     const after = { usdc: (STORY.before.usdc - STORY.sell).toString(), wnear: (STORY.before.wnear + STORY.buy).toString() };
@@ -76,7 +83,8 @@ describe("short video cut", () => {
     const text = captions().join("\n");
     const layers = "local validation 1, agent key permission 1, contract method check 1, policy validation 1, verifier 1";
     for (const expected of [
-      "2,000.00 USDC and 100.0000 wNEAR",
+      `In the console, read from the sandbox, the owner sees the grant ${CONSOLE_RENDERED.grant_status}, its key registered on the verifier, and limits as granted.`,
+      "In the console, after an exact preview, the owner revokes via the local sandbox test signer (not a wallet); the key's removal is confirmed.",
       "$2,300.00",
       "($460.00)",
       `A recorded ${STORY.model} proposal sells 12.34 USDC`,
@@ -148,6 +156,49 @@ describe("short video cut", () => {
     expect(expired.flatMap((sc) => sc.captions).join(" ")).not.toContain("The verifier rejects it");
     const held = walk(storyEvidence()).find((sc) => sc.title.startsWith("7 ·"));
     expect(held?.captions.join(" ")).toContain("Another account relays the withheld order 37 s before its deadline. The verifier rejects it");
+  });
+
+  it("walkthrough shows the console review and the console revocation with their screenshots and labels", () => {
+    const png = Buffer.from("SYNTHETIC png bytes");
+    const scenes = walkthroughScenes(withDecision(storyEvidence()), null, bindDemo(storyEvidence(), null), STEPS, { consoleReview: png, revokePreview: png }, STORY.model);
+    const review = scenes.find((sc) => sc.title.startsWith("2 ·"));
+    expect(review?.title).toBe("2 · Mandate reviewed in the console");
+    expect(review?.labels).toEqual(["Owner console in headless Chromium"]);
+    expect(review?.body).toContain(`data:image/png;base64,${png.toString("base64")}`);
+    expect(review?.body).toContain("final block #42 of the sandbox");
+    expect(review?.body).not.toMatch(/\blive\b/);
+    const revoke = scenes.find((sc) => sc.title.startsWith("6 ·"));
+    expect(revoke?.title).toBe("6 · Owner revokes in the console; key removal confirmed");
+    expect(revoke?.labels).toEqual([OWNER_CONTROLS_LABEL.charAt(0).toUpperCase() + OWNER_CONTROLS_LABEL.slice(1)]);
+    expect(revoke?.body).toContain("exact: receiver, method, arguments, gas and deposit as derived");
+    // An older demo revoked with a direct call: no console label, and the caption says so.
+    const older = walk(olderStoryEvidence()).find((sc) => sc.title.startsWith("6 ·"));
+    expect(older?.labels).toEqual([]);
+    expect(older?.captions.join(" ")).toContain("The owner revokes the grant with a direct owner call.");
+    expect(walk(olderStoryEvidence()).find((sc) => sc.title.startsWith("2 ·"))?.title).toBe("2 · Console review: inconclusive");
+  });
+
+  it("embeds a console screenshot only when its bytes match the sha256 the demo recorded", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bm-shots-"));
+    try {
+      const file = join(dir, "review.png");
+      writeFileSync(file, "SYNTHETIC png bytes");
+      const path = relative(REPO_ROOT, file);
+      const sha = createHash("sha256").update(readFileSync(file)).digest("hex");
+      const withShot = (sha256: string): Evidence => {
+        const ev = storyEvidence();
+        return {
+          ...ev,
+          assertions: ev.assertions
+            .filter((a) => a.id !== "revoke-through-console")
+            .map((a) => (a.id === "console-review" ? { ...a, observed: { ...(a.observed as object), rendered: { ...CONSOLE_RENDERED, screenshot: { path, sha256 } } } } : a)),
+        };
+      };
+      expect(consoleShots(withShot(sha)).shots.consoleReview?.toString()).toBe("SYNTHETIC png bytes");
+      expect(() => consoleShots(withShot("0".repeat(64)))).toThrow(/is not the screenshot of the demo.json run/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("walkthrough steps through the attack log by enforcement layer, from the recorded results", () => {
