@@ -1,20 +1,23 @@
 {
   "schema_version": 2,
   "notes": [
-    "TEMPLATE (live-agent variant of manifest.example.json) for an approval package. Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is. Identical to manifest.example.json except these notes and step 4, whose proposal comes from the live agent instead of the manifest. Budgets, caps, policy and the funded sequence are unchanged.",
+    "PRIMARY TEMPLATE for the approval package (the live-agent run with owner actions signed outside the runner, in the owner console or the owner's wallet). Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is. manifest.example.json is the separately labelled fixed-proposal fallback, unapproved until the owner authorizes it. Policy, inventory and sale caps equal the fallback's; the fee, deposit and transaction caps are sized for this sequence (proposed, not approved).",
     "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata. All re-read through https://free.rpc.fastnear.com on 2026-11-04 (block ~223070360): unchanged.",
     "RPC: https://free.rpc.fastnear.com (listed in the NEAR RPC provider directory). The rpc.mainnet.near.org endpoint is deprecated and heavily rate-limited. For reconciling older transactions, https://archival-rpc.mainnet.fastnear.com is FastNEAR's archival endpoint.",
-    "Sequence: grant; one deliberately forbidden proposal (concession 51 bps > 50 bps policy maximum) that the mandate must refuse; one live agent decision (step 4), filled and settled if the agent trades; a second signed order of 0.5 USDC from the manifest that is withheld (bundle simulated, not sent); revoke; relay of the withheld bundle, which passes only if the verifier rejects it for the removed key before its deadline with both nonces unused and balances unchanged; recovery of both assets to the owner's Intents account.",
+    "Sequence: grant; one deliberately forbidden proposal (concession 51 bps > 50 bps policy maximum) that the mandate must refuse; one live agent decision (step 4), filled and settled if the agent trades; a second signed order of 0.5 USDC from the manifest that is withheld (bundle simulated, not sent); revocation signed by the owner in the console (step 9, revoke_external); relay of the withheld bundle while it is still unexpired, which passes only if the verifier rejects it for the removed key before its deadline with both nonces unused and balances unchanged; recovery of both assets to the owner's Intents account, signed in the console (steps 11-12); then, outside every recovery claim, the owner's storage registration on each token only where it is missing (steps 13-14, runner-signed by the owner key) and the owner's withdrawal of each asset from its Intents account to its NEAR account with ft_withdraw, signed in the console (steps 15-16).",
+    "External owner steps (revoke_external, recover_external, withdraw_external): before the owner signs, the runner records an intent in its hash-chained ledger and writes it to out/live/<manifest sha256>/external/step-<n>-<kind>-attempt-<k>.intent.json (schema bounded-mandate/external-intent@1): signer accounts.owner, the approved key keys.owner_external (keys.owner if absent), receiver, the single FunctionCall with exact arguments, gas within [gas_tgas, gas_tgas + 20 TGas] and the exact deposit (0, or 1 yocto for ft_withdraw), and the expected end state. The console signs exactly that and writes <stem>.handoff.json ({intent_sha256, tx_hash, signer_id}); the runner stops as awaiting until then, and MANDATE_LIVE_RESUME=1 imports it (or MANDATE_LIVE_HANDOFF=<file>).",
+    "Import: the runner looks the hash up at FINAL and refuses (records as refused, never as success, and stops) an unrelated or duplicate hash, a second hash for a handed-off intent, the wrong chain, signer, key, receiver, method, arguments or action list, gas or deposit out of bounds, or a nonce showing an owner transaction the ledger does not record (the imported nonce must be the ledger's expectation + 1 and the key's current nonce). It then verifies the full receipt tree and the step's end state with the same checks as a runner-signed step, and charges the actual fee once. Nothing is ever submitted for the owner. A transaction not yet final records nothing.",
+    "Withdrawals: the amount is what this run's recovery moved to the owner's Intents account for that asset. Token balances are verified before and after from the final receipts. A refunded or failed withdrawal leaves the Intents balance intact, is a finding, and is retried on MANDATE_LIVE_RESUME=1 under a new intent (registration re-checked first); the other asset is neither blocked nor repeated. The owner is expected to be registered on both tokens at setup: steps 13-14 then send nothing, and preflight counts no fee for them. An in-run registration needs its storage deposit (0.00125 NEAR) within max_deposit_yocto, which this template's 4 yocto does not allow: it stops before signing unless the approval raises the cap.",
     "Live agent (step 4): before deciding, the runner reads the grant, the mandate's Intents balances and both oracle prices (get_price_no_older_than with the grant's oracle_max_age_sec) at one final block and records price, conf, expo, publish_time, age and the block height/time. A missing, unconfident or stale price, or a grant that is not active, sends nothing and is recorded as a finding.",
     "Objective (the agent's own rule, not contract policy): keep about 50/50 USDC/wNEAR by USD value at those current prices. If the USDC share is within 2 percentage points of 50% (inclusive), the step is a no-action without a model call. Otherwise the model is called once (prompt v1). A proposal is accepted only if it sells the overweight asset; sells no more than the amount needed to reach 50/50 at the current price plus 1% of that amount plus one base unit; stays within the mandate's balance; stays within the per-order cap, the remaining outstanding capacity and the remaining turnover (charged at least the proposal charge), valued at the larger of the grant's reference and the current price, rounded up; leaves holdings above the loss-breaker threshold; carries a concession at most the grant's; and fits this manifest's sale budget. These are the agent's estimates; the mandate decides. A model decline is a no-action; invalid output, extra fields, wrong direction, oversize, truncation, timeout, a different reported model or a provider error send nothing and are recorded as findings.",
     "Immediately before signing, the runner reads the grant, balances and prices again and re-runs the guard; each price must also keep at least the grant's min_remaining_sec + 15 s (30 s here) of its oracle_max_age_sec. If that fails, nothing is sent (finding). If the mandate itself refuses the agent's proposal (propose_order panics, or the order is rejected while pricing), that is a recorded finding, not a stop, also after a resume. If step 4 makes no order (no-action, finding or refusal), steps 5 (fill) and 6 (settle) are recorded as skipped and send nothing; they never act on another order. The withheld order is the manifest's own fixed 0.5 USDC proposal (step 7), so the revocation test of steps 8-10 runs whatever the agent decides. Recovery always runs.",
-    "This budget allows only USDC sales (max_order_sell.wnear 0) and at most 1 USDC per order. A wNEAR-heavy state therefore cannot trade: an accepted wNEAR proposal is recorded as a budget finding and nothing is sent. Funding the mandate with 5 USDC and 1.25 wNEAR at NEAR ~= $4.0 is balanced (no-action); 5 USDC and 1.0 wNEAR is about 55.6% USDC, needing about 0.5 USDC to reach 50/50.",
+    "This budget allows only USDC sales (max_order_sell.wnear 0) and at most 1 USDC per order. A wNEAR-heavy state therefore cannot trade: an accepted wNEAR proposal is recorded as a budget finding and nothing is sent. PROPOSED inventory (not approved): 5 USDC + 0.90 wNEAR, about 60% USDC at the 2026-11-06 prices (NEAR $3.708), wNEAR units derived on setup day as (5 x USDC price x 2/3) / NEAR price; the agent then needs to sell about 0.83 USDC to reach 50/50. The template maximum, 5 USDC + 1.25 wNEAR, is about 51.9% USDC at that price: inside the 2-point no-call band, so the agent would not trade.",
     "Model: provider near-ai (NEAR AI Cloud, https://cloud-api.near.ai/v1/chat/completions, OpenAI-compatible); live steps accept no other provider. The API key is read from NEAR_AI_API_KEY and never recorded. The model id must be explicit (no default, no fallback) and should list structured_outputs in GET https://cloud-api.near.ai/v1/models; a response reporting a different model id is rejected. One attempt, timeout_ms and max_tokens bounded; any finish_reason other than stop is rejected. Model quality, latency and TEE attestation are not verified by this runner.",
     "Recording and resume: the request is written to the ledger before the call, and the exact request body, raw response, verdict and inputs after it, also as out/live/<manifest sha256>/decision-step-4-request-<seq>.json (replayable without credentials). A resume never asks the model again for a recorded decision: it re-checks the recorded proposal against fresh state and submits exactly it, or records a no-action. A request without a recorded result stops the run unless MANDATE_LIVE_ALLOW_NEW_DECISION=1, which makes a new, recorded decision.",
     "Grant policy: PROPOSED, pending the owner's policy decision; not adopted. SPEC.md requires an oracle maximum age of 60 seconds and proposes a deadline no later than 60 seconds after authorization; Policy::DEMO uses 60/60. This template proposes order_ttl_sec 120 and oracle_max_age_sec 120 for the mainnet run only, as an explicit deviation the owner must accept in the approval; otherwise set both to 60. An order's deadline is min(now + order_ttl, oldest price publish time + oracle_max_age); 60 s leaves too little time on mainnet for MPC signing, revocation to FINAL and the relay, so the revocation test would likely be inconclusive. Trade-off: prices up to 120 s old are accepted and a signed order stays executable up to 120 s while revocation is pending. Every cap is unchanged.",
     "Budget caps: owner inventory <= 5 USDC + 1.25 wNEAR (about $10 at NEAR ~= $4.0 on 2026-11-04); single order <= 1 USDC; mandate sales <= 2 USDC in total (the refused 0.5 USDC is counted conservatively); filler pays <= 0.5 wNEAR in total (the withheld relay is counted conservatively). Recompute the wNEAR units from the price on the approval day.",
     "Deployment and storage (<= 5 NEAR allocation) and all funding are done separately by the owner; this runner never funds, deposits or deploys.",
-    "The worst-case fee of the steps below at gas price 1e8 yocto is (sum over transaction steps of the step's gas_tgas + 5) x 1e12 x 1e8 = 1310 TGas = 0.131 NEAR; max_fee_yocto is 0.15 NEAR. Preflight refuses if the live gas price makes the worst case exceed it.",
+    "The worst-case fee at gas price 1e8 yocto is (sum over sending steps of the step's gas_tgas, + 20 TGas for external steps, + 5) x 1e12 x 1e8 = 1620 TGas = 0.162 NEAR in 12 transactions (registrations skipped); one retried withdrawal per asset adds 250 TGas = 0.025 NEAR and 2 transactions. max_fee_yocto 0.2 NEAR, max_transactions 14 and max_deposit_yocto 4 (1 yocto per ft_withdraw attempt) are proposed, not approved. Preflight refuses if the live gas price makes the pending worst case exceed max_fee_yocto, and checks each signer's signing float: prepaid gas bought at max(gas price, runtime_config.min_gas_purchase_price), 1e9 yocto/gas on mainnet, for each transaction when it is signed.",
     "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
     "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
     "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders."
@@ -80,6 +83,9 @@
     "owner": {
       "public_key": "REPLACE_ME: ed25519 public key of the owner's full-access key used here"
     },
+    "owner_external": {
+      "public_key": "REPLACE_ME: ed25519 public key the owner signs console actions with (a full-access key of accounts.owner); omit this object to use keys.owner"
+    },
     "filler": {
       "public_key": "REPLACE_ME: ed25519 public key of the filler's full-access key",
       "intents_public_key": "REPLACE_ME: ed25519 key the filler registered on intents.near (add_public_key)"
@@ -92,9 +98,9 @@
     "filler_intents": "REPLACE_ME: absolute path to the filler Intents signing key JSON"
   },
   "budget": {
-    "max_fee_yocto": "150000000000000000000000",
-    "max_deposit_yocto": "0",
-    "max_transactions": 10,
+    "max_fee_yocto": "200000000000000000000000",
+    "max_deposit_yocto": "4",
+    "max_transactions": 14,
     "owner_inventory_max": {
       "usdc": "5000000",
       "wnear": "1250000000000000000000000"
@@ -120,7 +126,9 @@
     "settle": 50,
     "revoke": 150,
     "reconcile_registration": 200,
-    "recover": 80
+    "recover": 80,
+    "withdraw": 100,
+    "storage_deposit": 30
   },
   "storage": {
     "order_record_bytes": 1000,
@@ -131,7 +139,8 @@
   "expected_nonces": {
     "owner": "REPLACE_ME: owner key nonce read at approval time",
     "agent": "REPLACE_ME: agent key nonce read at approval time",
-    "filler": "REPLACE_ME: filler key nonce read at approval time"
+    "filler": "REPLACE_ME: filler key nonce read at approval time",
+    "owner_external": "REPLACE_ME: nonce of keys.owner_external read at approval time (omit with keys.owner_external)"
   },
   "steps": [
     {
@@ -196,18 +205,34 @@
       "kind": "withhold"
     },
     {
-      "kind": "revoke"
+      "kind": "revoke_external"
     },
     {
       "kind": "relay_withheld",
       "min_remaining_sec": 10
     },
     {
-      "kind": "recover",
+      "kind": "recover_external",
       "asset": "usdc"
     },
     {
-      "kind": "recover",
+      "kind": "recover_external",
+      "asset": "wnear"
+    },
+    {
+      "kind": "register_storage",
+      "asset": "usdc"
+    },
+    {
+      "kind": "register_storage",
+      "asset": "wnear"
+    },
+    {
+      "kind": "withdraw_external",
+      "asset": "usdc"
+    },
+    {
+      "kind": "withdraw_external",
       "asset": "wnear"
     },
     {

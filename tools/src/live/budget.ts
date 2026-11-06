@@ -1,5 +1,7 @@
 // Budget derived only from the ledger. Spending is counted conservatively when a transaction is
 // intended (before it is sent); fees are replaced by the actual tokens_burnt once the outcome is known.
+// An external owner action is counted from its intent (before the owner signs) and settled to the imported
+// transaction's actual fee: once per intent, however often its handoff is presented or reconciled.
 import { z } from "zod";
 import type { Asset } from "../types.js";
 import type { Ledger } from "./ledger.js";
@@ -37,16 +39,24 @@ export function totals(ledger: Ledger): Totals {
       actualFee.set(e.data.tx_hash, BigInt(e.data.fee_yocto));
     }
   }
-  for (const e of ledger.ofKind("tx-intent")) {
-    const planned = Planned.parse(e.data.planned);
-    const hash = z.string().parse(e.data.tx_hash);
-    if (rejected.has(hash)) continue;
+  const count = (planned: Planned, actual: bigint | undefined): void => {
     t.transactions += 1;
-    t.fee_yocto += actualFee.get(hash) ?? BigInt(planned.worst_fee_yocto);
+    t.fee_yocto += actual ?? BigInt(planned.worst_fee_yocto);
     t.deposit_yocto += BigInt(planned.deposit_yocto);
     if (planned.sell !== undefined) t.sold[planned.sell.asset] += BigInt(planned.sell.units);
     if (planned.filler_pay !== undefined) t.filler_paid[planned.filler_pay.asset] += BigInt(planned.filler_pay.units);
+  };
+  for (const e of ledger.ofKind("tx-intent")) {
+    const hash = z.string().parse(e.data.tx_hash);
+    if (!rejected.has(hash)) count(Planned.parse(e.data.planned), actualFee.get(hash));
   }
+  const importedFee = new Map<string, bigint>();
+  for (const e of ledger.entries) {
+    if ((e.kind === "tx-result" || e.kind === "reconciled") && typeof e.data.intent_sha256 === "string" && e.data.status === "executed" && typeof e.data.fee_yocto === "string") {
+      importedFee.set(e.data.intent_sha256, BigInt(e.data.fee_yocto));
+    }
+  }
+  for (const e of ledger.ofKind("external-intent")) count(Planned.parse(e.data.planned), importedFee.get(z.string().parse(e.data.intent_sha256)));
   return t;
 }
 

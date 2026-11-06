@@ -39,7 +39,7 @@ const TxResponse = z
     status: z.unknown(),
     final_execution_status: z.string().optional(),
     transaction: z
-      .object({ hash: z.string(), signer_id: z.string(), receiver_id: z.string(), nonce: Yocto.optional(), actions: z.array(z.unknown()).optional() })
+      .object({ hash: z.string(), signer_id: z.string(), receiver_id: z.string(), public_key: z.string().optional(), nonce: Yocto.optional(), actions: z.array(z.unknown()).optional() })
       .loose(),
     transaction_outcome: OutcomeWithId,
     receipts_outcome: z.array(OutcomeWithId),
@@ -94,6 +94,18 @@ export interface Outcome {
   receipts: ReceiptOutcome[];
   logs: string[];
   events: EmittedEvent[];
+  /** The signed transaction as the RPC reports it (looked-up or sent transactions), for imports that check it. */
+  transaction?: TransactionView;
+}
+
+/** A transaction's signed fields as reported by the RPC; `actions` are the RPC's action JSON. */
+export interface TransactionView {
+  hash: string;
+  signer_id: string;
+  public_key: string | null;
+  nonce: string | null;
+  receiver_id: string;
+  actions: unknown[];
 }
 
 const stringify = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value));
@@ -351,6 +363,21 @@ export class NearClient {
     }
   }
 
+  /**
+   * Whether the node knows a transaction at all, without waiting for any execution status: a lookup that waits for
+   * FINAL blocks until the RPC times out (and the transport retries) when the hash is unknown.
+   */
+  async txKnown(txHash: string, signerId: string): Promise<"known" | "unknown" | "unreachable"> {
+    try {
+      const rpc = this.provider as unknown as { sendJsonRpc: (method: string, params: unknown) => Promise<unknown> };
+      await rpc.sendJsonRpc("tx", { tx_hash: txHash, sender_account_id: signerId, wait_until: "NONE" });
+      return "known";
+    } catch (error) {
+      const text = `${error instanceof Error ? error.name : ""} ${errorMessage(error)}`;
+      return /UnknownTransaction|UNKNOWN_TRANSACTION|doesn't exist/i.test(text) ? "unknown" : "unreachable";
+    }
+  }
+
   async accessKeyNonce(accountId: string, publicKey: string): Promise<bigint | null> {
     try {
       const key = await this.provider.viewAccessKey({ accountId, publicKey, finalityQuery: { finality: this.finality } });
@@ -441,6 +468,14 @@ export class NearClient {
       ...(tx.final_execution_status === undefined ? {} : { final_execution_status: tx.final_execution_status }),
       final: tx.final_execution_status === "FINAL",
       return_value: statusValue(tx.status),
+      transaction: {
+        hash: tx.transaction.hash,
+        signer_id: tx.transaction.signer_id,
+        public_key: tx.transaction.public_key ?? null,
+        nonce: tx.transaction.nonce === undefined ? null : tx.transaction.nonce.toString(),
+        receiver_id: tx.transaction.receiver_id,
+        actions: tx.transaction.actions ?? [],
+      },
       ...(error === undefined ? (unknown ? { error: "ambiguous: transaction or receipt status unknown" } : {}) : { error }),
       receipts,
       logs: receipts.flatMap((r) => r.logs),

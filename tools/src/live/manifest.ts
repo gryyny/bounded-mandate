@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { Asset, Policy, Proposal } from "../types.js";
+import { EXTERNAL_KINDS, type ExternalKind } from "./external.js";
 import { networkProblems } from "./network.js";
 
 const Units = z.string().regex(/^(0|[1-9][0-9]*)$/, "decimal integer string");
@@ -65,20 +66,47 @@ export const Step = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("revoke") }).strict(),
   z.object({ kind: z.literal("reconcile_registration") }).strict(),
   z.object({ kind: z.literal("recover"), asset: Asset }).strict(),
+  /**
+   * Owner actions signed outside the runner (the owner console or a wallet). The runner writes the exact action as
+   * an external intent (see external.ts), then imports the signed transaction by hash and verifies it.
+   */
+  z.object({ kind: z.literal("revoke_external") }).strict(),
+  z.object({ kind: z.literal("recover_external"), asset: Asset }).strict(),
+  /** Registers the owner on the asset's token contract (storage_deposit), only if it is not registered. */
+  z.object({ kind: z.literal("register_storage"), asset: Asset }).strict(),
+  /**
+   * The owner's own withdrawal from its Intents account to its NEAR account (ft_withdraw on the verifier), outside
+   * every recovery claim. `amount` defaults to what this run's recovery of the asset moved to the owner, less
+   * what this run already withdrew. A refunded attempt is retried on resume.
+   */
+  z.object({ kind: z.literal("withdraw"), asset: Asset, amount: Units.optional() }).strict(),
+  z.object({ kind: z.literal("withdraw_external"), asset: Asset, amount: Units.optional() }).strict(),
 ]);
 export type Step = z.infer<typeof Step>;
 export type StepKind = Step["kind"];
 
-/** A withheld order may be relayed only after a revocation step, and only once per withhold. */
+export const isExternal = (kind: StepKind): kind is ExternalKind => (EXTERNAL_KINDS as readonly string[]).includes(kind);
+/** An external signer may attach up to this much more gas per action than proposed (wallets round up). */
+export const EXTERNAL_GAS_SLACK_TGAS = 20;
+
+/**
+ * A withheld order may be relayed only after a revocation step, and only once per withhold. A withdrawal without an
+ * explicit amount needs an earlier recovery of its asset.
+ */
 export function sequenceProblems(steps: readonly Step[]): string[] {
   const p: string[] = [];
   let withheld = false;
   let revokedSinceWithhold = false;
+  const recovered = new Set<string>();
   steps.forEach((s, i) => {
+    if (s.kind === "recover" || s.kind === "recover_external") recovered.add(s.asset);
+    if ((s.kind === "withdraw" || s.kind === "withdraw_external") && s.amount === undefined && !recovered.has(s.asset)) {
+      p.push(`step ${i + 1} ${s.kind} has no amount and no earlier recovery of ${s.asset}`);
+    }
     if (s.kind === "withhold") {
       withheld = true;
       revokedSinceWithhold = false;
-    } else if (s.kind === "revoke") {
+    } else if (s.kind === "revoke" || s.kind === "revoke_external") {
       revokedSinceWithhold = true;
     } else if (withheld && (s.kind === "fill" || s.kind === "settle")) {
       p.push(`step ${i + 1} ${s.kind} between withhold and relay_withheld would act on the withheld order`);
@@ -100,6 +128,8 @@ export const DEFAULT_GAS_TGAS = {
   revoke: 150,
   reconcile_registration: 200,
   recover: 80,
+  withdraw: 100,
+  storage_deposit: 30,
 } as const;
 const GasTgas = z
   .object({
@@ -110,6 +140,9 @@ const GasTgas = z
     revoke: z.number().int().positive().max(300),
     reconcile_registration: z.number().int().positive().max(300),
     recover: z.number().int().positive().max(300),
+    /** ft_withdraw on the verifier (token transfer and refund callback included). */
+    withdraw: z.number().int().positive().max(300).default(DEFAULT_GAS_TGAS.withdraw),
+    storage_deposit: z.number().int().positive().max(300).default(DEFAULT_GAS_TGAS.storage_deposit),
   })
   .strict();
 
@@ -146,6 +179,8 @@ export const LiveManifest = z
         mandate_full_access: z.array(PublicKey),
         agent: z.object({ public_key: PublicKey, max_allowance_yocto: Units }).strict(),
         owner: z.object({ public_key: PublicKey }).strict(),
+        /** Approved key of owner actions signed outside the runner (console, wallet); default keys.owner. */
+        owner_external: z.object({ public_key: PublicKey }).strict().optional(),
         filler: z.object({ public_key: PublicKey, intents_public_key: PublicKey }).strict(),
       })
       .strict(),
@@ -181,11 +216,14 @@ export const LiveManifest = z
     /** Orders that existed before the run and may be filled/settled by it. Others are refused. */
     fillable_preexisting_orders: z.array(Units).default([]),
     /** Optional: access-key nonces at approval time; any earlier use of the keys refuses a fresh start. */
-    expected_nonces: z.object({ owner: Units, agent: Units, filler: Units }).strict().optional(),
+    expected_nonces: z.object({ owner: Units, agent: Units, filler: Units, owner_external: Units.optional() }).strict().optional(),
     steps: z.array(Step).min(1),
   })
   .strict();
 export type LiveManifest = z.infer<typeof LiveManifest>;
+
+/** The only key an imported owner transaction may be signed with. */
+export const externalOwnerKey = (m: LiveManifest): string => m.keys.owner_external?.public_key ?? m.keys.owner.public_key;
 
 export class Refusal extends Error {}
 

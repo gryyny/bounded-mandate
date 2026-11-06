@@ -3,11 +3,11 @@
 // transaction is signed. All reads use the client's finality ("final" in live runs).
 import { z } from "zod";
 import type { NearClient } from "../near/client.js";
-import { OPEN_ORDER_STATES, type MandateClient, type VerifierClient } from "../near/contracts.js";
+import { OPEN_ORDER_STATES, TokenClient, type MandateClient, type VerifierClient } from "../near/contracts.js";
 import { wasmFunctionExports } from "../near/wasm.js";
 import type { Asset, OrderView, Policy } from "../types.js";
 import { canonical } from "./ledger.js";
-import type { LiveManifest, Step, StepKind } from "./manifest.js";
+import { EXTERNAL_GAS_SLACK_TGAS, isExternal, type LiveManifest, type Step, type StepKind } from "./manifest.js";
 
 export interface Check {
   id: string;
@@ -20,7 +20,8 @@ export interface PreflightFacts {
   genesis_hash: string;
   gas_price: string;
   storage_amount_per_byte: string;
-  nonces: Record<"owner" | "agent" | "filler", string>;
+  /** owner_external only when the manifest names a distinct external owner key. */
+  nonces: Record<"owner" | "agent" | "filler", string> & { owner_external?: string };
   mandate_balances: Record<Asset, string>;
   filler_balances: Record<Asset, string>;
   open_orders: { id: string; state: string; epoch: number; sell: Asset; sell_amount: string }[];
@@ -41,6 +42,8 @@ export const STEP_METHODS: Partial<Record<StepKind, string>> = {
   revoke: "revoke",
   reconcile_registration: "reconcile_registration",
   recover: "recover",
+  revoke_external: "revoke",
+  recover_external: "recover",
 };
 
 /** Which account signs each transaction-bearing step. */
@@ -54,6 +57,12 @@ export const STEP_SIGNER: Partial<Record<StepKind, "owner" | "agent" | "filler">
   revoke: "owner",
   reconcile_registration: "owner",
   recover: "owner",
+  register_storage: "owner",
+  withdraw: "owner",
+  // Signed outside the runner, by the owner account's approved external key; the owner account pays the fee.
+  revoke_external: "owner",
+  recover_external: "owner",
+  withdraw_external: "owner",
 };
 
 /** Prepaid-gas allocation each transaction-bearing step uses; `check` and `withhold` send nothing. */
@@ -67,18 +76,59 @@ export const STEP_GAS: Partial<Record<StepKind, keyof LiveManifest["gas_tgas"]>>
   revoke: "revoke",
   reconcile_registration: "reconcile_registration",
   recover: "recover",
+  register_storage: "storage_deposit",
+  withdraw: "withdraw",
+  revoke_external: "revoke",
+  recover_external: "recover",
+  withdraw_external: "withdraw",
 };
 
-/** Worst-case fee of one step: (prepaid gas + 5 TGas of action/send costs) x gas price. */
-export function worstFee(m: LiveManifest, kind: StepKind, gasPrice: bigint): bigint {
+/** Prepaid gas of one step's action (TGas); an external signer may attach up to the slack more. */
+export function stepGasTgas(m: LiveManifest, kind: StepKind): { proposed: number; max: number } | null {
   const gas = STEP_GAS[kind];
-  if (gas === undefined) return 0n;
-  return (BigInt(m.gas_tgas[gas]) + 5n) * 1_000_000_000_000n * gasPrice;
+  if (gas === undefined) return null;
+  const proposed = m.gas_tgas[gas];
+  return { proposed, max: isExternal(kind) ? Math.min(300, proposed + EXTERNAL_GAS_SLACK_TGAS) : proposed };
+}
+
+/** Worst-case fee of one step: (largest prepaid gas + 5 TGas of action/send costs) x gas price. */
+export function worstFee(m: LiveManifest, kind: StepKind, gasPrice: bigint): bigint {
+  const gas = stepGasTgas(m, kind);
+  if (gas === null) return 0n;
+  return (BigInt(gas.max) + 5n) * 1_000_000_000_000n * gasPrice;
 }
 
 const SourceMetadata = z.object({ version: z.string().nullable().optional() }).loose();
 const PythPrice = z.object({ price: z.string(), conf: z.string(), expo: z.number().int(), publish_time: z.number().int() }).loose();
-const ProtocolConfig = z.object({ runtime_config: z.object({ storage_amount_per_byte: z.string() }).loose() }).loose();
+const ProtocolConfig = z.object({ runtime_config: z.object({ storage_amount_per_byte: z.string(), min_gas_purchase_price: z.string().optional() }).loose() }).loose();
+
+/**
+ * Price at which a signer buys prepaid gas: since protocol 85 the higher of the gas price and the runtime's
+ * min_gas_purchase_price (EXPERIMENTAL_protocol_config runtime_config); the difference to the burnt price is refunded.
+ * Without that field, the gas price.
+ */
+export function gasPurchasePrice(protocolConfig: unknown, gasPrice: bigint): bigint {
+  const min = ProtocolConfig.parse(protocolConfig).runtime_config.min_gas_purchase_price;
+  return min !== undefined && BigInt(min) > gasPrice ? BigInt(min) : gasPrice;
+}
+
+/**
+ * NEAR (or allowance) a signer must hold for its pending steps, signed one at a time: before each step it has spent
+ * the worst-case burnt fees of its earlier steps and must still cover that step's prepaid gas at the purchase price.
+ */
+export function signingFloat(m: LiveManifest, steps: readonly Step[], signer: "owner" | "agent" | "filler", gasPrice: bigint, purchasePrice: bigint): bigint {
+  let spent = 0n;
+  let need = 0n;
+  for (const s of steps) {
+    if (STEP_SIGNER[s.kind] !== signer) continue;
+    const gas = stepGasTgas(m, s.kind);
+    if (gas === null) continue;
+    const float = spent + (BigInt(gas.max) + 5n) * 1_000_000_000_000n * purchasePrice;
+    if (float > need) need = float;
+    spent += worstFee(m, s.kind, gasPrice);
+  }
+  return need;
+}
 
 export interface PreflightInput {
   client: NearClient;
@@ -179,10 +229,19 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   const registered = await verifier.hasPublicKey(m.accounts.filler, intentsKey);
   check("keys.filler_intents_registered", registered && intentsKey === input.credentialKeys.filler_intents, { registered, manifest: intentsKey, credential: input.credentialKeys.filler_intents });
   const nonces = { owner: owner.nonce ?? -1n, agent: agentKey?.nonce ?? -1n, filler: filler.nonce ?? -1n };
+  // A distinct key for owner actions signed outside the runner: a full-access key of the owner account.
+  const extKey = m.keys.owner_external?.public_key;
+  let extNonce: bigint | null = null;
+  if (extKey !== undefined && extKey !== m.keys.owner.public_key) {
+    const k = (await client.accessKeys(m.accounts.owner)).find((x) => x.public_key === extKey);
+    extNonce = k?.nonce ?? -1n;
+    check("keys.owner_external", k?.permission.kind === "full", { manifest: extKey, present: k !== undefined, permission: k?.permission.kind ?? null });
+  }
   if (input.fresh && m.expected_nonces !== undefined) {
     const e = m.expected_nonces;
-    check("keys.unused_since_approval", nonces.owner.toString() === e.owner && nonces.agent.toString() === e.agent && nonces.filler.toString() === e.filler, {
-      chain: { owner: nonces.owner.toString(), agent: nonces.agent.toString(), filler: nonces.filler.toString() },
+    const extOk = extNonce === null || e.owner_external === undefined || extNonce.toString() === e.owner_external;
+    check("keys.unused_since_approval", nonces.owner.toString() === e.owner && nonces.agent.toString() === e.agent && nonces.filler.toString() === e.filler && extOk, {
+      chain: { owner: nonces.owner.toString(), agent: nonces.agent.toString(), filler: nonces.filler.toString(), ...(extNonce === null ? {} : { owner_external: extNonce.toString() }) },
       manifest: e,
     });
   }
@@ -248,10 +307,17 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
 
   // Fees at the live gas price, the owner's recovery reserve and the mandate's storage.
   const gasPrice = await client.gasPrice();
-  const perByte = BigInt(ProtocolConfig.parse(await client.provider.experimental_protocolConfig({ finality: client.finality })).runtime_config.storage_amount_per_byte);
+  const protocolConfig = await client.provider.experimental_protocolConfig({ finality: client.finality });
+  const perByte = BigInt(ProtocolConfig.parse(protocolConfig).runtime_config.storage_amount_per_byte);
+  const purchase = gasPurchasePrice(protocolConfig, gasPrice);
+  // A storage registration sends nothing when the owner is already registered on that token.
+  const ownerRegistered: Partial<Record<Asset, boolean>> = {};
+  for (const s of pending) if (s.kind === "register_storage") ownerRegistered[s.asset] ??= await new TokenClient(client, m.mandate_config[s.asset].token).isRegistered(m.accounts.owner);
+  const sending = pending.filter((s) => s.kind !== "register_storage" || ownerRegistered[s.asset] !== true);
+  if (pending.some((s) => s.kind === "register_storage")) check("owner.token_registration_listed", true, { owner: m.accounts.owner, registered: ownerRegistered });
   let worst = 0n;
   const perSigner: Record<"owner" | "agent" | "filler", bigint> = { owner: 0n, agent: 0n, filler: 0n };
-  for (const s of pending) {
+  for (const s of sending) {
     const f = worstFee(m, s.kind, gasPrice);
     worst += f;
     const signer = STEP_SIGNER[s.kind];
@@ -276,6 +342,19 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   const fillerFree = await free(m.accounts.filler);
   check("balance.filler_near_for_fees", fillerFree >= perSigner.filler, { free: fillerFree.toString(), worst_case_fees: perSigner.filler.toString() });
   check("balance.agent_allowance_for_fees", allowance !== null && allowance >= perSigner.agent, { allowance: allowance?.toString() ?? null, worst_case_fees: perSigner.agent.toString() });
+  // Signing floats: prepaid gas is bought at the purchase price when each transaction is signed (refunded later).
+  const floatOf = (signer: "owner" | "agent" | "filler") => signingFloat(m, sending, signer, gasPrice, purchase);
+  const floatObserved = (have: bigint | null, need: bigint) => ({ have: have?.toString() ?? null, need: need.toString(), gas_price: gasPrice.toString(), purchase_price: purchase.toString() });
+  const agentFloat = floatOf("agent");
+  if (agentFloat > 0n) {
+    check("float.agent_allowance", allowance !== null && allowance >= agentFloat, floatObserved(allowance, agentFloat));
+    const agentFree = await free(m.accounts.agent);
+    check("float.agent_balance", agentFree >= agentFloat, floatObserved(agentFree, agentFloat));
+  }
+  const fillerFloat = floatOf("filler");
+  if (fillerFloat > 0n) check("float.filler_balance", fillerFree >= fillerFloat, floatObserved(fillerFree, fillerFloat));
+  const ownerFloat = floatOf("owner");
+  if (ownerFloat > 0n) check("float.owner_balance", ownerFree >= ownerFloat, floatObserved(ownerFree, ownerFloat));
   const storageBytes = BigInt(pending.filter((s) => s.kind === "propose").length) * BigInt(m.storage.order_record_bytes) + BigInt(pending.filter((s) => s.kind === "grant").length) * BigInt(m.storage.grant_state_bytes);
   const mandateFree = await free(m.accounts.mandate);
   check("balance.mandate_storage", mandateFree >= storageBytes * perByte, { free: mandateFree.toString(), expected_bytes: storageBytes.toString(), needed: (storageBytes * perByte).toString() });
@@ -288,7 +367,7 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
       genesis_hash: status.genesis_hash,
       gas_price: gasPrice.toString(),
       storage_amount_per_byte: perByte.toString(),
-      nonces: { owner: nonces.owner.toString(), agent: nonces.agent.toString(), filler: nonces.filler.toString() },
+      nonces: { owner: nonces.owner.toString(), agent: nonces.agent.toString(), filler: nonces.filler.toString(), ...(extNonce === null ? {} : { owner_external: extNonce.toString() }) },
       mandate_balances: { usdc: mandateBal.usdc.toString(), wnear: mandateBal.wnear.toString() },
       filler_balances: { usdc: fillerBal.usdc.toString(), wnear: fillerBal.wnear.toString() },
       open_orders: open,

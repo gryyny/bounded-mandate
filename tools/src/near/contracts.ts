@@ -152,3 +152,24 @@ export async function settledOrder(mandate: MandateClient, orderId: string, time
     await new Promise((r) => setTimeout(r, 500));
   }
 }
+
+const StorageBalance = z.object({ total: U128, available: U128 }).loose();
+
+/** A NEP-141 token contract (NEP-145 storage): the owner's NEAR-side balance and registration. */
+export class TokenClient {
+  constructor(
+    readonly client: NearClient,
+    readonly id: string,
+  ) {}
+
+  async balance(accountId: string): Promise<bigint> {
+    return BigInt(await this.client.view(this.id, "ft_balance_of", { account_id: accountId }, U128));
+  }
+  async isRegistered(accountId: string): Promise<boolean> {
+    return (await this.client.view(this.id, "storage_balance_of", { account_id: accountId }, StorageBalance.nullable())) !== null;
+  }
+  /** Minimum storage deposit for one registration (storage_balance_bounds.min). */
+  async storageMin(): Promise<bigint> {
+    return BigInt((await this.client.view(this.id, "storage_balance_bounds", {}, z.object({ min: U128 }).loose())).min);
+  }
+}

@@ -1,7 +1,7 @@
 // Operation-specific terminal verification. Each check reads chain state after the transaction and
 // compares it with what that exact operation must have produced. Top-level success is never enough.
 import type { Outcome } from "../near/client.js";
-import { OPEN_ORDER_STATES, type MandateClient, type VerifierClient } from "../near/contracts.js";
+import { OPEN_ORDER_STATES, TokenClient, type MandateClient, type VerifierClient } from "../near/contracts.js";
 import type { Asset, GrantView, OrderView } from "../types.js";
 
 export interface Verification {
@@ -287,4 +287,76 @@ export async function classifyRelay(ctx: VerifyContext, outcome: Outcome, e: Rel
   if (fillerAfter.usdc !== e.fillerBefore.usdc || fillerAfter.wnear !== e.fillerBefore.wnear) reasons.push("filler balances changed");
   const classification: RelayClassification = reasons.length === 0 ? "rejected_revoked_key" : "inconclusive";
   return { classification, passed: reasons.length === 0, problems: reasons, observed: { ...observed, classification } };
+}
+
+export const tokenOf = (ctx: VerifyContext, asset: Asset): TokenClient => new TokenClient(ctx.mandate.client, ctx.tokens[asset]);
+
+export async function verifyStorage(ctx: VerifyContext, outcome: Outcome, asset: Asset, owner: string): Promise<Verification> {
+  const p = new Problems();
+  for (const x of receiptTree(outcome)) p.require(false, x);
+  const registered = await tokenOf(ctx, asset).isRegistered(owner);
+  p.require(registered, `${owner} is not registered on ${ctx.tokens[asset]} after storage_deposit`);
+  return { passed: p.list.length === 0, problems: p.list, observed: { asset, token: ctx.tokens[asset], registered } };
+}
+
+/**
+ * How an owner withdrawal (verifier ft_withdraw to the owner's NEAR account) ended. `withdrawn`: exactly `amount` left
+ * the owner's Intents balance and arrived on the token. `refunded` (the token transfer failed and the verifier
+ * refunded) and `failed` (ft_withdraw itself failed): both balances unchanged, so it may be retried without double
+ * counting. Anything else is inconsistent and stops the run.
+ */
+export type WithdrawClassification = "withdrawn" | "refunded" | "failed" | "inconsistent";
+
+export interface WithdrawExpectation {
+  asset: Asset;
+  owner: string;
+  amount: bigint;
+  intentsBefore: Balances;
+  tokenBefore: bigint;
+}
+
+export async function verifyWithdraw(ctx: VerifyContext, outcome: Outcome, e: WithdrawExpectation): Promise<Verification & { classification: WithdrawClassification; withdrawn: bigint }> {
+  const token = ctx.tokens[e.asset];
+  const intentsAfter = await balancesOf(ctx, e.owner);
+  const tokenAfter = await tokenOf(ctx, e.asset).balance(e.owner);
+  const other: Asset = e.asset === "usdc" ? "wnear" : "usdc";
+  const failed = outcome.receipts.filter((r) => r.error !== undefined);
+  const observed = {
+    asset: e.asset,
+    token,
+    amount: e.amount.toString(),
+    return_value: typeof outcome.return_value === "string" ? outcome.return_value : null,
+    intents_before: str(e.intentsBefore),
+    intents_after: str(intentsAfter),
+    token_before: e.tokenBefore.toString(),
+    token_after: tokenAfter.toString(),
+    failed_receipts: failed.map((r) => ({ executor_id: r.executor_id, error: (r.error ?? "").slice(0, 200) })),
+  };
+  const result = (classification: WithdrawClassification, problems: string[], withdrawn = 0n) => ({
+    classification,
+    withdrawn,
+    passed: classification === "withdrawn",
+    problems,
+    observed: { ...observed, classification },
+  });
+  const p = new Problems();
+  p.require(intentsAfter[other] === e.intentsBefore[other], `withdrawing ${e.asset} moved the owner's ${other}`);
+  const settled = outcome.submitted && outcome.final && outcome.receipts.every((r) => !r.unknown);
+  if (settled && p.list.length === 0 && failed.length === 0 && outcome.success) {
+    const q = new Problems();
+    q.require(outcome.return_value === e.amount.toString(), `ft_withdraw returned ${JSON.stringify(outcome.return_value)}, expected "${e.amount}"`);
+    q.require(e.intentsBefore[e.asset] - intentsAfter[e.asset] === e.amount, `owner's Intents ${e.asset} fell by ${e.intentsBefore[e.asset] - intentsAfter[e.asset]}, expected ${e.amount}`);
+    q.require(tokenAfter - e.tokenBefore === e.amount, `owner's ${token} balance rose by ${tokenAfter - e.tokenBefore}, expected ${e.amount}`);
+    return q.list.length === 0 ? result("withdrawn", [], e.amount) : result("inconsistent", q.list);
+  }
+  const intact = intentsAfter[e.asset] === e.intentsBefore[e.asset] && tokenAfter === e.tokenBefore;
+  if (settled && p.list.length === 0 && intact && failed.length > 0) {
+    const refunded = failed.every((r) => r.executor_id === token) && outcome.success && outcome.return_value === "0";
+    const own = failed.every((r) => r.executor_id === ctx.verifier.id) && !outcome.success;
+    if (refunded) return result("refunded", [`the token transfer failed and the verifier refunded ${e.amount} ${e.asset}; the Intents balance is intact`]);
+    if (own) return result("failed", [`ft_withdraw failed on the verifier: ${(failed[0]?.error ?? "").slice(0, 200)}; the Intents balance is intact`]);
+  }
+  for (const x of receiptTree(outcome)) p.require(false, x);
+  if (!intact) p.require(false, "balances changed without a complete withdrawal");
+  return result("inconsistent", p.list.length > 0 ? p.list : ["withdrawal outcome is neither complete nor fully refunded"]);
 }

@@ -9,9 +9,16 @@
 //   MANDATE_LIVE_ALLOW_NEW_DECISION=1. Inputs are re-read and re-checked immediately before signing. A no-action
 //   sends nothing; the mandate refusing a model proposal is a finding, not a stop. Either way the step makes no
 //   order, and fill/settle/withhold of that step are skipped.
+// - An external owner step (revoke_external, recover_external, withdraw_external) persists an intent (external.ts)
+//   before the owner signs it outside the runner, then imports the signed transaction by hash: chain, signer, approved
+//   key, receiver, every action and argument, bounds, the key's nonce, the final receipt tree and the step's end state.
+//   Unrelated, altered or duplicate handoffs are refused and recorded as refused; nothing is ever submitted for the
+//   owner. A handoff comes from LiveDeps.handoff, MANDATE_LIVE_HANDOFF=<file> or <ledger>/external/<stem>.handoff.json.
+// - Owner withdrawals (withdraw, withdraw_external) run after recovery, outside recovery claims; a refunded or failed
+//   attempt leaves the Intents balance intact and is retried on resume, the other asset is neither blocked nor repeated.
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { actions, type Account, type Action } from "near-api-js";
 import { z } from "zod";
@@ -33,16 +40,18 @@ import {
 import { environment, sourceBinding } from "../evidence/source.js";
 import { payableFor } from "../filler/arithmetic.js";
 import { Filler, mandateLeg } from "../filler/filler.js";
+import { remainingSaleBudget } from "../agent/snapshot.js";
 import { NearClient, TGAS, plannedDeposit, toEvidenceReceipt, type Outcome } from "../near/client.js";
 import { MandateClient, VerifierClient, tokenId } from "../near/contracts.js";
 import { loadCredential, type Credential } from "../near/credentials.js";
 import { REPO_ROOT } from "../near/sandbox.js";
 import { Evidence, GrantView, OrderView, SignedNep413, type Asset, type Assertion, type Proposal, type Receipt } from "../types.js";
 import { BudgetExceeded, checkActual, checkPlanned, sellProblem, totals, type Planned } from "./budget.js";
+import { EXTERNAL_HANDOFF_SCHEMA, EXTERNAL_INTENT_SCHEMA, ExternalHandoff, ExternalIntent, intentSha256, intentStem, transactionProblems, type ExternalKind } from "./external.js";
 import { Ledger, canonical, type LedgerEntry } from "./ledger.js";
-import { Refusal, loadManifest, type LiveManifest, type ModelSource, type Step } from "./manifest.js";
+import { Refusal, externalOwnerKey, loadManifest, type LiveManifest, type ModelSource, type Step } from "./manifest.js";
 import { credentialProblems } from "./network.js";
-import { STEP_SIGNER, preflight, worstFee, type Check } from "./preflight.js";
+import { STEP_SIGNER, preflight, stepGasTgas, worstFee, type Check } from "./preflight.js";
 import {
   balancesOf,
   classifyRelay,
@@ -55,6 +64,9 @@ import {
   verifyRevoke,
   verifySettle,
   simulationProblem,
+  tokenOf,
+  verifyStorage,
+  verifyWithdraw,
   type Balances,
   type Verification,
   type VerifyContext,
@@ -62,12 +74,24 @@ import {
 
 export { LiveManifest, Refusal, loadManifest } from "./manifest.js";
 
+/** An external owner action the run is waiting for: load `intent_path` in the console, sign, hand back the hash. */
+export interface Awaiting {
+  step: number;
+  kind: ExternalKind;
+  attempt: number;
+  intent_sha256: string;
+  intent_path: string;
+  /** Where the runner looks for the handoff record on resume. */
+  handoff_path: string;
+}
+
 export interface LiveResult {
-  /** 0 completed, 1 stopped (failed check, budget, ambiguity), 2 refused before acting. */
+  /** 0 completed, 1 stopped (failed check, budget, ambiguity, awaiting an owner signature), 2 refused before acting. */
   exitCode: 0 | 1 | 2;
   message: string;
   evidence?: Evidence;
   preflight?: Check[];
+  awaiting?: Awaiting;
 }
 
 export interface LiveDeps {
@@ -78,6 +102,13 @@ export interface LiveDeps {
   pollMs?: number;
   /** Replaces the manifest's model provider for every model-sourced step (tests use labelled synthetic providers). */
   modelProvider?: LiveModelProvider;
+  /**
+   * Supplies the handoff of an external owner action once its intent is persisted (in-process console or signing
+   * adapter); null leaves the run awaiting. The handoff is verified like any other.
+   */
+  handoff?: (intent: ExternalIntent, files: { intent: string; handoff: string }) => Promise<ExternalHandoff | null>;
+  /** How long to poll for the handoff file before stopping as awaiting (default MANDATE_LIVE_HANDOFF_WAIT_SEC or 0). */
+  handoffWaitMs?: number;
 }
 
 const BalancesJson = z.object({ usdc: z.string(), wnear: z.string() }).strict();
@@ -129,6 +160,8 @@ const Pre = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("revoke"), grant: GrantView }).strict(),
   z.object({ kind: z.literal("reconcile_registration") }).strict(),
   z.object({ kind: z.literal("recover"), asset: z.enum(["usdc", "wnear"]), mandate_before: BalancesJson, owner_before: BalancesJson }).strict(),
+  z.object({ kind: z.literal("register_storage"), asset: z.enum(["usdc", "wnear"]), token: z.string(), deposit: z.string() }).strict(),
+  z.object({ kind: z.literal("withdraw"), asset: z.enum(["usdc", "wnear"]), amount: z.string(), intents_before: BalancesJson, token_before: z.string() }).strict(),
 ]);
 type Pre = z.infer<typeof Pre>;
 
@@ -159,6 +192,8 @@ interface Plan {
   planned: Planned;
   pre: Pre;
   detail: Record<string, unknown>;
+  /** Attempt of a retried step (withdrawal, storage registration); absent means 1. */
+  attempt?: number;
 }
 
 interface Runtime {
@@ -174,9 +209,24 @@ interface Runtime {
   receipts: Receipt[];
   assertions: Assertion[];
   agent: { provider: LiveModelProvider | undefined; allowNewDecision: boolean; env: NodeJS.ProcessEnv };
+  external: {
+    supply: LiveDeps["handoff"];
+    waitMs: number;
+    /** Handoffs from MANDATE_LIVE_HANDOFF, keyed by intent sha256, consumed once. */
+    supplied: Map<string, ExternalHandoff>;
+  };
 }
 
 class Stop extends Error {}
+
+/** Stops the run until the owner has signed the persisted intent outside the runner. */
+class AwaitingSignature extends Stop {
+  constructor(readonly info: Awaiting) {
+    super(
+      `step ${info.step} ${info.kind}: awaiting the owner's signature of intent ${info.intent_sha256} (${info.intent_path}). Sign it outside the runner, write the handoff to ${info.handoff_path} (or set MANDATE_LIVE_HANDOFF), then rerun with MANDATE_LIVE_RESUME=1.`,
+    );
+  }
+}
 
 /** A relay the runner decided not to broadcast: recorded as inconclusive, and the run continues to recovery. */
 class RelaySkipped extends Error {
@@ -204,7 +254,7 @@ async function probe(rt: Runtime, phase: string, deadlineNs: bigint, chain: bool
 }
 
 /** Steps whose transaction is expected to fail; a failed final outcome is verified, not a stop. */
-const FAILURE_EXPECTED = new Set<string>(["refused_proposal", "relay_withheld"]);
+const FAILURE_EXPECTED = new Set<string>(["refused_proposal", "relay_withheld", "withdraw"]);
 
 /** The latest `withhold` record of this run; null if there is none or it was skipped (never an earlier one). */
 function latestWithheld(ledger: Ledger): Withheld | null {
@@ -228,7 +278,7 @@ function pendingSteps(ledger: Ledger, m: LiveManifest): Step[] {
   const from = nextStepIndex(ledger);
   const rejected = new Set<string>();
   for (const e of ledger.entries) if ((e.kind === "tx-result" || e.kind === "reconciled") && e.data.status === "rejected" && typeof e.data.tx_hash === "string") rejected.add(e.data.tx_hash);
-  const intended = new Set(ledger.ofKind("tx-intent").filter((e) => !rejected.has(String(e.data.tx_hash))).map((e) => e.data.step));
+  const intended = new Set([...ledger.ofKind("tx-intent").filter((e) => !rejected.has(String(e.data.tx_hash))), ...ledger.ofKind("external-intent")].map((e) => e.data.step));
   return m.steps.filter((_s, i) => i >= from && !intended.has(i));
 }
 
@@ -317,7 +367,7 @@ function providerFor(rt: Runtime, source: ModelSource): LiveModelProvider {
 async function newDecision(rt: Runtime, i: number, source: ModelSource, supersedes: number | null): Promise<LedgerEntry> {
   const observations = await observe(rt);
   const decimals = decimalsOf(rt.m);
-  const usable = inputsFrom(observations, decimals);
+  const usable = inputsFrom(observations, decimals, remainingSaleBudget(rt.m.budget, totals(rt.ledger).sold));
   const record = (data: Record<string, unknown>) => rt.ledger.append("decision", { step: i, ...data, observations });
   if (!usable.ok) return record({ model_called: false, verdict: { kind: "rejected", boundary: "inputs", problems: usable.problems } });
   const a = assess(usable.inputs, source.notes);
@@ -417,7 +467,7 @@ async function modelPlan(rt: Runtime, i: number, expect: "signed" | "rejected", 
     return null;
   }
   const observations = await observe(rt);
-  const usable = inputsFrom(observations, decimalsOf(rt.m));
+  const usable = inputsFrom(observations, decimalsOf(rt.m), remainingSaleBudget(rt.m.budget, totals(rt.ledger).sold));
   const problems = usable.ok ? [...priceMarginProblems(observations, usable.inputs.grant.policy), ...objectiveProblems(usable.inputs, allocation(usable.inputs), verdict.proposal)] : usable.problems;
   evidence.recheck = { observations, problems, price_margin_extra_sec: PRICE_MARGIN_EXTRA_SEC };
   if (problems.length > 0) {
@@ -433,7 +483,9 @@ async function modelPlan(rt: Runtime, i: number, expect: "signed" | "rejected", 
   return proposePlan(rt, expect, verdict.proposal, { source: "live-model", ...evidence }, true);
 }
 
-async function plan(rt: Runtime, i: number, step: Exclude<Step, { kind: "check" | "withhold" }>): Promise<Plan> {
+type PlannedStep = Exclude<Step, { kind: "check" | "withhold" | "register_storage" | "withdraw" | ExternalKind }>;
+
+async function plan(rt: Runtime, i: number, step: PlannedStep): Promise<Plan> {
   const { m, mandate } = rt;
   const g = m.gas_tgas;
   const base = (kind: Step["kind"], txActions: Action[]): Planned => ({
@@ -643,6 +695,14 @@ async function verify(rt: Runtime, pre: Pre, outcome: Outcome): Promise<Verifica
       return { ...(await verifyReconcile(ctx, outcome)), data: {} };
     case "recover":
       return { ...(await verifyRecover(ctx, outcome, pre.asset, rt.m.accounts.owner, toBal(pre.mandate_before), toBal(pre.owner_before))), data: {} };
+    case "register_storage":
+      return { ...(await verifyStorage(ctx, outcome, pre.asset, rt.m.accounts.owner)), data: { asset: pre.asset } };
+    case "withdraw": {
+      const v = await verifyWithdraw(ctx, outcome, { asset: pre.asset, owner: rt.m.accounts.owner, amount: BigInt(pre.amount), intentsBefore: toBal(pre.intents_before), tokenBefore: BigInt(pre.token_before) });
+      const data = { asset: pre.asset, withdrawn: v.withdrawn.toString(), classification: v.classification };
+      if (v.classification === "refunded" || v.classification === "failed") return { ...v, data: { ...data, retryable: true }, fatal: false };
+      return { ...v, data };
+    }
   }
 }
 
@@ -657,16 +717,20 @@ const outcomeData = (o: Outcome): Record<string, unknown> => ({
   error: o.error ?? null,
 });
 
-/** Records the verification of an executed step; a failed check stops the run. */
-async function finishStep(rt: Runtime, step: number, kind: string, pre: Pre, outcome: Outcome): Promise<void> {
+/** Evidence id of a step's verification; a retried step's later attempts are listed separately. */
+const assertionId = (step: number, kind: string, attempt: unknown): string => `step-${step + 1}-${kind}${typeof attempt === "number" && attempt > 1 ? `-attempt-${attempt}` : ""}`;
+
+/** Records the verification of an executed step; a failed check stops the run. `extra` is kept in its step-done. */
+async function finishStep(rt: Runtime, step: number, kind: string, pre: Pre, outcome: Outcome, extra: Record<string, unknown> = {}): Promise<void> {
   if (!outcome.final) throw new Stop(`step ${step + 1} ${kind}: outcome of ${outcome.tx_hash ?? "?"} is not final (${outcome.final_execution_status ?? "unknown"}); rerun with MANDATE_LIVE_RESUME=1 once final`);
   const breach = checkActual(rt.m.budget, totals(rt.ledger));
   if (breach !== null) throw new Stop(`budget: ${breach}`);
   const v = await verify(rt, pre, outcome);
   const observed = kind === "relay_withheld" ? { ...v.observed, timing: deadlineTimeline(rt.ledger, []) } : v.observed;
-  rt.assertions.push({ id: `step-${step + 1}-${kind}`, gate: "LIVE", description: `${kind}: terminal verification`, passed: v.passed, observed: { ...observed, problems: v.problems } });
+  const label = extra.imported === true ? `${kind}: imported owner transaction, terminal verification` : `${kind}: terminal verification`;
+  rt.assertions.push({ id: assertionId(step, kind, extra.attempt), gate: "LIVE", description: label, passed: v.passed, observed: { ...observed, problems: v.problems } });
   if (!v.passed && v.fatal !== false) throw new Stop(`step ${step + 1} ${kind}: terminal verification failed: ${v.problems.join("; ")}`);
-  rt.ledger.append("step-done", { step, kind, verification: observed, ...v.data, ...(v.passed ? {} : { finding: `step ${step + 1} ${kind}: ${v.problems.join("; ")}` }) });
+  rt.ledger.append("step-done", { step, kind, tx_hash: outcome.tx_hash ?? null, ...extra, verification: observed, ...v.data, ...(v.passed ? {} : { finding: `step ${step + 1} ${kind}: ${v.problems.join("; ")}` }) });
 }
 
 /** Prepares and simulates the withheld bundle; never sends it. Failures are findings, not stops. */
@@ -743,7 +807,10 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknow
   const doneOf = (intent: LedgerEntry | undefined): LedgerEntry | undefined =>
     intent === undefined ? undefined : ledger.ofKind("step-done").find((e) => e.data.step === intent.data.step && e.data.kind === intent.data.kind);
   const propose = intents.filter((e) => e.data.kind === "propose" && e.seq < (withholdDone?.seq ?? Number.POSITIVE_INFINITY)).at(-1);
-  const revoke = intents.filter((e) => e.data.kind === "revoke").at(-1);
+  const runnerRevoke = intents.filter((e) => e.data.kind === "revoke").at(-1);
+  // An external revocation has no send time the runner observed: its intent (written before the owner signs) stands in.
+  const externalRevoke = runnerRevoke === undefined ? ledger.ofKind("external-intent").filter((e) => e.data.kind === "revoke_external").at(-1) : undefined;
+  const revoke = runnerRevoke ?? externalRevoke;
   const relay = intents.filter((e) => e.data.kind === "relay_withheld").at(-1);
   const wall = (phase: string, e: LedgerEntry | undefined): Probe[] => (e === undefined ? [] : [{ phase, at: e.at, chain_ns: null, remaining_ms: null }]);
   const recorded = (v: unknown): Probe[] => z.array(z.object({ phase: z.string(), at: z.string(), chain_ns: z.string().nullable(), remaining_ms: z.number().nullable() })).catch([]).parse(Array.isArray(v) ? v : v === undefined ? [] : [v]);
@@ -752,7 +819,7 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknow
     ...wall("withheld order proposed (sent)", propose),
     ...wall("withheld order signed (propose confirmed by runner)", doneOf(propose)),
     ...(withholdTiming === undefined ? wall("withheld bundle prepared and simulated", withholdDone) : recorded(withholdTiming)),
-    ...wall("revoke sent", revoke),
+    ...wall(externalRevoke === undefined ? "revoke sent" : "revoke intent written (owner signs outside the runner)", revoke),
     ...wall("revoke confirmed by runner", doneOf(revoke)),
     ...recorded(relay?.data.timing),
     ...extra,
@@ -771,12 +838,460 @@ function skipRelay(rt: Runtime, i: number, skipped: RelaySkipped, probes: Probe[
   rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${skipped.message}` });
 }
 
-/** Unresolved intents and executed-but-unverified steps are reconciled from chain before anything new. */
-async function reconcile(rt: Runtime, startNonces: Record<"owner" | "agent" | "filler", string>): Promise<void> {
+// ---------------------------------------------------------------- owner withdrawal and storage registration
+
+type WithdrawStep = Extract<Step, { kind: "withdraw" | "withdraw_external" }>;
+
+const doneOfStep = (ledger: Ledger, step: number): LedgerEntry[] => ledger.ofKind("step-done").filter((e) => e.data.step === step);
+/** 1 + the verified attempts of this step: the attempt a new transaction or intent for it belongs to. */
+const nextAttempt = (ledger: Ledger, step: number): number => doneOfStep(ledger, step).length + 1;
+
+/** Units of `asset` this run's recovery steps moved to the owner's Intents account (from their verification). */
+function recoveredBy(ledger: Ledger, asset: Asset): bigint {
+  let sum = 0n;
+  for (const e of ledger.ofKind("step-done")) {
+    if (e.data.kind !== "recover" && e.data.kind !== "recover_external") continue;
+    const v = z.object({ asset: z.string(), gained: z.string() }).loose().safeParse(e.data.verification);
+    if (v.success && v.data.asset === asset) sum += BigInt(v.data.gained);
+  }
+  return sum;
+}
+
+/** Units of `asset` withdrawn by verified withdrawal attempts; `only` restricts to one step, `except` excludes one. */
+function withdrawnBy(ledger: Ledger, asset: Asset, filter: { only?: number; except?: number } = {}): bigint {
+  let sum = 0n;
+  for (const e of ledger.ofKind("step-done")) {
+    if ((e.data.kind !== "withdraw" && e.data.kind !== "withdraw_external") || e.data.asset !== asset || typeof e.data.withdrawn !== "string") continue;
+    if (filter.only !== undefined && e.data.step !== filter.only) continue;
+    if (filter.except !== undefined && e.data.step === filter.except) continue;
+    sum += BigInt(e.data.withdrawn);
+  }
+  return sum;
+}
+
+/**
+ * What a withdrawal step should withdraw now: its explicit amount, or what this run recovered of the asset less what
+ * other steps withdrew; minus what earlier attempts of this step withdrew. A refunded attempt withdrew nothing, so a
+ * retry never counts a unit twice. An unregistered owner is not sent anything (the transfer would be refunded).
+ */
+async function withdrawSpec(rt: Runtime, i: number, step: WithdrawStep): Promise<{ skip: string; retryable: boolean } | { pre: Extract<Pre, { kind: "withdraw" }> }> {
+  const { asset } = step;
+  const owner = rt.m.accounts.owner;
+  const target = step.amount !== undefined ? BigInt(step.amount) : recoveredBy(rt.ledger, asset) - withdrawnBy(rt.ledger, asset, { except: i });
+  const left = target - withdrawnBy(rt.ledger, asset, { only: i });
+  if (left <= 0n) return { skip: `nothing left to withdraw (${asset}: target ${target}, already withdrawn by this step ${target - left})`, retryable: false };
+  const token = tokenOf(rt.ctx, asset);
+  if (!(await token.isRegistered(owner))) return { skip: `${owner} is not registered on ${token.id}; the transfer would be refunded, nothing sent`, retryable: true };
+  const intentsBefore = await balancesOf(rt.ctx, owner);
+  if (intentsBefore[asset] < left) throw new Stop(`step ${i + 1} ${step.kind}: the owner's Intents ${asset} balance ${intentsBefore[asset]} is below the ${left} to withdraw`);
+  return { pre: { kind: "withdraw", asset, amount: left.toString(), intents_before: fromBal(intentsBefore), token_before: (await token.balance(owner)).toString() } };
+}
+
+/** Records a withdrawal that sent nothing; `retryable` marks one a resume tries again. */
+function skipWithdraw(rt: Runtime, i: number, kind: string, attempt: number, asset: Asset, reason: string, retryable: boolean): void {
+  const verification = { skipped: true, reason, asset };
+  rt.assertions.push({ id: assertionId(i, kind, attempt), gate: "LIVE", description: `${kind}: nothing sent (${reason})`, passed: !retryable, observed: verification });
+  rt.ledger.append("step-done", { step: i, kind, attempt, skipped: true, reason, asset, withdrawn: "0", verification, ...(retryable ? { retryable: true, finding: `step ${i + 1} ${kind}: ${reason}` } : {}) });
+}
+
+const withdrawAction = (rt: Runtime, pre: Extract<Pre, { kind: "withdraw" }>): { method: string; args: Record<string, unknown>; deposit: bigint } => ({
+  method: "ft_withdraw",
+  args: { token: rt.m.mandate_config[pre.asset].token, receiver_id: rt.m.accounts.owner, amount: pre.amount },
+  deposit: 1n,
+});
+
+/** The owner's runner-signed withdrawal of one asset from its Intents account to its NEAR account. */
+async function runnerWithdraw(rt: Runtime, i: number, step: Extract<Step, { kind: "withdraw" }>): Promise<void> {
+  const attempt = nextAttempt(rt.ledger, i);
+  const spec = await withdrawSpec(rt, i, step);
+  if ("skip" in spec) {
+    skipWithdraw(rt, i, step.kind, attempt, step.asset, spec.skip, spec.retryable);
+    return;
+  }
+  const w = withdrawAction(rt, spec.pre);
+  const a = [actions.functionCall(w.method, w.args, BigInt(rt.m.gas_tgas.withdraw) * TGAS, w.deposit)];
+  const p: Plan = {
+    signer: rt.accounts.owner,
+    receiver: rt.verifier.id,
+    method: w.method,
+    actions: a,
+    planned: { worst_fee_yocto: worstFee(rt.m, "withdraw", rt.gasPrice).toString(), deposit_yocto: plannedDeposit(a).toString() },
+    pre: spec.pre,
+    detail: { asset: step.asset, amount: spec.pre.amount, outside_recovery: true, attempt },
+    attempt,
+  };
+  checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
+  await send(rt, i, step, p);
+}
+
+/** Registers the owner on the asset's token contract with the minimum storage deposit, only if it is not registered. */
+async function registerStorage(rt: Runtime, i: number, step: Extract<Step, { kind: "register_storage" }>): Promise<void> {
+  const attempt = nextAttempt(rt.ledger, i);
+  const owner = rt.m.accounts.owner;
+  const token = tokenOf(rt.ctx, step.asset);
+  if (await token.isRegistered(owner)) {
+    const verification = { skipped: true, reason: `${owner} is already registered on ${token.id}`, asset: step.asset, registered: true };
+    rt.assertions.push({ id: assertionId(i, step.kind, attempt), gate: "LIVE", description: `${step.kind}: already registered, nothing sent`, passed: true, observed: verification });
+    rt.ledger.append("step-done", { step: i, kind: step.kind, attempt, skipped: true, reason: verification.reason, asset: step.asset, verification });
+    return;
+  }
+  const deposit = await token.storageMin();
+  const a = [actions.functionCall("storage_deposit", { account_id: owner, registration_only: true }, BigInt(rt.m.gas_tgas.storage_deposit) * TGAS, deposit)];
+  const p: Plan = {
+    signer: rt.accounts.owner,
+    receiver: token.id,
+    method: "storage_deposit",
+    actions: a,
+    planned: { worst_fee_yocto: worstFee(rt.m, "register_storage", rt.gasPrice).toString(), deposit_yocto: plannedDeposit(a).toString() },
+    pre: { kind: "register_storage", asset: step.asset, token: token.id, deposit: deposit.toString() },
+    detail: { asset: step.asset, token: token.id, deposit_yocto: deposit.toString(), outside_recovery: true, attempt },
+    attempt,
+  };
+  checkPlanned(rt.m.budget, totals(rt.ledger), p.planned);
+  await send(rt, i, step, p);
+}
+
+// ---------------------------------------------------------------- external owner actions
+
+type ExternalStep = Extract<Step, { kind: ExternalKind }>;
+
+interface ExternalSpec {
+  method: string;
+  args: Record<string, unknown>;
+  deposit: bigint;
+  pre: Pre;
+  expected: ExternalIntent["expected"];
+}
+
+/** The exact action of an external step and the state it must produce, from current chain state. */
+async function externalSpec(rt: Runtime, i: number, step: ExternalStep): Promise<ExternalSpec | { skip: string; retryable: boolean }> {
+  switch (step.kind) {
+    case "revoke_external": {
+      const grant = await rt.mandate.grant();
+      if (grant === null) throw new Stop("revoke_external: no grant");
+      return {
+        method: "revoke",
+        args: {},
+        deposit: 0n,
+        pre: { kind: "revoke", grant },
+        expected: {
+          summary: `grant epoch ${grant.epoch} revoked: its key removed from ${rt.verifier.id}, no open order of the epoch, nothing outstanding`,
+          state: { epoch: String(grant.epoch), status: "revoked", removed_key: grant.public_key ?? "none", outstanding: "0" },
+        },
+      };
+    }
+    case "recover_external": {
+      const mandateBefore = await balancesOf(rt.ctx, rt.mandate.id);
+      const ownerBefore = await balancesOf(rt.ctx, rt.m.accounts.owner);
+      return {
+        method: "recover",
+        args: { asset: step.asset },
+        deposit: 0n,
+        pre: { kind: "recover", asset: step.asset, mandate_before: fromBal(mandateBefore), owner_before: fromBal(ownerBefore) },
+        expected: {
+          summary: `the mandate's whole Intents ${step.asset} balance moves to the owner's Intents account; nothing else moves`,
+          state: { asset: step.asset, mandate_before: mandateBefore[step.asset].toString(), mandate_after: "0", owner_intents_before: ownerBefore[step.asset].toString() },
+        },
+      };
+    }
+    case "withdraw_external": {
+      const spec = await withdrawSpec(rt, i, step);
+      if ("skip" in spec) return spec;
+      const w = withdrawAction(rt, spec.pre);
+      return {
+        ...w,
+        pre: spec.pre,
+        expected: {
+          summary: `${spec.pre.amount} ${step.asset} leaves the owner's Intents account for its NEAR account on ${rt.m.mandate_config[step.asset].token}; a refund leaves both unchanged`,
+          state: {
+            asset: step.asset,
+            amount: spec.pre.amount,
+            owner_intents_before: spec.pre.intents_before[step.asset],
+            owner_intents_after: (BigInt(spec.pre.intents_before[step.asset]) - BigInt(spec.pre.amount)).toString(),
+            owner_token_before: spec.pre.token_before,
+            owner_token_after: (BigInt(spec.pre.token_before) + BigInt(spec.pre.amount)).toString(),
+          },
+        },
+      };
+    }
+  }
+}
+
+const IntentRecord = z
+  .object({ step: z.number().int(), kind: z.string(), attempt: z.number().int(), intent: ExternalIntent, intent_sha256: z.string(), intent_file: z.string(), handoff_file: z.string(), pre: z.unknown() })
+  .loose();
+type IntentRecord = z.infer<typeof IntentRecord>;
+
+const intentOf = (e: LedgerEntry): IntentRecord => IntentRecord.parse(e.data);
+const filesOf = (rt: Runtime, rec: IntentRecord) => ({ intent: join(rt.ledger.dir, rec.intent_file), handoff: join(rt.ledger.dir, rec.handoff_file) });
+
+/** Every transaction hash the ledger knows: sent, handed off or refused. */
+function knownHashes(ledger: Ledger): Set<string> {
+  const out = new Set<string>();
+  for (const e of ledger.entries) if (["tx-intent", "tx-result", "reconciled", "external-handoff", "external-refused"].includes(e.kind) && typeof e.data.tx_hash === "string") out.add(e.data.tx_hash);
+  return out;
+}
+
+const handoffOfIntent = (ledger: Ledger, sha: string): LedgerEntry | undefined => ledger.ofKind("external-handoff").find((e) => e.data.intent_sha256 === sha);
+
+/** Records a refused handoff (never a success) and stops the run. */
+function refuseHandoff(rt: Runtime, step: number | null, h: ExternalHandoff, problems: string[]): never {
+  rt.ledger.append("external-refused", { step, intent_sha256: h.intent_sha256, tx_hash: h.tx_hash, signer_id: h.signer_id, problems });
+  const where = step === null ? "" : `step ${step + 1}: `;
+  throw new Stop(`${where}handoff ${h.tx_hash} refused: ${problems.join("; ")}. Nothing was imported; nothing is resubmitted.`);
+}
+
+const StartNonces = z.object({ owner: z.string(), agent: z.string(), filler: z.string(), owner_external: z.string().optional() }).strict();
+
+/**
+ * Nonce each key must have on chain if every transaction of it is in the ledger: the start nonce, advanced by our
+ * executed transactions and by imported owner transactions. Refused or unrelated transactions advance nothing.
+ */
+function expectedNonces(rt: Runtime): { account: string; key: string; nonce: bigint }[] {
+  const start = StartNonces.parse(rt.ledger.entries[0]?.data.nonces);
+  const { m } = rt;
+  const keys = new Map<string, { account: string; nonce: bigint }>([
+    [m.keys.owner.public_key, { account: m.accounts.owner, nonce: BigInt(start.owner) }],
+    [m.keys.agent.public_key, { account: m.accounts.agent, nonce: BigInt(start.agent) }],
+    [m.keys.filler.public_key, { account: m.accounts.filler, nonce: BigInt(start.filler) }],
+  ]);
+  const ext = externalOwnerKey(m);
+  if (!keys.has(ext) && start.owner_external !== undefined) keys.set(ext, { account: m.accounts.owner, nonce: BigInt(start.owner_external) });
+  const bump = (key: unknown, nonce: unknown): void => {
+    const k = typeof key === "string" ? keys.get(key) : undefined;
+    if (k !== undefined && typeof nonce === "string" && BigInt(nonce) > k.nonce) k.nonce = BigInt(nonce);
+  };
+  for (const intent of rt.ledger.ofKind("tx-intent")) {
+    const res = [...rt.ledger.entries].reverse().find((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.tx_hash === intent.data.tx_hash);
+    if (res?.data.status === "executed") bump(intent.data.public_key, intent.data.nonce);
+  }
+  for (const h of rt.ledger.ofKind("external-handoff")) bump(h.data.public_key, h.data.nonce);
+  return [...keys].map(([key, v]) => ({ key, ...v }));
+}
+
+/**
+ * Imports a handed-off owner transaction for a persisted intent. Refuses (records, never as success, and stops) a
+ * duplicate hash, a second hash for a handed-off intent, an unrelated intent, the wrong chain, signer, key, receiver,
+ * method, arguments, action list or bounds, and a nonce showing an owner transaction the ledger does not record. A
+ * transaction not found final on this chain records nothing. Only then is it recorded and its end state verified.
+ */
+async function importHandoff(rt: Runtime, rec: IntentRecord, h: ExternalHandoff): Promise<void> {
+  const { step: i, intent } = rec;
+  if (knownHashes(rt.ledger).has(h.tx_hash)) refuseHandoff(rt, i, h, [`duplicate: transaction ${h.tx_hash} is already in the ledger`]);
+  if (h.intent_sha256 !== rec.intent_sha256) {
+    const other = rt.ledger.ofKind("external-intent").find((e) => e.data.intent_sha256 === h.intent_sha256);
+    refuseHandoff(rt, i, h, [other === undefined ? `unrelated: no intent ${h.intent_sha256} in this ledger` : `unrelated: the handoff names intent ${h.intent_sha256} (step ${String(other.data.step)}), the pending intent is ${rec.intent_sha256}`]);
+  }
+  const prior = handoffOfIntent(rt.ledger, rec.intent_sha256);
+  if (prior !== undefined) refuseHandoff(rt, i, h, [`duplicate: intent ${rec.intent_sha256} was already handed off as ${String(prior.data.tx_hash)}`]);
+  if (h.signer_id !== intent.signer_id) refuseHandoff(rt, i, h, [`wrong signer: the handoff names ${h.signer_id}, the intent requires ${intent.signer_id}`]);
+  const status = await rt.client.nodeStatus();
+  if (status.chain_id !== intent.network.chain_id || status.genesis_hash !== intent.network.genesis_hash) {
+    refuseHandoff(rt, i, h, [`wrong chain: the RPC serves ${status.chain_id}/${status.genesis_hash}, the intent is for ${intent.network.chain_id}/${intent.network.genesis_hash}`]);
+  }
+  const known = await rt.client.txKnown(h.tx_hash, h.signer_id);
+  const found = known === "unknown" ? null : await rt.client.resolve(`import step ${i + 1} ${rec.kind}`, h.signer_id, h.tx_hash, intent.actions[0]?.method ?? "-");
+  if (found === null) throw new Stop(`step ${i + 1} ${rec.kind}: transaction ${h.tx_hash} is not found final on ${status.chain_id} (unrelated, from another chain, or not final yet); nothing recorded. Resume once it is final.`);
+  if (found.ambiguous || !found.final || found.transaction === undefined) throw new Stop(`step ${i + 1} ${rec.kind}: transaction ${h.tx_hash} is not final yet; nothing recorded. Resume to import it.`);
+  const tx = found.transaction;
+  const problems = transactionProblems(intent, tx);
+  if (problems.length > 0) refuseHandoff(rt, i, h, problems);
+  const expected = expectedNonces(rt).find((k) => k.key === intent.public_key);
+  const chainNonce = await rt.client.accessKeyNonce(intent.signer_id, intent.public_key);
+  const txNonce = tx.nonce === null ? null : BigInt(tx.nonce);
+  if (expected === undefined || txNonce === null || txNonce !== expected.nonce + 1n || chainNonce !== txNonce) {
+    refuseHandoff(rt, i, h, [
+      `unrecorded owner transaction: the imported transaction has nonce ${String(txNonce)} and the key's nonce on chain is ${String(chainNonce)}, the ledger expects ${String(expected === undefined ? null : expected.nonce + 1n)} for both; transactions exist that the ledger does not record`,
+    ]);
+  }
+  rt.ledger.append("external-handoff", { step: i, kind: rec.kind, attempt: rec.attempt, intent_sha256: rec.intent_sha256, tx_hash: h.tx_hash, signer_id: h.signer_id, public_key: tx.public_key, nonce: tx.nonce });
+  await finishImport(rt, rec, found, "tx-result");
+}
+
+/** Records an accepted import's outcome (fee included, once) and verifies the step's end state. */
+async function finishImport(rt: Runtime, rec: IntentRecord, found: Outcome, kind: "tx-result" | "reconciled"): Promise<void> {
+  const known = rt.ledger.entries.some((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.tx_hash === found.tx_hash);
+  if (!known) rt.ledger.append(kind, { step: rec.step, imported: true, intent_sha256: rec.intent_sha256, ...outcomeData(found) });
+  rt.receipts.push(toEvidenceReceipt(found, { step: rec.step + 1, imported: true, signed_outside_runner: true, intent_sha256: rec.intent_sha256, ...(kind === "reconciled" ? { reconciled: true } : {}) }));
+  await finishStep(rt, rec.step, rec.kind, Pre.parse(rec.pre), found, { imported: true, intent_sha256: rec.intent_sha256, attempt: rec.attempt });
+}
+
+async function readHandoffFile(path: string): Promise<ExternalHandoff[]> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Stop(`handoff file ${path} is not JSON; nothing imported`);
+  }
+  const parsed = z.union([ExternalHandoff, z.array(ExternalHandoff)]).safeParse(raw);
+  if (!parsed.success) throw new Stop(`handoff file ${path} is not a ${EXTERNAL_HANDOFF_SCHEMA} record: ${parsed.error.issues.map((x) => `${x.path.join(".")}: ${x.message}`).join("; ")}`);
+  return Promise.resolve(Array.isArray(parsed.data) ? parsed.data : [parsed.data]);
+}
+
+/** A handoff already available for a pending intent: from MANDATE_LIVE_HANDOFF or the file next to the intent. */
+async function availableHandoff(rt: Runtime, rec: IntentRecord): Promise<ExternalHandoff | null> {
+  const supplied = rt.external.supplied.get(rec.intent_sha256);
+  if (supplied !== undefined) {
+    rt.external.supplied.delete(rec.intent_sha256);
+    return supplied;
+  }
+  const file = filesOf(rt, rec).handoff;
+  if (!existsSync(file)) return null;
+  const [first, ...rest] = await readHandoffFile(file);
+  if (first === undefined || rest.length > 0) throw new Stop(`handoff file ${file} must hold exactly one record`);
+  return first;
+}
+
+/** The handoff for a pending intent: an available one, the in-process supplier, or the file once it appears. */
+async function obtainHandoff(rt: Runtime, rec: IntentRecord): Promise<ExternalHandoff | null> {
+  const ready = await availableHandoff(rt, rec);
+  if (ready !== null) return ready;
+  const fromDeps = await rt.external.supply?.(rec.intent, filesOf(rt, rec));
+  if (fromDeps != null) return ExternalHandoff.parse(fromDeps);
+  const deadline = Date.now() + rt.external.waitMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, rt.ctx.pollMs ?? 1_000));
+    const later = await availableHandoff(rt, rec);
+    if (later !== null) return later;
+  }
+  return null;
+}
+
+/**
+ * On resume, before the nonce check: a pending intent whose handoff is available is imported first. Its owner
+ * transaction is on chain but not yet in the ledger (for example after a lost lookup), and the import's own nonce
+ * check is the same guarantee: an owner transaction the ledger does not record still stops the run.
+ */
+async function importAvailable(rt: Runtime): Promise<void> {
+  for (const e of rt.ledger.ofKind("external-intent")) {
+    const rec = intentOf(e);
+    if (doneAfter(rt.ledger, rec.step, e.seq) || handoffOfIntent(rt.ledger, rec.intent_sha256) !== undefined) continue;
+    const h = await availableHandoff(rt, rec);
+    // A handoff already refused stays refused; the nonce check then reports the unrecorded transaction.
+    if (h !== null && !knownHashes(rt.ledger).has(h.tx_hash)) await importHandoff(rt, rec, h);
+  }
+}
+
+/**
+ * An external owner step: persist the intent (once per attempt) before the owner signs, then import its handoff.
+ * Without a handoff the run stops as awaiting; a resume continues from the same intent.
+ */
+async function externalStep(rt: Runtime, i: number, step: ExternalStep): Promise<void> {
+  const attempt = nextAttempt(rt.ledger, i);
+  const existing = rt.ledger.ofKind("external-intent").filter((e) => e.data.step === i && e.data.attempt === attempt).at(-1);
+  let rec: IntentRecord;
+  if (existing !== undefined) rec = intentOf(existing);
+  else {
+    const spec = await externalSpec(rt, i, step);
+    if ("skip" in spec) {
+      skipWithdraw(rt, i, step.kind, attempt, step.kind === "withdraw_external" ? step.asset : "usdc", spec.skip, spec.retryable);
+      return;
+    }
+    const gas = stepGasTgas(rt.m, step.kind);
+    if (gas === null) throw new Stop(`${step.kind}: no gas allocation`);
+    const planned: Planned = { worst_fee_yocto: worstFee(rt.m, step.kind, rt.gasPrice).toString(), deposit_yocto: spec.deposit.toString() };
+    checkPlanned(rt.m.budget, totals(rt.ledger), planned);
+    const intent = ExternalIntent.parse({
+      schema: EXTERNAL_INTENT_SCHEMA,
+      manifest_sha256: rt.ledger.manifestSha256,
+      step: i + 1,
+      kind: step.kind,
+      attempt,
+      network: rt.m.network,
+      signer_id: rt.m.accounts.owner,
+      public_key: externalOwnerKey(rt.m),
+      receiver_id: step.kind === "withdraw_external" ? rt.verifier.id : rt.mandate.id,
+      actions: [
+        {
+          method: spec.method,
+          args: spec.args,
+          gas: (BigInt(gas.proposed) * TGAS).toString(),
+          deposit: spec.deposit.toString(),
+          gas_min: (BigInt(gas.proposed) * TGAS).toString(),
+          gas_max: (BigInt(gas.max) * TGAS).toString(),
+          deposit_min: spec.deposit.toString(),
+          deposit_max: spec.deposit.toString(),
+        },
+      ],
+      expected: spec.expected,
+      created_at: new Date().toISOString(),
+    });
+    const sha = await intentSha256(intent);
+    const stem = intentStem(intent);
+    mkdirSync(join(rt.ledger.dir, "external"), { recursive: true });
+    const intentFile = join("external", `${stem}.intent.json`);
+    // Persisted in the hash-chained ledger first; the file is a copy for the console.
+    const entry = rt.ledger.append("external-intent", { step: i, kind: step.kind, attempt, role: "owner", intent, intent_sha256: sha, intent_file: intentFile, handoff_file: join("external", `${stem}.handoff.json`), planned, pre: spec.pre });
+    writeFileSync(join(rt.ledger.dir, intentFile), `${JSON.stringify(intent, null, 2)}\n`);
+    rec = intentOf(entry);
+  }
+  if (handoffOfIntent(rt.ledger, rec.intent_sha256) !== undefined) throw new Stop(`step ${i + 1} ${step.kind}: intent ${rec.intent_sha256} has a recorded handoff that is not verified; rerun with MANDATE_LIVE_RESUME=1 to reconcile it`);
+  const h = await obtainHandoff(rt, rec);
+  const files = filesOf(rt, rec);
+  if (h === null) throw new AwaitingSignature({ step: i + 1, kind: step.kind, attempt: rec.attempt, intent_sha256: rec.intent_sha256, intent_path: files.intent, handoff_path: files.handoff });
+  await importHandoff(rt, rec, h);
+}
+
+/**
+ * Handoffs given in MANDATE_LIVE_HANDOFF are screened before anything runs: a hash the ledger knows, a second hash for
+ * a handed-off intent, or an intent this ledger does not have is refused. The rest wait for their pending intent.
+ */
+function screenSupplied(rt: Runtime, list: ExternalHandoff[]): void {
+  const known = knownHashes(rt.ledger);
+  for (const h of list) {
+    const intent = rt.ledger.ofKind("external-intent").find((e) => e.data.intent_sha256 === h.intent_sha256);
+    const step = intent === undefined ? null : z.number().int().parse(intent.data.step);
+    if (known.has(h.tx_hash)) refuseHandoff(rt, step, h, [`duplicate: transaction ${h.tx_hash} is already in the ledger`]);
+    if (intent === undefined) refuseHandoff(rt, null, h, [`unrelated: no intent ${h.intent_sha256} in this ledger`]);
+    const prior = handoffOfIntent(rt.ledger, h.intent_sha256);
+    if (prior !== undefined) refuseHandoff(rt, step, h, [`duplicate: intent ${h.intent_sha256} was already handed off as ${String(prior.data.tx_hash)}`]);
+    if (rt.external.supplied.has(h.intent_sha256)) refuseHandoff(rt, step, h, [`duplicate: a second handoff for intent ${h.intent_sha256}`]);
+    rt.external.supplied.set(h.intent_sha256, h);
+  }
+}
+
+/** Withdrawal steps whose latest attempt was refunded, failed or not sent for a missing registration. */
+function retryableWithdrawals(ledger: Ledger, m: LiveManifest): number[] {
+  return m.steps.flatMap((s, i) => ((s.kind === "withdraw" || s.kind === "withdraw_external") && doneOfStep(ledger, i).at(-1)?.data.retryable === true ? [i] : []));
+}
+
+/** Steps a resume's withdrawal retries may send: each retryable withdrawal and its asset's registration step. */
+function retrySteps(ledger: Ledger, m: LiveManifest): Step[] {
+  return retryableWithdrawals(ledger, m).flatMap((i) => {
+    const s = m.steps[i];
+    if (s === undefined || (s.kind !== "withdraw" && s.kind !== "withdraw_external")) return [];
+    const reg = m.steps.slice(0, i).findLast((x) => x.kind === "register_storage" && x.asset === s.asset);
+    return reg === undefined ? [s] : [reg, s];
+  });
+}
+
+/** On resume: retries each retryable withdrawal once, re-running the asset's storage registration step first. */
+async function retryWithdrawals(rt: Runtime): Promise<void> {
+  for (const i of retryableWithdrawals(rt.ledger, rt.m)) {
+    const step = rt.m.steps[i];
+    if (step === undefined || (step.kind !== "withdraw" && step.kind !== "withdraw_external")) continue;
+    console.log(`== retry step ${i + 1} ${step.kind} ${step.asset}`);
+    const j = rt.m.steps.slice(0, i).findLastIndex((x) => x.kind === "register_storage" && x.asset === step.asset);
+    const reg = rt.m.steps[j];
+    // An external retry already waiting for its signature keeps its intent; registration ran before it was written.
+    const pendingIntent = step.kind === "withdraw_external" && rt.ledger.ofKind("external-intent").some((e) => e.data.step === i && e.data.attempt === nextAttempt(rt.ledger, i));
+    if (reg?.kind === "register_storage" && !pendingIntent) await registerStorage(rt, j, reg);
+    if (step.kind === "withdraw") await runnerWithdraw(rt, i, step);
+    else await externalStep(rt, i, step);
+  }
+}
+
+/** A step-done for `step` recorded after ledger entry `seq` (a retried step has one per attempt). */
+const doneAfter = (ledger: Ledger, step: number, seq: number): boolean => ledger.ofKind("step-done").some((e) => e.data.step === step && e.seq > seq);
+
+/**
+ * Unresolved intents, executed-but-unverified steps and accepted-but-unverified imports are reconciled from chain
+ * before anything new. checkNonces then requires every key's nonce to match the ledger.
+ */
+async function reconcile(rt: Runtime): Promise<void> {
   const { ledger, client } = rt;
   const results = new Map<string, LedgerEntry>();
   for (const e of ledger.entries) if ((e.kind === "tx-result" || e.kind === "reconciled") && typeof e.data.tx_hash === "string") results.set(e.data.tx_hash, e);
-  const doneSteps = new Set(ledger.ofKind("step-done").map((e) => e.data.step));
   for (const intent of ledger.ofKind("tx-intent")) {
     const hash = z.string().parse(intent.data.tx_hash);
     const step = z.number().int().parse(intent.data.step);
@@ -791,28 +1306,38 @@ async function reconcile(rt: Runtime, startNonces: Record<"owner" | "agent" | "f
     if (prior === undefined || prior.data.status === "ambiguous") ledger.append("reconciled", { step, ...outcomeData(found) });
     else if (prior.data.success !== found.success) throw new Refusal(`cannot resume: ledger says ${hash} success=${String(prior.data.success)}, chain says ${String(found.success)}`);
     rt.receipts.push(toEvidenceReceipt(found, { reconciled: true }));
-    if (!doneSteps.has(step)) {
+    if (!doneAfter(ledger, step, intent.seq)) {
       const pre = Pre.parse(intent.data.pre);
       // A failed model proposal goes through its non-fatal verification (a mandate refusal is a finding).
       const failureExpected = FAILURE_EXPECTED.has(kind) || (pre.kind === "propose" && pre.source === "model");
       if (!found.submitted || (!found.success && !failureExpected)) throw new Stop(`step ${step + 1} ${kind}: reconciled transaction ${hash} did not succeed: ${found.error ?? ""}`);
-      await finishStep(rt, step, kind, pre, found);
-      doneSteps.add(step);
+      await finishStep(rt, step, kind, pre, found, typeof intent.data.attempt === "number" ? { attempt: intent.data.attempt } : {});
     }
   }
-  // Every executed transaction of ours must be in the ledger: compare access-key nonces.
-  const expected: Record<"owner" | "agent" | "filler", bigint> = { owner: BigInt(startNonces.owner), agent: BigInt(startNonces.agent), filler: BigInt(startNonces.filler) };
-  for (const intent of ledger.ofKind("tx-intent")) {
-    const role = z.enum(["owner", "agent", "filler"]).parse(intent.data.role);
-    const hash = z.string().parse(intent.data.tx_hash);
-    const res = [...ledger.entries].reverse().find((e) => (e.kind === "tx-result" || e.kind === "reconciled") && e.data.tx_hash === hash);
-    if (res?.data.status === "executed") expected[role] = BigInt(z.string().parse(intent.data.nonce));
+  // Imports accepted (handoff recorded) whose verification did not complete: verify them from chain, once.
+  for (const h of ledger.ofKind("external-handoff")) {
+    const step = z.number().int().parse(h.data.step);
+    if (doneAfter(ledger, step, h.seq)) continue;
+    const recEntry = ledger.ofKind("external-intent").find((e) => e.data.intent_sha256 === h.data.intent_sha256);
+    if (recEntry === undefined) throw new Refusal(`cannot resume: handoff ${String(h.data.tx_hash)} names no intent of this ledger`);
+    const rec = intentOf(recEntry);
+    const hash = z.string().parse(h.data.tx_hash);
+    const found = await client.resolve(`reconcile import ${rec.kind}`, rec.intent.signer_id, hash, rec.intent.actions[0]?.method ?? "-");
+    if (found === null || found.ambiguous || !found.final) throw new Refusal(`cannot resume: imported transaction ${hash} (step ${step + 1} ${rec.kind}) is not resolvable as final on chain. Nothing is resubmitted.`);
+    const prior = results.get(hash);
+    if (prior !== undefined && prior.data.success !== found.success) throw new Refusal(`cannot resume: ledger says ${hash} success=${String(prior.data.success)}, chain says ${String(found.success)}`);
+    await finishImport(rt, rec, found, "reconciled");
   }
-  for (const role of ["owner", "agent", "filler"] as const) {
-    const key = role === "owner" ? rt.m.keys.owner.public_key : role === "agent" ? rt.m.keys.agent.public_key : rt.m.keys.filler.public_key;
-    const chain = await client.accessKeyNonce(rt.m.accounts[role], key);
-    if (chain !== expected[role]) {
-      throw new Refusal(`cannot resume: ${role} key nonce on chain is ${String(chain)}, ledger expects ${expected[role]}; transactions exist that the ledger does not record`);
+}
+
+/** Every executed transaction of the run's keys must be in the ledger: compare access-key nonces. */
+async function checkNonces(rt: Runtime): Promise<void> {
+  const { client } = rt;
+  for (const k of expectedNonces(rt)) {
+    const chain = await client.accessKeyNonce(k.account, k.key);
+    if (chain !== k.nonce) {
+      const role = k.account === rt.m.accounts.owner ? (k.key === rt.m.keys.owner.public_key ? "owner" : "owner external") : k.account === rt.m.accounts.agent ? "agent" : "filler";
+      throw new Refusal(`cannot resume: ${role} key nonce on chain is ${String(chain)}, ledger expects ${k.nonce}; transactions exist that the ledger does not record`);
     }
   }
 }
@@ -835,6 +1360,18 @@ async function execute(rt: Runtime, from: number): Promise<void> {
     }
     if (step.kind === "relay_withheld") {
       await relayWithheld(rt, i, step);
+      continue;
+    }
+    if (step.kind === "revoke_external" || step.kind === "recover_external" || step.kind === "withdraw_external") {
+      await externalStep(rt, i, step);
+      continue;
+    }
+    if (step.kind === "register_storage") {
+      await registerStorage(rt, i, step);
+      continue;
+    }
+    if (step.kind === "withdraw") {
+      await runnerWithdraw(rt, i, step);
       continue;
     }
     if (step.kind === "fill" || step.kind === "settle") {
@@ -862,7 +1399,7 @@ async function send(rt: Runtime, i: number, step: Step, p: Plan, gate?: () => Pr
   const role = STEP_SIGNER[step.kind];
   const outcome = await rt.client.submit(`step ${i + 1} ${step.kind}`, p.signer, p.receiver, p.actions, p.method, async (info) => {
     const extra = gate === undefined ? {} : await gate();
-    rt.ledger.append("tx-intent", { step: i, kind: step.kind, role, method: p.method, ...info, planned: p.planned, pre: p.pre, detail: p.detail, ...extra });
+    rt.ledger.append("tx-intent", { step: i, kind: step.kind, role, method: p.method, ...info, planned: p.planned, pre: p.pre, detail: p.detail, ...(p.attempt === undefined ? {} : { attempt: p.attempt }), ...extra });
   });
   rt.ledger.append("tx-result", { step: i, ...outcomeData(outcome) });
   rt.receipts.push(toEvidenceReceipt(outcome, { step: i + 1, ...p.detail }));
@@ -870,7 +1407,7 @@ async function send(rt: Runtime, i: number, step: Step, p: Plan, gate?: () => Pr
     throw new Stop(`step ${i + 1} ${step.kind}: ambiguous outcome for ${outcome.tx_hash ?? "?"} (${outcome.error ?? ""}). Not resubmitted; rerun with MANDATE_LIVE_RESUME=1 to reconcile from chain state.`);
   }
   if (!outcome.submitted) throw new Stop(`step ${i + 1} ${step.kind}: transaction refused by the network: ${outcome.error ?? ""}`);
-  await finishStep(rt, i, step.kind, p.pre, outcome);
+  await finishStep(rt, i, step.kind, p.pre, outcome, p.attempt === undefined ? {} : { attempt: p.attempt });
 }
 
 /**
@@ -947,7 +1484,18 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
   let exitCode: 0 | 1 | 2 = 0;
   let message = "completed";
   let ledger: Ledger | null = null;
+  let awaiting: Awaiting | undefined;
+  let supplied: ExternalHandoff[] = [];
   try {
+    const handoffPath = env.MANDATE_LIVE_HANDOFF;
+    if (handoffPath !== undefined && handoffPath !== "") {
+      if (!resume) throw new Refusal("live: MANDATE_LIVE_HANDOFF imports into an existing ledger; set MANDATE_LIVE_RESUME=1");
+      try {
+        supplied = await readHandoffFile(handoffPath);
+      } catch (error) {
+        throw new Refusal(`live: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     if (resume) ledger = Ledger.load(dir, loaded.sha256);
     else if (Ledger.exists(dir)) throw new Refusal(`ledger already exists at ${dir}; set MANDATE_LIVE_RESUME=1 to resume it`);
     const ctx: VerifyContext = { mandate, verifier, tokens: { usdc: m.mandate_config.usdc.token, wnear: m.mandate_config.wnear.token }, timeoutMs: deps.timeoutMs ?? 180_000, pollMs: deps.pollMs ?? 1_000 };
@@ -968,6 +1516,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       receipts,
       assertions,
       agent: { provider: deps.modelProvider, allowNewDecision: env.MANDATE_LIVE_ALLOW_NEW_DECISION === "1", env },
+      external: { supply: deps.handoff, waitMs: deps.handoffWaitMs ?? Number(env.MANDATE_LIVE_HANDOFF_WAIT_SEC ?? "0") * 1_000, supplied: new Map() },
     });
     // A resume first proves it is on the ledger's chain, then reconciles (reads only, nothing is sent),
     // so that preflight sees the orders and fees the interrupted run actually produced.
@@ -976,9 +1525,12 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       const status = await client.nodeStatus();
       const start = ledger.entries[0];
       if (start === undefined || start.data.genesis_hash !== status.genesis_hash) throw new Refusal("cannot resume: ledger was written against another chain");
-      const startNonces = z.object({ owner: z.string(), agent: z.string(), filler: z.string() }).parse(start.data.nonces);
       rt = runtime(ledger, await client.gasPrice());
-      await reconcile(rt, startNonces);
+      await reconcile(rt);
+      // Handed-off hashes are screened before the nonce check, so a duplicate is refused for what it is.
+      screenSupplied(rt, supplied);
+      await importAvailable(rt);
+      await checkNonces(rt);
     }
     const pf = await preflight({
       client,
@@ -993,7 +1545,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
       },
       fresh: ledger === null,
       spentFeeYocto: ledger === null ? 0n : totals(ledger).fee_yocto,
-      pending: ledger === null ? m.steps : pendingSteps(ledger, m),
+      pending: ledger === null ? m.steps : [...pendingSteps(ledger, m), ...retrySteps(ledger, m)],
       createdOrders: ledger === null ? [] : createdOrders(ledger),
       fillerPaid: ledger === null ? { usdc: 0n, wnear: 0n } : totals(ledger).filler_paid,
     });
@@ -1005,7 +1557,9 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     }
     rt = { ...(rt ?? runtime(ledger, 0n)), gasPrice: BigInt(pf.facts.gas_price) };
     await execute(rt, nextStepIndex(ledger));
-    const findings = ledger.ofKind("step-done").flatMap((e) => (typeof e.data.finding === "string" ? [e.data.finding] : []));
+    if (resume) await retryWithdrawals(rt);
+    for (const h of rt.external.supplied.values()) refuseHandoff(rt, null, h, [`unrelated: intent ${h.intent_sha256} is not pending in this run`]);
+    const findings = currentFindings(ledger);
     if (findings.length > 0) {
       exitCode = 1;
       message = `completed with findings: ${findings.join(" | ")}`;
@@ -1016,9 +1570,11 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     else if (error instanceof Refusal) exitCode = 2;
     else exitCode = 1;
     message = text;
+    if (error instanceof AwaitingSignature) awaiting = error.info;
     if (ledger !== null && exitCode === 1) ledger.append("stopped", { reason: text });
   }
   if (exitCode !== 0 && ledger === null) return { exitCode, message, ...(checks === undefined ? {} : { preflight: checks }) };
+  const extra = { ...(checks === undefined ? {} : { preflight: checks }), ...(awaiting === undefined ? {} : { awaiting }) };
   const binding = sourceBinding(REPO_ROOT, m.code_hashes.mandate);
   const evidence = Evidence.parse({
     schema_version: 1,
@@ -1035,7 +1591,14 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
   const outDir = join(deps.outRoot ?? join(REPO_ROOT, "out/live"), "..", "evidence");
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, `live-${m.network.name}.json`), `${JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`);
-  return { exitCode, message, evidence, ...(checks === undefined ? {} : { preflight: checks }) };
+  return { exitCode, message, evidence, ...extra };
+}
+
+/** Findings of each step's latest verification: a refunded withdrawal retried successfully is no longer one. */
+function currentFindings(ledger: Ledger): string[] {
+  const latest = new Map<unknown, LedgerEntry>();
+  for (const e of ledger.ofKind("step-done")) latest.set(e.data.step, e);
+  return [...latest.values()].sort((a, b) => a.seq - b.seq).flatMap((e) => (typeof e.data.finding === "string" ? [e.data.finding] : []));
 }
 
 /** Steps completed by an earlier session of this ledger, so a resumed run's evidence covers the whole run. */
@@ -1045,7 +1608,7 @@ function earlierSteps(ledger: Ledger | null, current: Assertion[]): Assertion[] 
   return ledger.ofKind("step-done").flatMap((e) => {
     const step = z.number().int().parse(e.data.step);
     const kind = z.string().parse(e.data.kind);
-    const id = `step-${step + 1}-${kind}`;
+    const id = assertionId(step, kind, e.data.attempt);
     if (seen.has(id)) return [];
     const observed = { ...(typeof e.data.verification === "object" && e.data.verification !== null ? e.data.verification : {}), recorded_at: e.at, from_ledger: true };
     return [{ id, gate: "LIVE", description: `${kind}: verified in an earlier session (ledger entry ${e.seq})`, passed: typeof e.data.finding !== "string", observed }];

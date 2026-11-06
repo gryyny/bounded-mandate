@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { canonicalJson as canonical } from "./external.js";
 import { Refusal } from "./manifest.js";
 
 export const GENESIS_PREV = "0".repeat(64);
@@ -14,7 +15,22 @@ const Entry = z
     seq: z.number().int().nonnegative(),
     at: z.string(),
     prev: z.string().regex(/^[0-9a-f]{64}$/),
-    kind: z.enum(["start", "tx-intent", "tx-result", "step-done", "stopped", "reconciled", "decision-request", "decision"]),
+    kind: z.enum([
+      "start",
+      "tx-intent",
+      "tx-result",
+      "step-done",
+      "stopped",
+      "reconciled",
+      "decision-request",
+      "decision",
+      // An owner action to be signed outside the runner, persisted before the owner signs (external.ts).
+      "external-intent",
+      // A handed-off transaction found final on chain and accepted for verification (before its tx-result).
+      "external-handoff",
+      // A handed-off transaction that was refused; never a success.
+      "external-refused",
+    ]),
     data: z.record(z.string(), z.unknown()),
     hash: z.string().regex(/^[0-9a-f]{64}$/),
   })
@@ -24,17 +40,7 @@ export type EntryKind = LedgerEntry["kind"];
 
 const Head = z.object({ manifest_sha256: z.string(), seq: z.number().int(), hash: z.string() }).strict();
 
-/** Canonical JSON with sorted keys, so hashes do not depend on key order. */
-export function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (typeof value === "object" && value !== null) {
-    return `{${Object.keys(value)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
+export { canonicalJson as canonical } from "./external.js";
 
 export const entryHash = (e: Omit<LedgerEntry, "hash">): string =>
   createHash("sha256").update(`${e.prev}\n${canonical({ seq: e.seq, at: e.at, kind: e.kind, data: e.data })}`).digest("hex");
