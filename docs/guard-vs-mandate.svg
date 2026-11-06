@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" role="img" aria-labelledby="t d" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title id="t">Guard versus mandate: what happens to a withheld signed order</title>
+<desc id="d">Two columns, one sandbox scenario each. In both, the agent's order is signed and someone withholds it. Left, a guard design (our re-implementation of the Claw Guard design, gate T5): the owner pauses or removes the agent, which stops new requests only; the withheld order is relayed and executes; a regrant re-registers the same fixed-path key and revives it. Right, the bounded mandate (gate T1): the owner revokes, the contract removes the grant's signing key from intents.near, the verifier rejects the withheld order because the key no longer exists, and a regrant signs with a new key on a new path, so the old order stays invalid.</desc>
+<style>
+  .bg { fill: #fbf9f4; stroke: #b9b09d; }
+  .ink { fill: #1c1d21; } .muted { fill: #5f5b52; }
+  .box { fill: #ffffff; stroke: #b9b09d; }
+  .bad { fill: #f7e2de; stroke: #b02a1e; } .badt { fill: #b02a1e; }
+  .good { fill: #e3efe7; stroke: #1d6a48; } .goodt { fill: #1d6a48; }
+  .edge { stroke: #5f5b52; fill: none; stroke-width: 1.6; }
+  .head { font-size: 19px; font-weight: 700; } .sub { font-size: 13px; }
+  .t { font-size: 14px; } .tb { font-size: 14px; font-weight: 700; } .tag { font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #151a20; stroke: #3d4552; }
+    .ink { fill: #ebe6da; } .muted { fill: #a39d8f; }
+    .box { fill: #1c222a; stroke: #3d4552; }
+    .bad { fill: #3a1a16; stroke: #ff8a7a; } .badt { fill: #ff8a7a; }
+    .good { fill: #15291f; stroke: #6fcf9f; } .goodt { fill: #6fcf9f; }
+    .edge { stroke: #a39d8f; }
+  }
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="muted"/></marker></defs>
+<rect class="bg" x="0.5" y="0.5" width="959" height="519" rx="10"/>
+
+<text class="ink head" x="40" y="44">Guard: pause or remove the agent</text>
+<text class="muted sub" x="40" y="64">Our re-implementation of a guard design (T5), sandbox</text>
+<text class="ink head" x="500" y="44">Bounded mandate: revoke the grant</text>
+<text class="muted sub" x="500" y="64">This repository (T1), sandbox</text>
+
+<!-- step 1: shared -->
+<rect class="box" x="40" y="86" width="420" height="58" rx="6"/>
+<text class="muted tag" x="56" y="106">1 · SIGNED</text>
+<text class="ink t" x="56" y="128">An order is signed; someone holds it back.</text>
+<rect class="box" x="500" y="86" width="420" height="58" rx="6"/>
+<text class="muted tag" x="516" y="106">1 · SIGNED</text>
+<text class="ink t" x="516" y="128">The contract signs an order; someone holds it back.</text>
+<path class="edge" d="M250 144 V172" marker-end="url(#a)"/>
+<path class="edge" d="M710 144 V172" marker-end="url(#a)"/>
+
+<!-- step 2: owner action -->
+<rect class="box" x="40" y="174" width="420" height="72" rx="6"/>
+<text class="muted tag" x="56" y="194">2 · OWNER ACTS</text>
+<text class="ink t" x="56" y="216">Pause or remove the agent:</text>
+<text class="ink t" x="56" y="235">new requests stop; the signing key stays.</text>
+<rect class="box" x="500" y="174" width="420" height="72" rx="6"/>
+<text class="muted tag" x="516" y="194">2 · OWNER ACTS</text>
+<text class="ink t" x="516" y="216">revoke: the contract removes the grant's</text>
+<text class="ink t" x="516" y="235">signing key from intents.near.</text>
+<path class="edge" d="M250 246 V274" marker-end="url(#a)"/>
+<path class="edge" d="M710 246 V274" marker-end="url(#a)"/>
+
+<!-- step 3: relay -->
+<rect class="bad" x="40" y="276" width="420" height="72" rx="6"/>
+<text class="badt tag" x="56" y="296">3 · WITHHELD ORDER RELAYED</text>
+<text class="badt tb" x="56" y="318">Executes.</text>
+<text class="ink t" x="56" y="337">The key that signed it still exists.</text>
+<rect class="good" x="500" y="276" width="420" height="72" rx="6"/>
+<text class="goodt tag" x="516" y="296">3 · WITHHELD ORDER RELAYED</text>
+<text class="goodt tb" x="516" y="318">Rejected by the verifier, before its deadline.</text>
+<text class="ink t" x="516" y="337">The signing key no longer exists.</text>
+<path class="edge" d="M250 348 V376" marker-end="url(#a)"/>
+<path class="edge" d="M710 348 V376" marker-end="url(#a)"/>
+
+<!-- step 4: regrant -->
+<rect class="bad" x="40" y="378" width="420" height="72" rx="6"/>
+<text class="badt tag" x="56" y="398">4 · REGRANT</text>
+<text class="badt tb" x="56" y="420">The old order executes again.</text>
+<text class="ink t" x="56" y="439">The same fixed-path key is registered again.</text>
+<rect class="good" x="500" y="378" width="420" height="72" rx="6"/>
+<text class="goodt tag" x="516" y="398">4 · REGRANT</text>
+<text class="goodt tb" x="516" y="420">The old order stays invalid.</text>
+<text class="ink t" x="516" y="439">A new key on path mandate/v1/&lt;epoch&gt;.</text>
+
+<text class="muted sub" x="40" y="486">Both columns ran in a local sandbox against the exact mainnet Intents verifier WASM. The guard column is our</text>
+<text class="muted sub" x="40" y="504">adaptation of a design, not the deployed product. No mainnet transaction has been executed.</text>
+</svg>

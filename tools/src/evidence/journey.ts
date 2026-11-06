@@ -50,7 +50,12 @@ export function demoSteps(environment: Record<string, string>): DemoStep[] | nul
 
 /** Single configuration of the planned (not yet published) hosting locations. Always shown with PLANNED_LABEL. */
 export const PLANNED_SITE = "https://gryyny.github.io/bounded-mandate/";
-export const PLANNED_URLS = { page: PLANNED_SITE, console: `${PLANNED_SITE}console/` } as const;
+export const PLANNED_URLS = {
+  page: PLANNED_SITE,
+  console: `${PLANNED_SITE}console/`,
+  video: `${PLANNED_SITE}video/bounded-mandate-short.mp4`,
+  walkthrough: `${PLANNED_SITE}video/bounded-mandate-demo.mp4`,
+} as const;
 export const PLANNED_LABEL = "planned, unpublished";
 /** Where `make demo` writes the console view, relative to the repository root. */
 export const CONSOLE_LOCAL_PATH = "out/console/index.html";

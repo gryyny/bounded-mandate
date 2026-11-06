@@ -14,6 +14,7 @@ import { type Assertion, Evidence, type Receipt } from "../src/types.js";
 import { ATTACKS, CONSOLE_RENDERED, CONSOLE_REVOKE, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
 import { CONSOLE_BROWSER_LABEL, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../src/evidence/journey.js";
 import { revocationStory } from "../src/page/story.js";
+import { AGENT_API_EXAMPLES, AGENT_API_EXAMPLES_URL, AGENT_API_QUOTE } from "../src/page/related.js";
 
 const REV = "a".repeat(40);
 const FIXTURES = { "verifier/defuse-0.4.5.wasm": "e".repeat(64) };
@@ -424,9 +425,11 @@ describe("evidence page: revocation story", () => {
     for (const gate of Object.keys(REQUIRED_CASES)) expect(gateStatus(html, gate)).toBe("not-run");
   });
 
-  it("offers the three paths, with the video placeholder until hosted", () => {
+  it("offers the three paths, with the video's planned URL as labelled text, not a link", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
-    expect(html).toContain('<a href="VIDEO_URL_PENDING">VIDEO_URL_PENDING</a>');
+    expect(html).not.toContain("VIDEO_URL_PENDING");
+    expect(html).toContain(`${PLANNED_LABEL}</span> <code>${PLANNED_URLS.video}</code>`);
+    expect(html).not.toContain(`href="${PLANNED_URLS.video}`);
     expect(html).toContain("<code>make demo</code>, then <code>make test</code>");
   });
 });
@@ -814,11 +817,36 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
   it("shows the planned URLs as text labelled planned and unpublished, never as links", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
     expect(html).toContain(`${PLANNED_LABEL}</span> Page <code>${PLANNED_URLS.page}</code>`);
-    expect(html).not.toContain(`href="${PLANNED_URLS.page}`);
+    expect(html).toContain(`${PLANNED_LABEL}</span> Short video <code>${PLANNED_URLS.video}</code> · walkthrough <code>${PLANNED_URLS.walkthrough}</code>`);
+    expect(PLANNED_URLS.video).toBe(`${PLANNED_URLS.page}video/bounded-mandate-short.mp4`);
+    expect(PLANNED_URLS.walkthrough).toBe(`${PLANNED_URLS.page}video/bounded-mandate-demo.mp4`);
+    expect(html).not.toMatch(/href="https:\/\/gryyny\.github\.io/);
     for (const m of html.matchAll(/gryyny\.github\.io[^<"]*/g)) {
       const around = html.slice(Math.max(0, m.index - 200), m.index + 200);
       expect(around).toContain(PLANNED_LABEL);
     }
+  });
+
+  it("compares the Agent API's routes from pinned, dated documentation, as text and without a tested-weakness claim", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    const part = section(html, "agent-api");
+    expect(part).toContain("Related design: the NEAR Intents Agent API");
+    expect(part).toContain(`commit <code>${AGENT_API_EXAMPLES.commit}</code>`);
+    expect(AGENT_API_EXAMPLES.commit).toMatch(/^2552895[0-9a-f]{33}$/);
+    expect(part).toContain(escapeHtml(AGENT_API_EXAMPLES_URL));
+    expect(AGENT_API_EXAMPLES_URL).toContain(`/blob/${AGENT_API_EXAMPLES.commit}/07-native-accounts/README.md#L`);
+    expect(part).toContain(`read ${AGENT_API_EXAMPLES.read}`);
+    for (const route of ["evm/sign-intent", "solana/sign-intent", "POST /v1/agents/{agent_id}/swap"]) expect(part).toContain(`<code>${escapeHtml(route)}</code>`);
+    expect(part).toContain(escapeHtml(AGENT_API_QUOTE));
+    expect(AGENT_API_QUOTE.split(" ").length).toBeLessThan(15);
+    expect(part).toContain("Documentation evidence, not a tested weakness.");
+    expect(part).toContain("ordinary hosted execution is not described this way");
+    expect(part).toContain("Any integration of the two is proposed, not built");
+    // Sources are text: the page links to no documentation or repository.
+    expect(part).not.toMatch(/href="https?:/);
+    // It sits after the matched baseline and before the claim and limits.
+    expect(html.indexOf('id="baseline"')).toBeLessThan(html.indexOf('id="agent-api"'));
+    expect(html.indexOf('id="agent-api"')).toBeLessThan(html.indexOf('id="limits"'));
   });
 
   it("labels TypeScript unit-test case reports honestly", () => {

@@ -177,6 +177,8 @@ li.stage.withdrawn { border-top-style: dashed; border-top-color: var(--m-sandbox
 .stage-state span { text-transform: uppercase; letter-spacing: .1em; color: var(--ink); }
 p.planned { margin: .9rem 0 0; font-size: .88rem; overflow-wrap: anywhere; }
 table.attack-log td { vertical-align: top; overflow-wrap: anywhere; }
+td.route { font-weight: 600; min-width: 12rem; }
+td.route code { white-space: normal; word-break: normal; overflow-wrap: anywhere; }
 table.attack-log td.reason { font: .8rem/1.45 var(--mono); }
 table.attack-log .mono { font: .74rem/1.4 var(--mono); }
 ol.path-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; counter-reset: path; }

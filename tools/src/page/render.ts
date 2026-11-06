@@ -1,7 +1,7 @@
 // Renders the static evidence page. Order: product position, claim and the run's allocation outcome, the nine-stage
 // journey bound to the demo evidence, three ways to check it, the attack log, mainnet receipts (or the pending panel), the
 // opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
-// acceptance gates per case, the T5 baseline, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
+// acceptance gates per case, the T5 baseline, the Agent API comparison, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
 // certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
 // Demo assertions are story checks and never mark a gate.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,6 +19,7 @@ import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, priceText, revocationStory, share, shortHash, stateLine, usd, usdc, wnear, type Stage } from "./story.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
+import { agentApiBody } from "./related.js";
 import { STYLES } from "./styles.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
@@ -27,9 +28,6 @@ export { escapeHtml } from "./html.js";
 /** The product in two plain lines, aligned with the README's opening. */
 export const HEADLINE = "Let an AI agent trade within limits a contract enforces";
 export const SUBTITLE = "Once a revocation is confirmed, signed orders already issued fail too, and the owner takes the remaining assets back without the agent.";
-
-/** Public URL of the short video; a placeholder until it is hosted. */
-export const VIDEO_URL: string = "VIDEO_URL_PENDING";
 
 export interface RenderExtras {
   /**
@@ -393,13 +391,11 @@ ${body}${injectionBlock}`);
 
 /** The planned hosting locations, always labelled as planned and unpublished; never a link. */
 const plannedLine = (): string =>
-  `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing is hosted there yet.</p>`;
+  `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing is hosted there yet.</p>
+<p class="planned">${chip("pending", PLANNED_LABEL)} Short video <code>${escapeHtml(PLANNED_URLS.video)}</code> · walkthrough <code>${escapeHtml(PLANNED_URLS.walkthrough)}</code>.</p>`;
 
 function pathsSection(live: LiveView, stageCount: number): string {
-  const video =
-    VIDEO_URL === "VIDEO_URL_PENDING"
-      ? `<a href="${VIDEO_URL}">${VIDEO_URL}</a> (hosting pending; local build: out/video/bounded-mandate-short.mp4)`
-      : `<a href="${escapeHtml(VIDEO_URL)}" rel="noopener noreferrer">${escapeHtml(VIDEO_URL)}</a>`;
+  const video = `${chip("pending", PLANNED_LABEL)} <code>${escapeHtml(PLANNED_URLS.video)}</code> (local build: out/video/bounded-mandate-short.mp4)`;
   const mainnet =
     live.kind === "mainnet"
       ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
@@ -407,7 +403,7 @@ function pathsSection(live: LiveView, stageCount: number): string {
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
 <li><p class="do">Watch the short video</p><p class="see">See: the ${String(stageCount)} stages above captioned with this run's numbers, in under 90 seconds.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
-<li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (about 16 minutes).</p></li>
+<li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (<code>make test</code> took 1438 s cold in a macOS arm64 fresh clone at f01b496).</p></li>
 </ol>${plannedLine()}</section>`;
 }
 
@@ -651,6 +647,7 @@ ${casesSection(acc, binding, extras.reports ?? [])}
 ${demonstrationSection(ev)}
 ${gatesSection(acc, binding, views)}
 ${comparisonSection(acc, views)}
+${section("§C", "related", "agent-api", "Related design: the NEAR Intents Agent API", agentApiBody())}
 ${limitsSection(ev, acc, binding, views, live)}
 ${policySection(policy)}
 ${provenanceSection(ev, acc, binding)}
