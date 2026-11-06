@@ -16,6 +16,16 @@ baseline/claw-guard-adapted
   225d37d3c1b04959947fa7c18544fa50e273dcd8. MIT License, Copyright (c) 2026
   Patrick Baur (RUNECLAW). Used only for the matched comparison (T5).
 
+fixtures/sputnik/sputnikdao2-2.3.1.wasm
+  Sputnik DAO v2 contract (sputnikdao2 2.3.1), the code the mainnet factory
+  sputnik-dao.near deploys to new DAOs. Declared source:
+  https://github.com/near-daos/sputnik-dao-contract at commit
+  2b0f34a3860460f285307ec2ccf36345acbe05a2. Retrieved read-only via RPC from the
+  factory and unmodified; used only as the DAO owner in sandbox tests.
+  Provenance and hash in fixtures/manifest.json and
+  fixtures/sputnik/sputnikdao2-2.3.1.provenance.json.
+  MIT License, Copyright (c) 2021 near-daos.
+
 fixtures/vectors/oracle.json
   Read-only responses of NEAR mainnet aggregate-oracle.near (public chain data).
 
@@ -25,7 +35,12 @@ fixtures/model/normal.json, fixtures/model/injection.json
   repository. Provenance and hashes in fixtures/manifest.json.
 
 Third-party dependencies resolved by Cargo.lock and tools/package-lock.json are
-distributed under their own licenses. The test-only dependency defuse-core is
+distributed under their own licenses. The contract WASM (built locally and in
+fixtures/deploy/) links, unmodified, wee_alloc 0.4.5 and memory_units 0.4.0,
+which near-sdk enables by default; both are under the Mozilla Public License 2.0,
+and their source is available from crates.io
+(https://crates.io/crates/wee_alloc, https://crates.io/crates/memory_units).
+All other crates linked into the contract WASM are under permissive licenses. The test-only dependency defuse-core is
 taken from https://github.com/near/intents at commit
 16d04f6ec4401263f8914638710260da50bb46b0 (MIT License, Copyright (c) 2025 NEAR
 Foundation).
