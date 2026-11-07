@@ -182,13 +182,26 @@ async fn remove_key(base: &Base, t: &Treasury, key: &FillerKey) -> Result<()> {
     Ok(())
 }
 
+/// The verifier's missing-key error for this treasury's account, not any account's.
+fn pk_err(t: &Treasury) -> String {
+    format!("doesn't exist for account '{}'", t.account.id())
+}
+
+/// Whether the order the owner did not record was stopped before its deadline, from its own relay.
+fn unrecorded_stopped(relays: &[Relay]) -> Result<bool> {
+    let r = relays
+        .iter()
+        .find(|r| r.label.contains("not recorded"))
+        .context("no relay of the unrecorded order")?;
+    Ok(!r.executed)
+}
+
 fn executed_value(relays: &[Relay]) -> u128 {
     relays.iter().filter(|r| r.executed).count() as u128 * SELL_USDC
 }
 
 async fn run() -> Result<Value> {
     let base = Base::new(0, 10 * BUY_WNEAR * 2).await?;
-    let pk_err = "doesn't exist for account";
     let nonce_err = "nonce was already used";
 
     // 1. Wait for expiry: nothing to sign, nothing covered until each deadline.
@@ -254,7 +267,7 @@ async fn run() -> Result<Value> {
     remove_key(&base, &fresh, &fresh.key).await?;
     let fresh_relays = relay_all(&base, &fresh, &fresh_orders, 130).await?;
     for r in &fresh_relays {
-        expect_error(r, pk_err)?;
+        expect_error(r, &pk_err(&fresh))?;
     }
     let new_key = FillerKey::from_seed(53);
     register_filler_key(&fresh.account, base.verifier.id(), &new_key).await?;
@@ -265,16 +278,18 @@ async fn run() -> Result<Value> {
         "remove + fresh key: trading resumes"
     );
     let fresh_old_again = relay(&base, &fresh, &fresh_orders[0], 136).await?;
-    expect_error(&fresh_old_again, pk_err)?;
+    expect_error(&fresh_old_again, &pk_err(&fresh))?;
 
     // 4. Remove the key, then re-add the same key: unexpired old orders execute again.
     let same = treasury(&base, "t-remove-same", 44).await?;
     let same_orders = withheld(&base, &same, 40).await?;
     remove_key(&base, &same, &same.key).await?;
-    let same_blocked = relay(&base, &same, &same_orders[0], 140).await?;
-    expect_error(&same_blocked, pk_err)?;
+    let same_removed = relay_all(&base, &same, &same_orders, 140).await?;
+    for r in &same_removed {
+        expect_error(r, &pk_err(&same))?;
+    }
     register_filler_key(&same.account, base.verifier.id(), &same.key).await?;
-    let same_relays = relay_all(&base, &same, &same_orders, 141).await?;
+    let same_relays = relay_all(&base, &same, &same_orders, 150).await?;
     ensure!(
         same_relays.iter().all(|r| r.executed),
         "re-adding the same key revives every unexpired withheld order"
@@ -285,8 +300,8 @@ async fn run() -> Result<Value> {
         &base,
         &wait,
         &wait.key,
-        "O5 (relayed after its deadline)",
-        true,
+        "O5 (not recorded, relayed after its deadline)",
+        false,
         15,
     )
     .await?;
@@ -301,35 +316,36 @@ async fn run() -> Result<Value> {
                     action: &str,
                     signatures: usize,
                     relays: &[Relay],
-                    covers_unrecorded: bool,
-                    resume: Value| {
-        json!({
+                    resume: Value|
+     -> Result<Value> {
+        Ok(json!({
             "strategy": name,
             "owner_action": action,
             "account_key_signatures_for_the_action": signatures,
             "withheld_relays_after_action": relays.iter().map(Relay::json).collect::<Vec<_>>(),
             "executed_after_action": relays.iter().filter(|r| r.executed).count(),
             "executed_value_usdc_units": executed_value(relays).to_string(),
-            "covers_order_not_in_owner_ledger": covers_unrecorded,
+            "unrecorded_order_stopped_before_its_deadline": unrecorded_stopped(relays)?,
             "resume": resume,
-        })
+        }))
     };
     Ok(json!({
         "verifier": "pinned near/intents 0.4.5 WASM (fixtures/verifier/defuse-0.4.5.wasm)",
         "account_key": "TEST key standing in for the account's signer (MPC-derived in the mandate)",
         "withheld_orders": "three per strategy, each selling 1 USDC for 0.3 wNEAR, TTL 120 s, all relayed unexpired by an unrelated account; O1 and O2 are recorded in the owner's ledger, O3 is not",
         "strategies": [
-            scenario("wait for expiry", "stop issuing new orders", 0, &wait_relays, false,
-                json!({"requires": "nothing", "protection_starts": "at each order's own deadline", "late_relay_after_deadline": late_relay.json()})),
-            scenario("cancel recorded nonces", "sign and submit one empty intent per recorded nonce", cancel_signatures, &cancel_relays, false,
-                json!({"requires": "the account's signer available for every cancellation; the full list of outstanding nonces", "same_key_new_order": cancel_resume_relay.json()})),
-            scenario("remove key, fresh key", "remove_public_key on the verifier (a direct call by the account; no signature by the key)", 0, &fresh_relays, true,
-                json!({"requires": "a new key (the mandate derives one on path mandate/v1/<epoch>)", "fresh_key_new_order": fresh_resume_relay.json(), "old_order_after_fresh_key": fresh_old_again.json()})),
-            scenario("remove key, same key re-added", "remove_public_key, then add_public_key with the same key", 0, &same_relays, false,
-                json!({"blocked_while_removed": same_blocked.json(), "after_re_add": "every unexpired withheld order executes again"})),
+            scenario("wait for expiry", "stop issuing new orders", 0, &wait_relays,
+                json!({"requires": "nothing", "protection_starts": "at each order's own deadline, recorded or not", "unrecorded_order_after_its_deadline": late_relay.json()}))?,
+            scenario("cancel recorded nonces", "sign and submit one empty intent per recorded nonce", cancel_signatures, &cancel_relays,
+                json!({"requires": "the account's signer available for every cancellation; the full list of outstanding nonces", "same_key_new_order": cancel_resume_relay.json()}))?,
+            scenario("remove key, fresh key", "remove_public_key on the verifier, a direct call by the account: no signature by the account key (in the mandate the owner signs revoke and the contract makes this call; covered by T1, not here)", 0, &fresh_relays,
+                json!({"requires": "a new key (the mandate derives one on path mandate/v1/<epoch>)", "fresh_key_new_order": fresh_resume_relay.json(), "old_order_after_fresh_key": fresh_old_again.json()}))?,
+            scenario("remove key, same key re-added", "remove_public_key, then add_public_key with the same key", 0, &same_relays,
+                json!({"while_removed": same_removed.iter().map(Relay::json).collect::<Vec<_>>(), "unrecorded_order_stopped_while_removed": unrecorded_stopped(&same_removed)?, "after_re_add": "every unexpired withheld order executes again"}))?,
         ],
         "not_measured_here": [
-            "time between confirmed removal and an order's deadline (mainnet run)",
+            "time between confirmed removal and an order's deadline (only the mainnet run gives a meaningful value)",
+            "the mandate's own removal path: the owner's revoke, the contract's call to the verifier and its callback (T1)",
             "the mandate's caps, reservations and recovery (T1-T4)",
             "a race in which a relay lands before the owner's action is final",
         ],

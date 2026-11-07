@@ -263,17 +263,17 @@ When an owner stops trusting an agent, signed orders may still be outstanding. T
 - **The owner's ledger records two of the three orders.** The third stands for a signature disclosed without being recorded.
 - **The account's key is a labelled test key**, standing in for the MPC-derived key.
 
-| Owner's response | Signatures by the account key | Withheld orders that still execute | Covers an order the owner did not record | To resume trading |
+| Owner's response | Signatures by the account key | Withheld orders that still execute before their deadlines | Unrecorded order stopped before its deadline | To resume trading |
 | --- | ---: | ---: | --- | --- |
-| Stop issuing, wait for expiry | 0 | 3 of 3, until each deadline | no | nothing |
+| Stop issuing, wait for expiry | 0 | 3 of 3; each stops only at its own deadline | no (only at its deadline, as an expired one shows) | nothing |
 | Cancel recorded nonces (empty signed intents) | 2, one per recorded order | 1 of 3 (the unrecorded one) | no | same key |
-| **Remove the key, resume with a fresh key (the mandate)** | **0: a direct call by the account** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
-| Remove the key, re-add the same key | 0 | 3 of 3 after the re-add | no | same key, which revives every unexpired order |
+| **Remove the key, resume with a fresh key (the mandate)** | **0 by the account key; the owner still signs `revoke`** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
+| Remove the key, re-add the same key | 0 by the account key | 0 of 3 while removed, 3 of 3 after the re-add | yes while removed, no after the re-add | same key, which revives every unexpired order |
 
 What this shows, and what it does not:
 
-- **Cancelling nonces needs the account's signer and a complete list.** It needs a working signer and a complete list of outstanding nonces. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither.
-- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run can measure it: the runner records it as `revocation_window`, giving the lifetime left after confirmed removal, the MPC signing latency and the time from signing to deadline. With 60–120 s order lifetimes the gap may be small. That is why the mandate's case also rests on what the alternatives leave out: limits checked before every signature, conservative accounting of signed and disclosed orders (T2, T2b) and recovery without the agent, oracle or MPC (T4).
+- **Cancelling nonces needs the account's signer and a complete list.** It needs a working signer and a complete list of outstanding nonces. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither. Here a plain account calls `remove_public_key` itself; in the mandate the owner signs `revoke` and the contract makes that call and confirms it in a callback, which T1 tests.
+- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run gives a meaningful value. The runner records it as `revocation_window`: the lifetime left after confirmed removal (a lower bound), the time from the MPC sign request to the signature, and the time from signing to the deadline. With the demo's 60 s and the proposed mainnet 120 s order lifetimes, the gap may be small. That is why the mandate's case also rests on what the alternatives leave out: limits checked before every signature, conservative accounting of signed and disclosed orders (T2, T2b) and recovery without the agent, oracle or MPC (T4).
 - **Not tested here:** a relay that lands before the owner's action is final, and mainnet latency. This is a verifier-level experiment; the mandate's own gates are T1 to T4.
 
 ## Comparison with related NEAR projects

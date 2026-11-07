@@ -1107,10 +1107,11 @@ describe("primary template (live agent, console-signed owner actions, withdrawal
       // What revocation bought, by chain time, recomputed from the recorded timestamps and the order's own view.
       const windowOf = (relay.timing as unknown as { revocation_window: Record<string, string | number | null> }).revocation_window;
       const withheldOrder = (await new MandateClient(world.client, mt.id).allOrders()).find((o) => o.id === windowOf.order_id);
-      expect(windowOf).toMatchObject({ deadline_ns: withheldOrder?.deadline_ns, signed_at_ns: withheldOrder?.signed_at_ns, sign_requested_at_ns: withheldOrder?.sign_requested_at_ns });
+      expect(windowOf).toMatchObject({ deadline_ns: withheldOrder?.deadline_ns, signed_at_ns: withheldOrder?.signed_at_ns, sign_requested_at_ns: withheldOrder?.sign_requested_at_ns, expired_when_read: false });
       const nsToMs = (later: unknown, earlier: unknown) => Number((BigInt(String(later)) - BigInt(String(earlier))) / 1_000_000n);
-      expect(windowOf.remaining_after_confirmed_removal_ms).toBe(nsToMs(windowOf.deadline_ns, windowOf.removal_confirmed_by_ns));
-      expect(windowOf.mpc_sign_latency_ms).toBe(nsToMs(windowOf.signed_at_ns, windowOf.sign_requested_at_ns));
+      expect(windowOf.remaining_after_confirmed_removal_ms).toBe(nsToMs(windowOf.deadline_ns, windowOf.read_after_confirmed_removal_ns));
+      expect(windowOf.remaining_after_confirmed_removal_ns).toBe((BigInt(String(windowOf.deadline_ns)) - BigInt(String(windowOf.read_after_confirmed_removal_ns))).toString());
+      expect(windowOf.sign_request_to_signed_ms).toBe(nsToMs(windowOf.signed_at_ns, windowOf.sign_requested_at_ns));
       expect(windowOf.signed_to_deadline_ms).toBe(nsToMs(windowOf.deadline_ns, windowOf.signed_at_ns));
       expect(Number(windowOf.remaining_after_confirmed_removal_ms)).toBeGreaterThan((broadcast?.remaining_ms ?? 0) - 1);
       expect(Number(windowOf.remaining_after_confirmed_removal_ms)).toBeLessThan(Number(windowOf.signed_to_deadline_ms));

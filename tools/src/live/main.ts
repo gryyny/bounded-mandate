@@ -765,7 +765,16 @@ async function withhold(rt: Runtime, i: number, step: Extract<Step, { kind: "wit
     withheld = { ...base, bundle: prepared.bundle, bundle_sha256: sha256Of(prepared.bundle), filler_nonce: prepared.own.payload.nonce, counter: prepared.counter, executable: problem === null };
   }
   const timing = await probe(rt, "withheld bundle prepared and simulated", BigInt(order.deadline_ns), true);
-  const observed = { order_id: orderId, deadline_ns: order.deadline_ns, bundle_sha256: withheld.bundle_sha256, executable: withheld.executable, timing, ...(problem === null ? {} : { problem }) };
+  const observed = {
+    order_id: orderId,
+    deadline_ns: order.deadline_ns,
+    sign_requested_at_ns: order.sign_requested_at_ns,
+    signed_at_ns: order.signed_at_ns,
+    bundle_sha256: withheld.bundle_sha256,
+    executable: withheld.executable,
+    timing,
+    ...(problem === null ? {} : { problem }),
+  };
   rt.assertions.push({ id: `step-${i + 1}-withhold`, gate: "LIVE", description: "withhold: the exact bundle is executable before revocation (simulate_intents)", passed: problem === null, observed });
   rt.ledger.append("step-done", { step: i, kind: "withhold", verification: observed, withheld, ...(problem === null ? {} : { finding: `step ${i + 1} withhold: ${problem}` }) });
 }
@@ -838,32 +847,37 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[], window: Record<string,
 }
 
 /**
- * What revocation bought for the withheld order, by chain time. Instrumentation only; it decides nothing. The
- * comparison point is an owner who stops authorizing and waits: from the moment removal was confirmed, that owner
- * would stay exposed until the order's own deadline. `confirmed` is the first final-block read after the runner
- * confirmed removal, so removal was final no later than that and the remaining lifetime is at least the value
- * shown. The MPC signing latency bounds how short order lifetimes could be while trading still works.
+ * What revocation bought for the withheld order, by chain time. Instrumentation only: it reads only the ledger and
+ * the probe already taken, so it makes no request and cannot fail the relay. The comparison point is an owner who
+ * stops authorizing and waits: from the moment removal was confirmed, that owner stays exposed until the order's
+ * own deadline. `confirmed` is the relay pre-check's final-block read, taken after the runner confirmed removal, so
+ * removal was final no later than that and the remaining lifetime is at least the value shown (for an external
+ * revocation the pre-check can come well after the owner's transaction, which loosens the bound). The order's
+ * timestamps come from its view at the withhold step.
  */
-async function revocationWindow(rt: Runtime, confirmed: Probe): Promise<Record<string, unknown> | null> {
-  const w = latestWithheld(rt.ledger);
+function revocationWindow(ledger: Ledger, confirmed: Probe): Record<string, unknown> | null {
+  const w = latestWithheld(ledger);
+  const done = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold").at(-1);
   if (w === null || confirmed.chain_ns === null) return null;
-  const order = await rt.mandate.order(w.order_id);
-  const ms = (later: bigint, earlier: bigint): number => Number((later - earlier) / 1_000_000n);
+  const times = z.object({ sign_requested_at_ns: z.string().nullable(), signed_at_ns: z.string().nullable() }).catch({ sign_requested_at_ns: null, signed_at_ns: null }).parse(done?.data.verification);
+  const ms = (ns: bigint): number => Number(ns / 1_000_000n);
   const deadline = BigInt(w.deadline_ns);
-  const removal = BigInt(confirmed.chain_ns);
-  const requested = order?.sign_requested_at_ns == null ? null : BigInt(order.sign_requested_at_ns);
-  const signed = order?.signed_at_ns == null ? null : BigInt(order.signed_at_ns);
+  const remainingNs = deadline - BigInt(confirmed.chain_ns);
+  const requested = times.sign_requested_at_ns === null ? null : BigInt(times.sign_requested_at_ns);
+  const signed = times.signed_at_ns === null ? null : BigInt(times.signed_at_ns);
   return {
-    basis: "chain time: the order's own timestamps, and the final block read right after the runner confirmed removal",
+    basis: "chain time: the order's timestamps from its view at the withhold step, and the relay pre-check's final-block read after the runner confirmed removal",
     order_id: w.order_id,
     deadline_ns: w.deadline_ns,
-    sign_requested_at_ns: requested?.toString() ?? null,
-    signed_at_ns: signed?.toString() ?? null,
-    removal_confirmed_by_ns: confirmed.chain_ns,
-    mpc_sign_latency_ms: requested === null || signed === null ? null : ms(signed, requested),
-    signed_to_deadline_ms: signed === null ? null : ms(deadline, signed),
-    remaining_after_confirmed_removal_ms: ms(deadline, removal),
-    note: "remaining_after_confirmed_removal_ms is how long the withheld order would still have been executable for an owner who stopped authorizing and waited, measured from the same moment; it is a lower bound, since removal was final before the runner's read. Negative means the order had already expired.",
+    sign_requested_at_ns: times.sign_requested_at_ns,
+    signed_at_ns: times.signed_at_ns,
+    read_after_confirmed_removal_ns: confirmed.chain_ns,
+    sign_request_to_signed_ms: requested === null || signed === null ? null : ms(signed - requested),
+    signed_to_deadline_ms: signed === null ? null : ms(deadline - signed),
+    remaining_after_confirmed_removal_ns: remainingNs.toString(),
+    remaining_after_confirmed_removal_ms: ms(remainingNs),
+    expired_when_read: remainingNs <= 0n,
+    note: "remaining_after_confirmed_removal is how long the withheld order would still have been executable for an owner who stopped authorizing and waited, from the same moment; a lower bound, since removal was final before the read. sign_request_to_signed_ms runs from the block of the MPC sign request to the block of the contract's signature callback (MPC signing plus the yield/resume round trip).",
   };
 }
 
@@ -1546,7 +1560,7 @@ async function relayWithheld(rt: Runtime, i: number, step: Extract<Step, { kind:
   try {
     const pre = await relayGate(rt, step, "relay pre-check");
     probes.push(pre.probe);
-    window = await revocationWindow(rt, pre.probe);
+    window = revocationWindow(rt.ledger, pre.probe);
     if (pre.skip !== null) throw new RelaySkipped(pre.skip, pre.observed);
     const p = await plan(rt, i, step);
     const w = latestWithheld(rt.ledger);
