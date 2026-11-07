@@ -56,6 +56,8 @@ export const RehearsalInput = z
     planned_inventory: z.object({ source: z.string().min(1), units: PerAssetUnits }).strict(),
     /** The grant the owner plans to make; only when no grant exists on chain (observations.grant is null). */
     planned_grant: PlannedGrant.nullable().optional(),
+    /** sha256 of the manifest the budget, planned inventory and planned grant came from (and the state was observed for). */
+    manifest_sha256: Sha256.nullable().optional(),
   })
   .strict();
 export type RehearsalInput = z.infer<typeof RehearsalInput>;
@@ -113,6 +115,7 @@ const RecordBody = z
     qualifies_live_provider: z.boolean(),
     qualification: z.string(),
     grant_basis: GrantBasis,
+    manifest_sha256: Sha256.nullable(),
     timing: z.object({ started_at: z.string(), finished_at: z.string(), duration_ms: z.number() }).strict(),
     inventory: z
       .object({
@@ -283,6 +286,7 @@ export async function rehearse(rawInput: RehearsalInput, rp: RehearsalProvider, 
     qualifies_live_provider: q.qualifies,
     qualification: q.why,
     grant_basis: basis,
+    manifest_sha256: input.manifest_sha256 ?? null,
     timing: { started_at: startedAt, finished_at: finishedAt, duration_ms: Date.parse(finishedAt) - Date.parse(startedAt) },
     inventory: {
       planned: input.planned_inventory,

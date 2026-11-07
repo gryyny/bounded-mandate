@@ -34,6 +34,8 @@ const StateFile = z
     sale_budget_source: z.string().optional(),
     planned_inventory: z.object({ source: z.string(), units: PerAsset }).strict().optional(),
     planned_grant: PlannedGrant.nullable().optional(),
+    /** Written by observe.ts: the manifest the observations were read for. */
+    observed_by: z.object({ manifest_sha256: z.string() }).loose().optional(),
   })
   .loose();
 
@@ -53,6 +55,10 @@ function grantStepPolicy(caps: z.infer<typeof ManifestCaps>): unknown {
 export function rehearsalInput(state: unknown, manifest: { path: string; text: string } | null): RehearsalInput {
   const s = StateFile.parse(state);
   const caps = manifest === null ? null : ManifestCaps.parse(JSON.parse(manifest.text));
+  const manifestSha = manifest === null ? null : sha256Hex(manifest.text);
+  if (s.observed_by !== undefined && s.observed_by.manifest_sha256 !== manifestSha) {
+    throw new RehearsalRefusal(`rehearsal: the state was observed for manifest ${s.observed_by.manifest_sha256}, not ${manifestSha ?? "(no --manifest)"}; observe again with the manifest you rehearse with`);
+  }
   const label = manifest === null ? "" : `manifest ${manifest.path} (sha256 ${sha256Hex(manifest.text)})`;
   const planned = s.planned_inventory ?? (caps === null ? undefined : { source: `${label} budget.owner_inventory_max`, units: caps.budget.owner_inventory_max });
   if (planned === undefined) throw new RehearsalRefusal("rehearsal: planned inventory is required (planned_inventory in the state file, or --manifest)");
@@ -77,6 +83,7 @@ export function rehearsalInput(state: unknown, manifest: { path: string; text: s
     sale_budget_source: budgetSource,
     planned_inventory: planned,
     planned_grant: plannedGrant,
+    manifest_sha256: manifestSha,
   });
 }
 

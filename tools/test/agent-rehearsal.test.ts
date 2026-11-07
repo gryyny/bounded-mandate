@@ -404,6 +404,10 @@ describe("before the first grant", () => {
       // With a grant on chain the manifest's policy is not used.
       expect(rehearsalInput({ ...state, observations: observations() }, { path: "m.json", text }).planned_grant).toBeNull();
       expect(() => rehearsalInput(state, { path: "m.json", text: JSON.stringify({ budget, steps: [{ kind: "check" }] }) })).toThrow(/no grant step to plan from/);
+      // A state observed for another manifest is refused; the manifest's hash is carried into the record.
+      expect(got.manifest_sha256).toBe(sha256Hex(text));
+      expect(() => rehearsalInput({ ...state, observed_by: { manifest_sha256: sha256Hex("another manifest") } }, { path: "m.json", text })).toThrow(/observed for manifest/);
+      expect(rehearsalInput({ ...state, observed_by: { manifest_sha256: sha256Hex(text) } }, { path: "m.json", text }).manifest_sha256).toBe(sha256Hex(text));
     }));
 
   // gate: AGENT
@@ -429,7 +433,9 @@ describe("before the first grant", () => {
           return Promise.resolve(bytes({ price: mantissa.toString(), conf: "1000", expo: -8, publish_time: 1_000 }));
         },
       });
-      const state = await observe(provider() as never, manifest, "{}", "https://rpc.invalid");
+      // One manifest file for both commands: the observer reads its view targets, the rehearsal its caps and policy.
+      const text = JSON.stringify({ ...manifest, budget: { owner_inventory_max: { usdc: "1", wnear: "1" }, max_order_sell: { usdc: "1", wnear: "1" }, max_total_sell: { usdc: "1", wnear: "1" } } });
+      const state = await observe(provider() as never, manifest, text, "https://rpc.invalid");
       expect(state.observations.grant).toBeNull();
       expect(state.observations.balances).toEqual({ usdc: "0", wnear: "0" });
       expect(state.observations.prices.usdc).toMatchObject({ max_age_sec: 120, age_sec: 10, price: ONE_USD_PRICE.toString() });
@@ -437,8 +443,16 @@ describe("before the first grant", () => {
       expect(state.notes).toEqual(["feed note"]);
       expect(state.observed_by).toMatchObject({ chain_id: "mainnet", planned_oracle_max_age_sec: 120 });
       // The state file feeds a planned rehearsal directly.
-      const fed = rehearsalInput(state, { path: "m.json", text: JSON.stringify({ budget: { owner_inventory_max: { usdc: "1", wnear: "1" }, max_order_sell: { usdc: "1", wnear: "1" }, max_total_sell: { usdc: "1", wnear: "1" } }, steps: manifest.steps }) });
+      expect(state.observed_by.manifest_sha256).toBe(sha256Hex(text));
+      const fed = rehearsalInput(state, { path: "m.json", text });
       expect(fed.planned_grant?.policy.oracle_max_age_sec).toBe(120);
+      expect(fed.manifest_sha256).toBe(sha256Hex(text));
+      // An unrelated "does not exist" error is not taken for "no mandate account yet".
+      const broken = () => ({
+        ...provider(),
+        callFunctionRaw: ({ method }: { method: string }) => (method === "get_grant" ? Promise.reject(new Error("method get_grant does not exist on this contract")) : Promise.resolve(bytes("0"))),
+      });
+      await expect(observe(broken() as never, manifest, "{}", "https://rpc.invalid")).rejects.toThrow(/method get_grant does not exist/);
       // Wrong chain: refused before any view.
       calls.length = 0;
       await expect(observe(provider("testnet") as never, manifest, "{}", "https://rpc.invalid")).rejects.toThrow(/nothing was read/);

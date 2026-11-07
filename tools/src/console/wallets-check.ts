@@ -5,8 +5,10 @@
 // 2. With --browser: opens the built console page (default out/console/index.html, from `make demo`) in headless
 //    Chromium and asks NEAR Connect, inside that
 //    page and under its CSP, for each wallet's accounts. That loads the wallet's pinned adapter in NEAR Connect's
-//    sandboxed frame and calls it; no wallet is connected, nothing is signed, no key or account is involved. A wallet
-//    "loads" when its adapter registered and answered. It does not show that the wallet can sign for the owner.
+//    sandboxed frame (after the bundle checks its bytes against the pinned sha256) and calls it; no wallet is
+//    connected, nothing is signed, no key or account is involved. A wallet "loads" when its adapter ran and answered,
+//    with an account list or an error of its own. It does not show that the wallet can sign for the owner.
+// Exits 1 when a hash differs, or with --browser when an adapter did not answer or the page reported a CSP violation.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -61,11 +63,14 @@ async function browserCheck(results: AdapterResult[], html: string): Promise<voi
         `(async () => {
           const d = JSON.parse(document.getElementById("console-root").getAttribute("data-console"));
           const p = d.wallets.profiles.mainnet;
-          const c = new window.__nearConnect.NearConnector({ network: "mainnet", manifest: p.manifest, features: { signAndSendTransaction: true }, autoConnect: false, cspNonce: d.wallets.nonce, footerBranding: null, providers: { mainnet: [], testnet: [] } });
+          window.__nearConnectPins(p.hashes);
+          const memory = new Map();
+          const storage = { get: async (k) => memory.get(k) ?? null, set: async (k, v) => { memory.set(k, v); }, remove: async (k) => { memory.delete(k); } };
+          const c = new window.__nearConnect.NearConnector({ network: "mainnet", storage, manifest: p.manifest, features: { signAndSendTransaction: true }, autoConnect: false, cspNonce: d.wallets.nonce, footerBranding: null, providers: { mainnet: [], testnet: [] } });
           const timeout = new Promise((resolve) => setTimeout(() => resolve({ answered: false, result: "no answer within 45 s" }), 45000));
           const ask = c.wallet(${JSON.stringify(r.id)}).then((w) => w.getAccounts()).then(
             (a) => ({ answered: true, result: "accounts: " + JSON.stringify(a) }),
-            (e) => ({ answered: !/not found|iframe not loaded/i.test(String(e && e.message || e)), result: "error: " + String(e && e.message || e).slice(0, 200) }),
+            (e) => ({ answered: !/not found|iframe not loaded|wallet closed|not on this page's pinned list|does not match its pinned sha256|no network request allowed/i.test(String(e && e.message || e)), result: "error: " + String(e && e.message || e).slice(0, 200) }),
           );
           return Promise.race([ask, timeout]);
         })()`,
@@ -95,7 +100,8 @@ async function main(): Promise<void> {
   const text = `${JSON.stringify(report, null, 2)}\n`;
   if (values.out !== undefined) writeFileSync(resolve(values.out), text);
   console.log(text);
-  if (results.some((r) => !r.matches)) process.exitCode = 1;
+  const failed = results.some((r) => !r.matches || (html !== null && (r.load === null || !r.load.answered || r.load.csp_violations.length > 0)));
+  if (failed) process.exitCode = 1;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) await main();

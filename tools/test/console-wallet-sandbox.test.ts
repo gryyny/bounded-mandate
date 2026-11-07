@@ -31,6 +31,8 @@ const evidence = new CaseRecorder("CONSOLE", "wallet-sandbox", [
   "in-page-wallet-list",
   "connect-through-near-connect",
   "wallet-reject-sends-nothing",
+  "wallet-closed-keeps-pending",
+  "adapter-pins-enforced",
   "wallet-signs-runner-intents",
   "runner-imports-wallet-hashes",
   "reload-while-wallet-asks",
@@ -49,6 +51,7 @@ let page: Page;
 let result: LiveResult | null = null;
 const handed: { kind: string; sha: string; tx_hash: string; ui_final: string }[] = [];
 const rejected: { kind: string; summary: string; nonce_before: bigint | null; nonce_after: bigint | null; wallet_requests: number }[] = [];
+const closed: { kind: string; log: string; phase: string | undefined; enabled_while_pending: boolean | undefined; wallet_requests: number }[] = [];
 const frames: (string | null)[] = [];
 const requests: string[] = [];
 const must = <T>(v: T | undefined, what: string): T => {
@@ -133,11 +136,27 @@ async function signInWallet(intent: ExternalIntent): Promise<ExternalHandoff> {
     await page.click(`[data-action="${key}"]`);
     await page.click("#review-confirm");
     const summary = await walletPrompt(page, "reject");
-    await page.locator("#console-log", { hasText: /^Signature cancelled in the wallet/ }).waitFor();
-    // Nothing is kept for this intent; the earlier actions' final records stay.
+    await page.locator("#console-log", { hasText: /^The wallet ended the request: User rejected/ }).waitFor();
+    // A wallet's error does not prove nothing was sent: the record stays pending and the action blocked until the
+    // owner says they rejected it.
+    expect((await storedRecords(page)).filter((r) => r.intent_sha256 === sha).map((r) => r.phase)).toEqual(["awaiting-signature"]);
+    expect((await controls(page)).enabled[key]).toBe(false);
+    await page.click(`[data-dismiss="${sha}"]`);
     expect((await storedRecords(page)).filter((r) => r.intent_sha256 === sha)).toEqual([]);
     expect((await controls(page)).enabled[key]).toBe(true);
     rejected.push({ kind: intent.kind, summary, nonce_before: nonceBefore, nonce_after: await ownerNonce(), wallet_requests: walletRequests().length - before });
+  }
+  if (intent.kind === "withdraw_external" && closed.length === 0) {
+    // The owner closes NEAR Connect's window instead of answering the wallet: NEAR Connect reports "Wallet closed".
+    const before = walletRequests().length;
+    await page.click(`[data-action="${key}"]`);
+    await page.click("#review-confirm");
+    await page.locator(".hot-connector-popup iframe").last().contentFrame().locator("#tw-approve").waitFor();
+    await page.locator(".hot-connector-popup .modal-container").last().click({ position: { x: 4, y: 4 } });
+    await page.locator("#console-log", { hasText: /^The wallet ended the request: Wallet closed/ }).waitFor();
+    const rec = (await storedRecords(page)).find((r) => r.intent_sha256 === sha);
+    closed.push({ kind: intent.kind, log: await consoleLog(page), phase: rec?.phase, enabled_while_pending: (await controls(page)).enabled[key], wallet_requests: walletRequests().length - before });
+    await page.click(`[data-dismiss="${sha}"]`);
   }
   await page.click(`[data-action="${key}"]`);
   await page.waitForSelector("#review-confirm");
@@ -185,7 +204,7 @@ describe("external wallet through NEAR Connect (sandbox test wallet)", () => {
   // gate: CONSOLE
   it("offers only the in-page wallet list: the pinned wallets on mainnet, the labelled test wallet on a sandbox", () =>
     evidence.check("in-page-wallet-list", () => {
-      const dataOf = (html: string) => JSON.parse((/data-console="([^"]*)"/.exec(html)?.[1] ?? "").replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&#39;", "'").replaceAll("&amp;", "&")) as { wallets: { nonce: string; profiles: Record<string, { network: string; manifest: { wallets: { id: string; executor: string }[] } }> } | null };
+      const dataOf = (html: string) => JSON.parse((/data-console="([^"]*)"/.exec(html)?.[1] ?? "").replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&#39;", "'").replaceAll("&amp;", "&")) as { wallets: { nonce: string; profiles: Record<string, { network: string; hashes: Record<string, string | null>; manifest: { wallets: { id: string; executor: string }[] } }> } | null };
       const pinned = pinnedWallets();
       const mainnetHtml = renderConsoleHtml(consoleEvidence(), { profiles: [mainnetProfile()] });
       const mainnetData = dataOf(mainnetHtml).wallets;
@@ -197,6 +216,8 @@ describe("external wallet through NEAR Connect (sandbox test wallet)", () => {
       expect(mainnet?.manifest.wallets.map((w) => [w.id, w.executor])).toEqual(pinned.wallets.map((w) => [w.manifest.id, `https://raw.githubusercontent.com/${w.pin.repository}/${w.pin.commit}/${w.pin.path}`]));
       const sandbox = dataOf(renderConsoleHtml(consoleEvidence(), { profiles: [profile], localSigner: "" })).wallets?.profiles[profile.id];
       expect(sandbox?.manifest.wallets.map((w) => w.id)).toEqual([TEST_WALLET_ID]);
+      expect(dataOf(renderConsoleHtml(consoleEvidence(), { profiles: [profile], localSigner: "", testWalletSha256: signer().walletExecutorSha256 })).wallets?.profiles[profile.id]?.hashes).toEqual({ "/wallet/test-executor.js": signer().walletExecutorSha256 });
+      expect(mainnet?.hashes).toEqual(Object.fromEntries(pinned.wallets.map((w) => [w.manifest.executor, w.pin.executor_sha256])));
       // Without a local test signer, a sandbox profile offers no wallet at all.
       expect(dataOf(renderConsoleHtml(consoleEvidence(), { profiles: [profile] })).wallets).toBeNull();
     }));
@@ -244,6 +265,12 @@ describe("external wallet through NEAR Connect (sandbox test wallet)", () => {
       expect(rejected[0]).toMatchObject({ kind: "recover_external", wallet_requests: 0 });
       expect(rejected[0]?.nonce_after).toBe(rejected[0]?.nonce_before);
       expect(rejected[0]?.summary).toContain(`${world.owner.id} -> ${world.mandate.id} recover`);
+    }));
+
+  // gate: CONSOLE
+  it("a closed wallet window leaves the action pending, never 'cancelled'", () =>
+    evidence.check("wallet-closed-keeps-pending", () => {
+      expect(closed).toEqual([{ kind: "withdraw_external", log: expect.stringMatching(/^The wallet ended the request: Wallet closed\. The action stays pending/) as unknown, phase: "awaiting-signature", enabled_while_pending: false, wallet_requests: 0 }]);
     }));
 
   // gate: CONSOLE
@@ -303,8 +330,51 @@ describe("no resubmission and no control without the owner's own, unframed walle
       await frame.locator("#signer-kind").selectOption("wallet");
       await frame.locator("#signer-connect").click();
       await frame.locator("#signer-status", { hasText: /^This page is framed/ }).waitFor();
-      expect(await p.locator(".hot-connector-popup").count()).toBe(0);
+      expect(await frame.locator(".hot-connector-popup").count()).toBe(0);
       await ctx.close();
+    }));
+
+  // gate: CONSOLE
+  it("runs only pinned adapter bytes; planted wallet lists and adapter caches are ignored", () =>
+    evidence.check("adapter-pins-enforced", async () => {
+      // Mainnet page, offline: HOT's pinned adapter URL answers with other bytes. NEAR Connect never runs them.
+      const pinned = pinnedWallets().wallets.find((w) => w.manifest.id === "hot-wallet");
+      if (pinned === undefined) throw new Error("hot-wallet is not pinned");
+      const ctx = await browser().newContext();
+      const p = await ctx.newPage();
+      const ran: string[] = [];
+      p.on("console", (m) => {
+        if (m.text().includes("TAMPERED-ADAPTER-RAN")) ran.push(m.text());
+      });
+      await p.route("https://console.invalid/", (r) => r.fulfill({ contentType: "text/html", body: renderConsoleHtml(consoleEvidence(), { profiles: [mainnetProfile()] }) }));
+      await p.route(`${pinned.manifest.executor}*`, (r) => r.fulfill({ contentType: "text/javascript", body: 'console.log("TAMPERED-ADAPTER-RAN"); window.selector.ready({ signIn: async () => [{ accountId: "owner.near" }], getAccounts: async () => [{ accountId: "owner.near" }] });' }));
+      await p.goto("https://console.invalid/");
+      expect(await connectWallet(p, "hot-wallet")).toMatch(/^Not connected: wallet adapter https:\/\/raw\.githubusercontent\.com\/hot-dao\/near-selector\/70726e10d0658ff085dc0e4a31bb49b8f3cec48d\/repository\/hotwallet\.js does not match its pinned sha256; it was not run/);
+      expect(ran).toEqual([]);
+      await ctx.close();
+      // Sandbox page: a debug wallet planted in localStorage and an adapter planted in NEAR Connect's IndexedDB cache.
+      const s = await openConsole(browser(), signer().origin);
+      await s.page.evaluate(`(async () => {
+        localStorage.setItem("debug-wallets", JSON.stringify([{ id: "planted", name: "Planted Wallet", icon: "data:,", website: "https://planted.invalid", version: "1", executor: "https://planted.invalid/x.js", type: "sandbox", features: { signAndSendTransaction: true, testnet: true }, permissions: {} }]));
+        await new Promise((resolve, reject) => { const r = indexedDB.open("hot-connector", 1); r.onupgradeneeded = () => r.result.createObjectStore("wallets"); r.onerror = () => reject(r.error);
+          r.onsuccess = () => { const t = r.result.transaction("wallets", "readwrite"); t.objectStore("wallets").put('console.log("PLANTED-CACHE-RAN"); window.selector.ready({ signIn: async () => [{ accountId: "attacker.sandbox" }], getAccounts: async () => [{ accountId: "attacker.sandbox" }] });', ${JSON.stringify(TEST_WALLET_ID)} + ":1.0.0"); t.oncomplete = () => resolve(null); }; });
+      })()`);
+      await s.page.reload();
+      const planted: string[] = [];
+      s.page.on("console", (m) => {
+        if (m.text().includes("PLANTED-CACHE-RAN")) planted.push(m.text());
+      });
+      await readState(s.page);
+      await s.page.selectOption("#signer-kind", "wallet");
+      await s.page.click("#signer-connect");
+      await s.page.locator(".hot-connector-popup .connect-item").first().waitFor();
+      expect(await s.page.evaluate<(string | null)[]>(`[...document.querySelectorAll(".hot-connector-popup .connect-item")].map((e) => e.getAttribute("data-type"))`)).toEqual([TEST_WALLET_ID]);
+      expect(await s.page.locator(".hot-connector-popup .settings-button").isVisible()).toBe(false);
+      await s.page.locator(`.hot-connector-popup .connect-item[data-type="${TEST_WALLET_ID}"]`).click();
+      await s.page.locator("#signer-status", { hasText: /^Connected/ }).waitFor();
+      expect(await s.page.textContent("#signer-status")).toMatch(new RegExp(`^Connected: ${world.owner.id} via`));
+      expect(planted).toEqual([]);
+      await s.ctx.close();
     }));
 
   // gate: CONSOLE

@@ -70,10 +70,30 @@ function jsFiles(dir: string): string[] {
     });
 }
 
+/** Replaces the library's IndexedDB adapter-code cache: nothing persists, so a planted or stale cache never runs. */
+const MEMORY_DB = `"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+class NoCache {
+  async getItem() { return null; }
+  async setItem() {}
+  async removeItem() {}
+  async keys() { return []; }
+  async count() { return 0; }
+  async length() { return 0; }
+  async clear() {}
+}
+exports.default = NoCache;`;
+
 /**
  * The library's CommonJS build as one script: each file wrapped as a module, resolved by relative path only (the
  * package has no dependencies), exporting the package's index as window.__nearConnect. Source map comments are
- * dropped and `</script` is escaped inside its strings so the bundle can be inlined.
+ * dropped and `</script` is escaped inside its strings so the bundle can be inlined. Three changes to its behaviour,
+ * all in the loader:
+ * - its IndexedDB adapter-code cache is replaced by one that holds nothing (helpers/indexdb);
+ * - the only network fetch it may make is the adapter fetch, through `pinnedFetch`: the URL must be in the pin map
+ *   the console sets with window.__nearConnectPins, and the fetched bytes must have that sha256 (null = the labelled
+ *   sandbox test wallet, served by the local test signer, not hash-pinned) before the adapter is run;
+ * - every other module's `fetch` refuses (the console passes the wallet list as an object, so no remote manifest).
  */
 export function nearConnectBundle(): string {
   const pinned = pinnedWallets();
@@ -81,11 +101,11 @@ export function nearConnectBundle(): string {
   if (version !== pinned.library.version) throw new Error(`${NEAR_CONNECT_PACKAGE} ${version} is installed; the wallet list is pinned for ${pinned.library.version}`);
   const modules = jsFiles(BUILD_DIR).map((file) => {
     const id = relative(BUILD_DIR, file).split("\\").join("/").replace(/\.js$/, "");
-    const source = readFileSync(file, "utf8")
+    const source = (id === "helpers/indexdb" ? MEMORY_DB : readFileSync(file, "utf8"))
       .replace(/^\/\/# sourceMappingURL=.*$/gm, "")
       .replace(/<\/script/gi, "<\\/script")
       .replace(/<!--/g, "<\\!--");
-    return `${JSON.stringify(id)}: function (module, exports, require) {\n${source}\n}`;
+    return `${JSON.stringify(id)}: function (module, exports, require, fetch) {\n${source}\n}`;
   });
   const loader = `(function () {
 "use strict";
@@ -93,6 +113,32 @@ var defs = {
 ${modules.join(",\n")}
 };
 var cache = {};
+var pins = Object.create(null);
+window.__nearConnectPins = function (map) {
+  Object.keys(map).forEach(function (url) {
+    if (url in pins && pins[url] !== map[url]) throw new Error("near-connect bundle: adapter " + url + " is already pinned differently");
+    pins[url] = map[url];
+  });
+};
+function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ("0" + b.toString(16)).slice(-2); }).join(""); }
+function pinnedFetch(input) {
+  var url = String(input);
+  var key = url.split("?")[0];
+  var rel = key.indexOf(location.origin + "/") === 0 ? key.slice(location.origin.length) : null;
+  var want = key in pins ? pins[key] : rel !== null && rel in pins ? pins[rel] : undefined;
+  if (want === undefined) return Promise.reject(new Error("wallet adapter " + key + " is not on this page's pinned list"));
+  return window.fetch(url, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" }).then(function (res) {
+    if (!res.ok) throw new Error("wallet adapter " + key + ": HTTP " + res.status);
+    return res.arrayBuffer();
+  }).then(function (buf) {
+    return (want === null ? Promise.resolve(null) : crypto.subtle.digest("SHA-256", buf)).then(function (digest) {
+      if (want !== null && hex(digest) !== want) throw new Error("wallet adapter " + key + " does not match its pinned sha256; it was not run");
+      var text = new TextDecoder().decode(buf);
+      return { ok: true, status: 200, text: function () { return Promise.resolve(text); } };
+    });
+  });
+}
+function noFetch(input) { return Promise.reject(new Error("near-connect bundle: no network request allowed here (" + String(input) + ")")); }
 function resolve(from, spec) {
   if (spec.charAt(0) !== ".") throw new Error("near-connect bundle: unexpected package import " + spec);
   var base = from.indexOf("/") >= 0 ? from.slice(0, from.lastIndexOf("/")) + "/" : "";
@@ -108,7 +154,7 @@ function load(id) {
   if (cache[id]) return cache[id].exports;
   var module = { exports: {} };
   cache[id] = module;
-  defs[id].call(module.exports, module, module.exports, function (spec) { return load(resolve(id, spec)); });
+  defs[id].call(module.exports, module, module.exports, function (spec) { return load(resolve(id, spec)); }, id === "SandboxedWallet/executor" ? pinnedFetch : noFetch);
   return module.exports;
 }
 window.__nearConnect = load("index");

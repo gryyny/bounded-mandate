@@ -70,6 +70,8 @@ export interface ConsoleOptions {
    * by the local test signer, the labelled sandbox test wallet on sandbox profiles.
    */
   wallets?: boolean;
+  /** sha256 of the sandbox test wallet's adapter as the local test signer serves it; null leaves it unchecked. */
+  testWalletSha256?: string | null;
   pollMs?: number;
   timeoutMs?: number;
 }
@@ -85,7 +87,12 @@ install({
   doc: document,
   rpcFetch: (u, i) => fetch(u, i),
   localFetch: (u, i) => fetch(u, i),
-  connector: window.__nearConnect ? (o) => new window.__nearConnect.NearConnector(o) : null,
+  connector: window.__nearConnect ? (o, pins) => {
+    const NC = window.__nearConnect;
+    window.__nearConnectPins(pins);
+    const c = new NC.NearConnector(o);
+    return { connect: () => c.connect(), disconnect: (w) => c.disconnect(w), kindOf: (w) => (w instanceof NC.SandboxWallet ? "sandbox" : w instanceof NC.InjectedWallet ? "injected" : "other") };
+  } : null,
   framed: (() => { try { return window.top !== window.self; } catch { return true; } })(),
   store: __store,
   now: () => new Date().toISOString(),
@@ -100,7 +107,7 @@ install({
 export const consoleScriptHash = (script: string): string => `sha256-${createHash("sha256").update(script, "utf8").digest("base64")}`;
 
 /** Wallet lists by profile id: pinned wallets on mainnet, the sandbox test wallet only where a test signer serves it. */
-export function walletProfiles(profiles: NetworkProfile[], localSigner: string | null): Record<string, WalletProfile> {
+export function walletProfiles(profiles: NetworkProfile[], localSigner: string | null, testWalletSha256: string | null = null): Record<string, WalletProfile> {
   const pinned = pinnedWallets();
   const out: Record<string, WalletProfile> = {};
   for (const p of profiles) {
@@ -109,10 +116,11 @@ export function walletProfiles(profiles: NetworkProfile[], localSigner: string |
         network: "mainnet",
         manifest: { version: pinned.library.version, wallets: pinned.wallets.map((w) => w.manifest) },
         pins: Object.fromEntries(pinned.wallets.map((w) => [w.manifest.id, { commit: w.pin.commit, age_rule_met: w.pin.age_rule_met }])),
+        hashes: Object.fromEntries(pinned.wallets.map((w) => [w.manifest.executor, w.pin.executor_sha256])),
       };
     } else if (localSigner !== null) {
       const test = testWalletManifest();
-      out[p.id] = { network: "testnet", manifest: { version: "sandbox", wallets: [test] }, pins: { [test.id]: null } };
+      out[p.id] = { network: "testnet", manifest: { version: "sandbox", wallets: [test] }, pins: { [test.id]: null }, hashes: { [test.executor]: testWalletSha256 } };
     }
   }
   return out;
@@ -123,6 +131,7 @@ const CONSOLE_STYLES = `
 .mode.wrong-chain { color: var(--fail); border: 1px dashed currentColor; }
 .mode.recorded { color: var(--m-sandbox); border: 1px dotted currentColor; }
 .mode.test-signer { color: var(--stale); border: 1px solid currentColor; }
+.hot-connector-popup .settings-button { display: none !important; }
 .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem; margin: 0 0 1.2rem; }
 .sources > div { background: color-mix(in srgb, var(--rule) 18%, var(--sheet)); border: 1px solid var(--rule); padding: .7rem .9rem; font-size: .92rem; }
 .sources p { margin: .35rem 0 0; }
@@ -216,7 +225,7 @@ function ownerSection(data: ConsoleData): string {
   const walletNote =
     wallets === null
       ? ""
-      : `<p><span class="mode label">NEAR Connect ${escapeHtml(wallets.library_version)}</span> External wallets connect through NEAR Connect. Only the wallets listed in this page are offered (no remote wallet list); on mainnet each wallet's adapter is pinned to a commit and runs in a sandboxed frame. The wallet signs and broadcasts; the page holds no key and checks every returned transaction on chain against the exact preview. ${local ? "On a local sandbox the only wallet offered is the labelled SANDBOX TEST WALLET, a test double that asks the local test signer to sign." : "Compatibility with a specific wallet is established only when its owner connects it (see About)."}</p>`;
+      : `<p><span class="mode label">NEAR Connect ${escapeHtml(wallets.library_version)}</span> External wallets connect through NEAR Connect, from the wallet list in this page (no remote list, no saved or manually added wallets). On mainnet each wallet's adapter is pinned to a commit, checked against its sha256 before it runs, and runs in a sandboxed frame. A browser-extension wallet that announces itself to the page may also appear; it is labelled as not pinned. The wallet signs and broadcasts; the page holds no key and checks every returned transaction on chain against the exact preview. A wallet that ends a request without a hash leaves the action pending until you paste the hash or forget it. ${local ? "On a local sandbox the only wallet offered is the labelled SANDBOX TEST WALLET, a test double that asks the local test signer to sign." : "Compatibility with a specific wallet is established only when its owner connects it (see About)."}</p>`;
   return `<p>Revoke, recover and withdraw are enabled only when all three hold: the connected signer is the contract's <code>owner_id</code>, the RPC's chain is the chosen network (genesis check), and the mandate account runs the expected code. Each action is shown exactly before anything is signed, and is signed outside this page.</p>
 <div class="panel">
 <h3>1 · Signer</h3>
@@ -246,6 +255,7 @@ const ABOUT = `<ul class="about">
 <li><strong>Two sources, never mixed.</strong> “Live” values come from the RPC you chose, after its genesis check, at one final block. “Recorded” values come from a sandbox run's evidence file. Neither is ever substituted for the other.</li>
 <li><strong>Signing adapters.</strong> External wallets connect through NEAR Connect (pinned library, in-page wallet list, adapters pinned by commit; see <code>fixtures/wallets/near-connect.json</code>). The local sandbox test signer is a local sandbox adapter, not a wallet. It is offered only when this page is served by <code>tools/src/console/serve.ts</code>, signs with a sandbox key in a Node process on this machine, refuses other chains and signs only the owner calls this console offers on the served deployment. The manual handoff shows the exact <code>near</code> CLI command and tracks the hash you paste.</li>
 <li><strong>Which wallets are verified.</strong> The NEAR Connect path (wallet list, sandboxed adapter, signature request, cancel, hash import) is tested end to end in a local sandbox with the labelled SANDBOX TEST WALLET only. No real wallet provider has signed through this console yet: compatibility with the owner's actual wallet is an owner-assisted check, and nothing here claims it.</li>
+<li><strong>Wallet adapters' own storage.</strong> An adapter granted storage keeps its session data in this site's browser storage under its wallet id. That is the wallet's data, not a key held by this page's code.</li>
 <li><strong>The runner verifies.</strong> The handoff record (intent sha256, transaction hash, signer) is imported by the runner, which checks the chain, signer, key, receiver, every action and argument, the receipt tree and the end state. The console's own final-state display is a convenience, not that verification.</li>
 <li><strong>Never resubmitted.</strong> A cancelled signature or a rejected transaction leaves nothing pending. A reload during a pending action resumes polling only.</li>
 </ul>`;
@@ -259,7 +269,7 @@ export function renderConsoleHtml(evidence: unknown, opts: ConsoleOptions = {}):
   if (profiles.length === 0) throw new Error("the console needs at least one network profile");
   const localSigner = opts.localSigner ?? null;
   const script = consoleScript();
-  const walletsByProfile = opts.wallets === false ? {} : walletProfiles(profiles, localSigner);
+  const walletsByProfile = opts.wallets === false ? {} : walletProfiles(profiles, localSigner, opts.testWalletSha256 ?? null);
   const bundle = Object.keys(walletsByProfile).length === 0 ? null : nearConnectBundle();
   // NEAR Connect runs each wallet adapter in a sandboxed srcdoc iframe, which inherits this page's CSP; its inline
   // scripts carry this nonce. It is fixed per build (the page is static), derived from the two pinned scripts, and

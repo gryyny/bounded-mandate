@@ -45,7 +45,7 @@ const signer = await LocalSandboxSigner.start({
   key,
   deployment: { mandate_id: values.mandate, verifier_id: values.verifier },
   port: Number(values.port),
-  page: () => renderConsoleHtml(evidence, { profiles: [profile], localSigner: "" }),
+  page: (_origin, testWalletSha256) => renderConsoleHtml(evidence, { profiles: [profile], localSigner: "", testWalletSha256 }),
 });
 console.log(`${TEST_SIGNER_LABEL} for ${values.owner} on sandbox ${chain.chain_id} (genesis ${chain.genesis_hash})`);
 console.log(`console: ${signer.origin}/`);

@@ -44,8 +44,8 @@ export interface SignerOptions {
    * verifier, storage_deposit only to the mandate's two token contracts (read from its get_config when signing).
    */
   deployment: { mandate_id: string; verifier_id: string };
-  /** The console page served at GET /; receives this helper's origin. */
-  page?: (origin: string) => string;
+  /** The console page served at GET /; receives this helper's origin and its test wallet adapter's sha256. */
+  page?: (origin: string, testWalletSha256: string) => string;
   port?: number;
   /** Stands in for the wallet's confirmation prompt; default approve. */
   decide?: (intent: Signable) => Decision | Promise<Decision>;
@@ -152,6 +152,11 @@ export class LocalSandboxSigner {
     return self;
   }
 
+  /** sha256 of the test wallet adapter this signer serves (its token included), for the page's hash pin. */
+  get walletExecutorSha256(): string {
+    return createHash("sha256").update(testWalletExecutor(this.origin, this.opts.accountId, this.walletToken)).digest("hex");
+  }
+
   get signRequests(): number {
     return this.requests.length;
   }
@@ -187,7 +192,7 @@ export class LocalSandboxSigner {
         return;
       }
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
-      res.end(this.opts.page(this.origin));
+      res.end(this.opts.page(this.origin, this.walletExecutorSha256));
       return;
     }
     if (req.method === "GET" && url.pathname === "/signer/info") {

@@ -27,7 +27,13 @@ export interface ObservationOptions {
   plannedMaxAgeSec?: number;
 }
 
-const MISSING_ACCOUNT = /does not exist|AccountDoesNotExist|UNKNOWN_ACCOUNT|CodeDoesNotExist|no contract code/i;
+const escapeRe = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The RPC's "no such account" or "no contract deployed" error for the viewed account, nothing broader. */
+function missingAccount(message: string, account: string): boolean {
+  const a = escapeRe(account);
+  return /\b(UNKNOWN_ACCOUNT|NO_CONTRACT_CODE|CodeDoesNotExist|AccountDoesNotExist)\b/.test(message) || new RegExp(`account ${a} does not exist while viewing|${a} has no contract code`, "i").test(message);
+}
 
 /** Reads grant, mandate balances and both oracle prices at one final block (the client's finality). */
 export async function readObservations(client: Pick<NearClient, "provider" | "finality">, ids: ChainIds, opts: ObservationOptions = {}): Promise<FreshObservations> {
@@ -40,7 +46,7 @@ export async function readObservations(client: Pick<NearClient, "provider" | "fi
   };
   const planned = opts.plannedMaxAgeSec;
   const grant = await at(ids.mandate, "get_grant", {}, GrantView.nullable()).catch((error: unknown) => {
-    if (planned !== undefined && error instanceof Error && MISSING_ACCOUNT.test(error.message)) return null;
+    if (planned !== undefined && error instanceof Error && missingAccount(error.message, ids.mandate)) return null;
     throw error;
   });
   const balance = (a: Asset) => at(ids.verifier, "mt_balance_of", { account_id: ids.mandate, token_id: tokenId(ids.tokens[a]) }, Units);

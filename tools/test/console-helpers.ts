@@ -47,7 +47,7 @@ export async function worldProfile(world: World): Promise<NetworkProfile> {
 export async function serveConsole(opts: Omit<SignerOptions, "page" | "deployment"> & Partial<Pick<SignerOptions, "deployment">>, profiles: () => NetworkProfile[], evidence: Evidence = consoleEvidence()): Promise<LocalSandboxSigner> {
   const deployment = opts.deployment ?? profiles()[0]?.deployment;
   if (deployment === undefined || deployment === null) throw new Error("the test signer needs a deployment to bind its receivers to");
-  return LocalSandboxSigner.start({ ...opts, deployment, page: () => renderConsoleHtml(evidence, { profiles: profiles(), localSigner: "", pollMs: POLL_MS, timeoutMs: 15_000 }) });
+  return LocalSandboxSigner.start({ ...opts, deployment, page: (_origin, testWalletSha256) => renderConsoleHtml(evidence, { profiles: profiles(), localSigner: "", pollMs: POLL_MS, timeoutMs: 15_000, testWalletSha256 }) });
 }
 
 export const launch = (): Promise<Browser> => chromium.launch();

@@ -57,8 +57,10 @@ export interface WalletProfile {
   /** NEAR Connect's network label: "mainnet", or "testnet" for a local sandbox (only the test wallet is listed). */
   network: "mainnet" | "testnet";
   manifest: { version: string; wallets: Record<string, unknown>[] };
-  /** Per wallet id: the adapter's pinned commit, or null for the sandbox test wallet. */
+  /** Per wallet id: the adapter's pinned commit, or null for the labelled sandbox test wallet. */
   pins: Record<string, { commit: string; age_rule_met: boolean } | null>;
+  /** Per adapter URL: the sha256 its bytes must have before NEAR Connect runs it (null: not hash-checked). */
+  hashes: Record<string, string | null>;
 }
 
 export interface ConsoleData {
@@ -86,13 +88,21 @@ export interface WalletTxParams {
 
 /** The part of a NEAR Connect wallet the console uses. */
 export interface WalletLike {
-  manifest: { id: string; name: string };
+  manifest: { id: string; name: string; executor?: string; debug?: boolean };
   getAccounts(): Promise<{ accountId: string; publicKey?: string }[]>;
   signAndSendTransaction(params: WalletTxParams): Promise<unknown>;
 }
 
+/** NEAR Connect's storage interface; the console passes one that lives only in memory. */
+export interface ConnectorStorage {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  remove(key: string): Promise<void>;
+}
+
 export interface ConnectorOptions {
   network: "mainnet" | "testnet";
+  storage: ConnectorStorage;
   manifest: WalletProfile["manifest"];
   features: { signAndSendTransaction: true };
   autoConnect: false;
@@ -105,9 +115,15 @@ export interface ConnectorOptions {
 export interface ConnectorLike {
   connect(): Promise<WalletLike>;
   disconnect(wallet?: WalletLike): Promise<void>;
+  /**
+   * What the wallet instance is: an adapter run in NEAR Connect's sandboxed frame ("sandbox"), a browser extension
+   * announced by an event ("injected"), or anything else (a wallet announced by another frame or window).
+   */
+  kindOf(wallet: WalletLike): "sandbox" | "injected" | "other";
 }
 
-export type ConnectorFactory = (options: ConnectorOptions) => ConnectorLike;
+/** `pins`: adapter URL to its sha256, or null for the sandbox test wallet; the bundle runs no other adapter. */
+export type ConnectorFactory = (options: ConnectorOptions, pins: Record<string, string | null>) => ConnectorLike;
 
 export interface IntentAction {
   method: string;
@@ -591,12 +607,6 @@ export function walletTxHash(result: unknown): string | null {
   return hash !== null && /^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(hash) ? hash : null;
 }
 
-/** A wallet error that says the owner declined or closed the prompt; anything else leaves the outcome unknown. */
-export function walletDeclined(error: unknown): boolean {
-  const text = error instanceof Error ? error.message : typeof error === "string" ? error : (asString(asObject(error)?.message) ?? "");
-  return /\b(user rejected|rejected by (the )?user|user (cancel|denied|declined|closed)|cancel(l)?ed|wallet closed|denied|declined)\b/i.test(text);
-}
-
 export function adapterText(kind: AdapterKind, label: string | null): string {
   if (kind === "local") return "the local sandbox test signer";
   if (kind === "manual") return "the manual near CLI handoff";
@@ -940,6 +950,20 @@ export function install(env: Env): void {
     activity: get("activity"),
     log: get("console-log"),
   };
+  const memory = new Map<string, string>();
+  // NEAR Connect's own state (selected wallet, debug wallets) lives only in this page's memory, never in the
+  // origin's localStorage, which other pages on a shared hosting origin could write.
+  const walletStorage: ConnectorStorage = {
+    get: (k) => Promise.resolve(memory.get(k) ?? null),
+    set: (k, v) => {
+      memory.set(k, v);
+      return Promise.resolve();
+    },
+    remove: (k) => {
+      memory.delete(k);
+      return Promise.resolve();
+    },
+  };
   const st: { live: LiveState | null; signer: SignerInfo | null; intent: LoadedIntent | null; polling: Set<string>; wallet: WalletLike | null; connectors: Record<string, ConnectorLike> } = {
     live: null,
     signer: null,
@@ -1005,18 +1029,23 @@ export function install(env: Env): void {
       return;
     }
     const rpc = ui.rpc.value.trim();
+    const slot = `${p.id} ${rpc}`;
     const connector =
-      st.connectors[p.id] ??
-      env.connector({
-        network: cfg.network,
-        manifest: cfg.manifest,
+      st.connectors[slot] ??
+      env.connector(
+        {
+          network: cfg.network,
+          storage: walletStorage,
+          manifest: cfg.manifest,
         features: { signAndSendTransaction: true },
         autoConnect: false,
         cspNonce: data.wallets.nonce,
         footerBranding: null,
-        providers: { mainnet: cfg.network === "mainnet" ? [rpc] : [], testnet: cfg.network === "testnet" ? [rpc] : [] },
-      });
-    st.connectors[p.id] = connector;
+          providers: { mainnet: cfg.network === "mainnet" ? [rpc] : [], testnet: cfg.network === "testnet" ? [rpc] : [] },
+        },
+        cfg.hashes,
+      );
+    st.connectors[slot] = connector;
     ui.signerStatus.textContent = "Choose a wallet in the NEAR Connect window …";
     let wallet: WalletLike;
     let accounts: { accountId: string }[];
@@ -1032,10 +1061,16 @@ export function install(env: Env): void {
       ui.signerStatus.textContent = "Not connected: the wallet reported no account.";
       return;
     }
+    const kind = connector.kindOf(wallet);
     const pin = cfg.pins[wallet.manifest.id];
+    if (wallet.manifest.debug === true || kind === "other" || (kind === "sandbox" && pin === undefined)) {
+      ui.signerStatus.textContent = `Not connected: ${wallet.manifest.name} is not a wallet this page offers (${wallet.manifest.debug === true ? "a manually added debug wallet" : kind === "other" ? "announced by another frame or window" : "not on the pinned list"}). Nothing is signed with it.`;
+      return;
+    }
     st.wallet = wallet;
     st.signer = { kind: "wallet", label: wallet.manifest.name, account_id: account, public_key: null, chain_id: null, genesis_hash: null };
-    const pinned = pin === undefined ? "an injected browser wallet (not on the pinned list)" : pin === null ? "the labelled sandbox test wallet, a test double" : `adapter pinned at commit ${pin.commit.slice(0, 12)}${pin.age_rule_met ? "" : " (younger than the 14-day age rule)"}`;
+    const pinned =
+      kind === "injected" ? "a browser-extension wallet announced to this page, not on the pinned list" : pin === null || pin === undefined ? "the labelled sandbox test wallet, a test double" : `adapter pinned at commit ${pin.commit.slice(0, 12)} and checked against its sha256${pin.age_rule_met ? "" : " (younger than the 14-day age rule)"}`;
     ui.signerStatus.textContent = `Connected: ${account} via ${wallet.manifest.name} through NEAR Connect ${data.wallets.library_version} (${pinned}). The wallet signs; the page holds no key. Every returned transaction is checked on chain against the preview.`;
   };
 
@@ -1295,15 +1330,12 @@ export function install(env: Env): void {
     try {
       result = await wallet.signAndSendTransaction(walletParams(signed.view, cfg.network));
     } catch (e) {
+      // A wallet's error does not show whether it sent anything (a closed prompt can follow an approval in the
+      // wallet's own window), so the action stays pending until the owner pastes a hash or forgets the record.
       ui.review.replaceChildren();
       const text = e instanceof Error ? e.message : typeof e === "string" ? e : canonicalJson(e);
-      if (walletDeclined(e)) {
-        dropRecord(env.store, sha);
-        say(`Signature cancelled in the wallet (${text}): nothing was submitted. Review again to sign deliberately.`);
-      } else {
-        saveRecord(env.store, { ...rec, note: `the wallet answered with an error (${text}); the transaction may or may not have been sent. Not resubmitted: paste its hash below if it was sent, or forget this record.` });
-        say(`Outcome unknown: ${text}. Nothing is resubmitted.`);
-      }
+      saveRecord(env.store, { ...rec, note: `the wallet ended the request without a transaction hash (${text}). It may or may not have sent one. Nothing is resubmitted: if you rejected it in the wallet, forget this record; if a transaction was sent, paste its hash.` });
+      say(`The wallet ended the request: ${text}. The action stays pending until you paste a hash or forget the record; nothing is resubmitted.`);
       renderActivity();
       renderActions();
       return;
@@ -1512,7 +1544,7 @@ export function install(env: Env): void {
         });
         li.append(h(doc, "p", "verify-controls", input, " ", track));
       }
-      const dismiss = h(doc, "button", "", r.phase === "final" ? "Dismiss" : "Forget this pending record");
+      const dismiss = h(doc, "button", "", r.phase === "final" ? "Dismiss" : r.adapter === "wallet" ? "I rejected it in the wallet: forget this record" : "Forget this pending record");
       dismiss.setAttribute("type", "button");
       dismiss.setAttribute("data-dismiss", r.intent_sha256);
       dismiss.addEventListener("click", () => {
@@ -1580,7 +1612,6 @@ export const CONSOLE_FUNCTIONS: readonly ((...args: never[]) => unknown)[] = [
   cliCommand,
   walletParams,
   walletTxHash,
-  walletDeclined,
   adapterText,
   txProblems,
   baselineOf,
