@@ -2,12 +2,20 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/bc3fed6",
+      "revision": "bc3fed65e146d8556537a3f968b5f42687489215",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance with 34 required cases; demo bound to the acceptance run; no machine-local path in any report command",
+      "run": "evidence/bc3fed6/run.json",
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1455 s cold (TypeScript 543/543, Rust 196 passed), acceptance run 20261107T123537249Z-030ea9f58f07; make demo exit 0 in 62 s, 59/59 (setup 16.1 s, story 20.3 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42373163926: make test certified in 1941 s (acceptance run 20261107T123927987Z-adfcafbcec9b), make demo 65 s, 59/59 (setup 13.1 s, story 20.1 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 6e85f2ce..., walkthrough 179.7 s sha256 baf2cdc3...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed)."
+    },
+    {
       "path": "evidence/4fec11b",
       "revision": "4fec11b7a575079b488670f3ed3a36092a236dd2",
-      "status": "certified",
+      "status": "superseded",
       "rules": "gate-report/2 acceptance with 34 required cases (CONSOLE.wallet-sandbox added); demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/4fec11b/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1447 s cold (TypeScript 542/542, Rust 196 passed), acceptance run 20261107T111603772Z-24c65d876a11; make demo exit 0 in 62 s, 59/59 (setup 15.8 s, story 20.2 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42367428212: make test certified in 2014 s (acceptance run 20261107T112045344Z-82a1f9a9c4b4), make demo 73 s, 59/59 (setup 14.4 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 781793eb..., walkthrough 179.7 s sha256 1b38ee59...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched their sha256, loaded and answered, 0 CSP violations (console/wallet-adapter-check.json; network-dependent, outside make test, no account, nothing signed). An earlier fresh clone at 98cc5fe failed make test (exit 2 after 1444 s: license check, wallet fixture not named in NOTICE; fixed in 4fec11b); not certified."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1447 s cold (TypeScript 542/542, Rust 196 passed), acceptance run 20261107T111603772Z-24c65d876a11; make demo exit 0 in 62 s, 59/59 (setup 15.8 s, story 20.2 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42367428212: make test certified in 2014 s (acceptance run 20261107T112045344Z-82a1f9a9c4b4), make demo 73 s, 59/59 (setup 14.4 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 781793eb..., walkthrough 179.7 s sha256 1b38ee59...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched their sha256, loaded and answered, 0 CSP violations (console/wallet-adapter-check.json; network-dependent, outside make test, no account, nothing signed). An earlier fresh clone at 98cc5fe failed make test (exit 2 after 1444 s: license check, wallet fixture not named in NOTICE; fixed in 4fec11b); not certified. Superseded on 7 November 2026 by bc3fed6: the rehearsal used the inventory ceiling instead of the planned deposit."
     },
     {
       "path": "evidence/f5e34f9",

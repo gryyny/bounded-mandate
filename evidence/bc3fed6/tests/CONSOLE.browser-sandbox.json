@@ -1,0 +1,122 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "CONSOLE",
+  "case": "browser-sandbox",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261107T123537249Z-030ea9f58f07",
+  "source": {
+    "revision": "bc3fed65e146d8556537a3f968b5f42687489215",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794056136,
+  "data": {
+    "checks": [
+      {
+        "name": "read-only-view",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "owner-controls-enabled",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "console-signs-runner-intents",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "runner-imports-and-verifies",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "final-state-by-rpc",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "signer": "local sandbox test signer (not a wallet)",
+    "browser": "chromium headless (playwright)",
+    "runner": {
+      "exit_code": 0,
+      "message": "completed"
+    },
+    "handoffs": [
+      {
+        "kind": "revoke_external",
+        "sha": "f3fd1a6545e4f258b39a8b7729bfafd25711d36a4f875c8c91d6aece98204fd2",
+        "tx_hash": "3zNz19v5NXs6KpoiNFs5SpvKYwYKPPF5v4hnYGqQiK9S"
+      },
+      {
+        "kind": "recover_external",
+        "sha": "966ff6933579000eb6d345303ab3dad86a8da1cfef9ac1720925519e6803b802",
+        "tx_hash": "2R5wY2b2qtx6v5nXT7tMLmrKULdNGUCwGu66r7zo2TLh"
+      },
+      {
+        "kind": "recover_external",
+        "sha": "cb719c0e981d6b436dfab7b3e1f59f463c16da4e849333a37f7a22bb8f27a434",
+        "tx_hash": "9S7rRwznuAC9ygXD5c9pBwGWBv76y4uXUd7mpefTwxXr"
+      },
+      {
+        "kind": "withdraw_external",
+        "sha": "b865284b987353727fb6b0850074d39cb443e19db60818e991b65c09c547c085",
+        "tx_hash": "Gxs459xpDhzeug3PHbvRLMukogfNhJ6qB8MVbZi8oYyT"
+      },
+      {
+        "kind": "withdraw_external",
+        "sha": "8fe1f632356da406f93bb27adc875477c0b65ad6e30b46c09340a9dc6c149cec",
+        "tx_hash": "83Qb185dePgxKWkHxeMtrxfbncQen9CqtNYY61os85Xz"
+      }
+    ],
+    "sign_requests": [
+      {
+        "at": 1794056127393,
+        "via": "console",
+        "intent_sha256": "f3fd1a6545e4f258b39a8b7729bfafd25711d36a4f875c8c91d6aece98204fd2",
+        "status": "submitted",
+        "tx_hash": "3zNz19v5NXs6KpoiNFs5SpvKYwYKPPF5v4hnYGqQiK9S"
+      },
+      {
+        "at": 1794056128895,
+        "via": "console",
+        "intent_sha256": "966ff6933579000eb6d345303ab3dad86a8da1cfef9ac1720925519e6803b802",
+        "status": "submitted",
+        "tx_hash": "2R5wY2b2qtx6v5nXT7tMLmrKULdNGUCwGu66r7zo2TLh"
+      },
+      {
+        "at": 1794056130892,
+        "via": "console",
+        "intent_sha256": "cb719c0e981d6b436dfab7b3e1f59f463c16da4e849333a37f7a22bb8f27a434",
+        "status": "submitted",
+        "tx_hash": "9S7rRwznuAC9ygXD5c9pBwGWBv76y4uXUd7mpefTwxXr"
+      },
+      {
+        "at": 1794056132892,
+        "via": "console",
+        "intent_sha256": "b865284b987353727fb6b0850074d39cb443e19db60818e991b65c09c547c085",
+        "status": "submitted",
+        "tx_hash": "Gxs459xpDhzeug3PHbvRLMukogfNhJ6qB8MVbZi8oYyT"
+      },
+      {
+        "at": 1794056134390,
+        "via": "console",
+        "intent_sha256": "8fe1f632356da406f93bb27adc875477c0b65ad6e30b46c09340a9dc6c149cec",
+        "status": "submitted",
+        "tx_hash": "83Qb185dePgxKWkHxeMtrxfbncQen9CqtNYY61os85Xz"
+      }
+    ]
+  }
+}

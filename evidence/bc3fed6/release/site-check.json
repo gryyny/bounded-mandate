@@ -1,0 +1,62 @@
+{
+  "schema": "bounded-mandate/site-check/v1",
+  "base": "/bounded-mandate/",
+  "routes": [
+    "",
+    "console/"
+  ],
+  "pages": [
+    {
+      "route": "/bounded-mandate/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "csp": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-iRNaeM01HdB60h1S9IFYEKZsp9cOiPltvsOWdDCgncY='; connect-src https:; form-action 'none'; base-uri 'none'",
+      "inline_scripts": 1,
+      "script_hashes": [
+        "'sha256-iRNaeM01HdB60h1S9IFYEKZsp9cOiPltvsOWdDCgncY='"
+      ],
+      "references": 42
+    },
+    {
+      "route": "/bounded-mandate/console/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "csp": "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'sha256-mk1RNQbSvkwwYh5I4jRYpCWu0rSN06XW/h/XvCbqs/w=' 'sha256-4WJHykjl9+Q9MloRle9cB3/vHBXxB+4q8nRLOc0jj+s=' 'nonce-a139cbf6caebee714d3b70af04d5b272'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; form-action 'none'; base-uri 'none'",
+      "inline_scripts": 2,
+      "script_hashes": [
+        "'sha256-mk1RNQbSvkwwYh5I4jRYpCWu0rSN06XW/h/XvCbqs/w='",
+        "'sha256-4WJHykjl9+Q9MloRle9cB3/vHBXxB+4q8nRLOc0jj+s='"
+      ],
+      "references": 1
+    }
+  ],
+  "assets": [],
+  "external_links": [],
+  "problems": [],
+  "passed": true,
+  "page": "evidence/bc3fed6/page/index.html",
+  "console": "evidence/bc3fed6/console",
+  "video": {
+    "dir": "evidence/bc3fed6/video (local copy of out/video-bc3fed6, mp4 not committed)",
+    "manifest": "evidence/bc3fed6/video.json",
+    "videos": [
+      {
+        "path": "video/bounded-mandate-short.mp4",
+        "status": 200,
+        "content_type": "video/mp4",
+        "bytes": 2044416,
+        "sha256": "6e85f2ce02647527d7c61b1a9bb41ac0a1d75c180883206a3b176671f6860ee3",
+        "expected_sha256": "6e85f2ce02647527d7c61b1a9bb41ac0a1d75c180883206a3b176671f6860ee3"
+      },
+      {
+        "path": "video/bounded-mandate-demo.mp4",
+        "status": 200,
+        "content_type": "video/mp4",
+        "bytes": 5655451,
+        "sha256": "baf2cdc378d393706193db0eb416252bf4d6acb6f97d75f22fee8fc7840ad8a6",
+        "expected_sha256": "baf2cdc378d393706193db0eb416252bf4d6acb6f97d75f22fee8fc7840ad8a6"
+      }
+    ],
+    "problems": []
+  }
+}

@@ -1,0 +1,689 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "DAO",
+  "case": "sputnik-owner",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261107T123537249Z-030ea9f58f07",
+  "source": {
+    "revision": "bc3fed65e146d8556537a3f968b5f42687489215",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "sputnikdao2-2.3.1": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6"
+  },
+  "command": "target/debug/deps/dao_sputnik-452d6ebf96def7b4",
+  "generated_at_unix": 1794055198,
+  "data": {
+    "owner": "Sputnik DAO v2 (sputnikdao2 2.3.1, mainnet sputnik-dao.near default code) deployed at the mandate's fixed owner_id, no access keys",
+    "mandate_candidate": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "mandate_candidate_sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "verifier": "fixtures/verifier/defuse-0.4.5.wasm",
+    "vote_policy": "council of 3, RoleWeight, threshold 2 for FunctionCall proposals",
+    "elapsed_sec": 41,
+    "steps": [
+      {
+        "check": "dao_is_pinned_code_and_fixed_owner",
+        "passed": true,
+        "detail": {
+          "dao_fixture": "fixtures/sputnik/sputnikdao2-2.3.1.wasm",
+          "sha256": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+          "recorded_sha256": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+          "recorded_from": "fixtures/manifest.json",
+          "code_hash": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF",
+          "recorded_mainnet_code_hash": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF",
+          "deployed_code_hash": "DtHZA1mUmGYeScEaUoUZYQGGFHSMpnjMCvkr5U9hJXuF",
+          "dao_access_keys": 0,
+          "mandate_owner_id": "owner.test.near",
+          "contract_source_metadata": {
+            "version": "2.3.1",
+            "link": "https://github.com/near-daos/sputnik-dao-contract/tree/2b0f34a3860460f285307ec2ccf36345acbe05a2",
+            "standards": [
+              {
+                "standard": "nep330",
+                "version": "1.3.0"
+              }
+            ],
+            "build_info": {
+              "build_environment": "sourcescan/cargo-near:0.19.0-rust-1.86.0@sha256:772638e343baeeea24e49062c7d424274f3441452cc06ce97fc4e5695b19fecc",
+              "build_command": [
+                "cargo",
+                "near",
+                "build",
+                "non-reproducible-wasm",
+                "--locked"
+              ],
+              "contract_path": "sputnikdao2",
+              "source_code_snapshot": "git+https://github.com/near-daos/sputnik-dao-contract?rev=2b0f34a3860460f285307ec2ccf36345acbe05a2",
+              "output_wasm_path": "/home/near/code/target/near/sputnikdao2/sputnikdao2.wasm"
+            }
+          },
+          "council": [
+            "council1.test.near",
+            "council2.test.near",
+            "council3.test.near"
+          ],
+          "call_vote_policy": {
+            "weight_kind": "RoleWeight",
+            "quorum": "0",
+            "threshold": "2"
+          }
+        }
+      },
+      {
+        "check": "non_owner_direct_calls_refused",
+        "passed": true,
+        "detail": {
+          "caller": "council1.test.near",
+          "methods": [
+            "grant",
+            "revoke",
+            "recover"
+          ],
+          "failures": [
+            "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1698356960914 }, transaction: ExecutionOutcome { transaction_hash: 3nRCAR5GZkUJbKbXvytfHseznnSmsfCQxgR5hCW1Xf9x, block_hash: GtZagwEq28SvUpe5YMfpGhkr3qp3u9G87HVuQeWJFz9z, logs: [], receipt_ids: [EJydoFGDRE4VPGf1su4FusE3E8zkR5dKTy7d1FHKQPQA], gas_burnt: NearGas { inner: 321744726205 }, tokens_burnt: NearToken { inner: 32174472620500000000 }, executor_id: AccountId(\"council1.test.near\"), status: SuccessReceiptId(EJydoFGDRE4VPGf1su4FusE3E8zkR5dKTy7d1FHKQPQA) }, receipts: [ExecutionOutcome { transaction_hash: EJydoFGDRE4VPGf1su4FusE3E8zkR5dKTy7d1FHKQPQA, block_hash: 3g5Dfefx3Fz8CtxNpbREKgkt3ApuMXKfoQVbx6KSgiXn, logs: [], receipt_ids: [4TKswos2GYTrQjuniSANpTyU5V7VzP3d7gTrs9YTSD2a], gas_burnt: NearGas { inner: 1376612234709 }, tokens_burnt: NearToken { inner: 137661223470900000000 }, executor_id: AccountId(\"mandate.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) })",
+            "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1665317633188 }, transaction: ExecutionOutcome { transaction_hash: 9ahq3G2WLwZvaQbdnBtU4jWRJYVhpeJhwg458BLvNUiP, block_hash: 7xWwAwbeP7cRKLdFq9GfFcKkv8b7GtGtGbiZJA7MBnNQ, logs: [], receipt_ids: [7yteuFm8LwXPnX8amkro2YUrrGAyYftFNvBwAmkTzZ5o], gas_burnt: NearGas { inner: 309156225445 }, tokens_burnt: NearToken { inner: 30915622544500000000 }, executor_id: AccountId(\"council1.test.near\"), status: SuccessReceiptId(7yteuFm8LwXPnX8amkro2YUrrGAyYftFNvBwAmkTzZ5o) }, receipts: [ExecutionOutcome { transaction_hash: 7yteuFm8LwXPnX8amkro2YUrrGAyYftFNvBwAmkTzZ5o, block_hash: GnH5Pz7uipCboBXptj8uWUgC9AE3WevSsF9zwqALikL5, logs: [], receipt_ids: [37b56ux4hXDNXJ3hz68g9eV67BU543LJi68oi7cfgrrY], gas_burnt: NearGas { inner: 1356161407743 }, tokens_burnt: NearToken { inner: 135616140774300000000 }, executor_id: AccountId(\"mandate.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) })",
+            "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 1667877419866 }, transaction: ExecutionOutcome { transaction_hash: B8KSkER8QCz2kw7MvdHbhCyTQuGBjrhFM5WbKZNALm8Z, block_hash: GWGzGG3qpmcJnoHZebpGetERhidM5rArD9XeAcDK83Qf, logs: [], receipt_ids: [3o9Rn7fEGAzfqpwPnYP47CvXNeeNFxK8FTRDkkMgcYvJ], gas_burnt: NearGas { inner: 309919164885 }, tokens_burnt: NearToken { inner: 30991916488500000000 }, executor_id: AccountId(\"council1.test.near\"), status: SuccessReceiptId(3o9Rn7fEGAzfqpwPnYP47CvXNeeNFxK8FTRDkkMgcYvJ) }, receipts: [ExecutionOutcome { transaction_hash: 3o9Rn7fEGAzfqpwPnYP47CvXNeeNFxK8FTRDkkMgcYvJ, block_hash: 3Fwr3oLuapuFb3PpzJbkYSbLCLg7znmXBEbk1Uaqhnji, logs: [], receipt_ids: [B95J7owC2JZb6RsgEWhVqD4pHKiUJzY6YMqB4ur6iAfk], gas_burnt: NearGas { inner: 1357958254981 }, tokens_burnt: NearToken { inner: 135795825498100000000 }, executor_id: AccountId(\"mandate.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: only the owner\")) }) })"
+          ]
+        }
+      },
+      {
+        "check": "outsider_cannot_propose",
+        "passed": true,
+        "detail": {
+          "failure": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:567:9:\\nERR_PERMISSION_DENIED\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 2528423426118 }, transaction: ExecutionOutcome { transaction_hash: 2oT9G6vhHgEp2ETzfnnY98wYjknbRKmCXdCeNWNi4MbG, block_hash: BjFM869eybwLWS8eqqjVD2Go8EjropMjCcCmX7zKmFWx, logs: [], receipt_ids: [2zRXgf2Kdamj6uKQ6YEXuBTt7MwJTsduSMBrBsM6VfJG], gas_burnt: NearGas { inner: 335573003555 }, tokens_burnt: NearToken { inner: 33557300355500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(2zRXgf2Kdamj6uKQ6YEXuBTt7MwJTsduSMBrBsM6VfJG) }, receipts: [ExecutionOutcome { transaction_hash: 2zRXgf2Kdamj6uKQ6YEXuBTt7MwJTsduSMBrBsM6VfJG, block_hash: 3RnUfmThrn5EhqkWbUq2vXKfQmLYQg5ahLFbZhEEoPEV, logs: [], receipt_ids: [GbzyjWBnnoYMnqrF2o9FFJ3FjntqxyhbdnUjWedtnZz2, jY1jDRHLC2kKPBwYrwNVqiRQ1NPZUS3GRV5ZHbqyZFA], gas_burnt: NearGas { inner: 1746485297563 }, tokens_burnt: NearToken { inner: 174648529756300000000 }, executor_id: AccountId(\"owner.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:567:9:\\nERR_PERMISSION_DENIED\")) })) }, ExecutionOutcome { transaction_hash: GbzyjWBnnoYMnqrF2o9FFJ3FjntqxyhbdnUjWedtnZz2, block_hash: BEkxhS8tNc7xDW7BMsJPTHJ14TT3tvqEsiTTxFHgSH8S, logs: [], receipt_ids: [], gas_burnt: NearGas { inner: 223182562500 }, tokens_burnt: NearToken { inner: 0 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessValue('') }, ExecutionOutcome { transaction_hash: jY1jDRHLC2kKPBwYrwNVqiRQ1NPZUS3GRV5ZHbqyZFA, block_hash: BEkxhS8tNc7xDW7BMsJPTHJ14TT3tvqEsiTTxFHgSH8S, logs: [], receipt_ids: [], gas_burnt: NearGas { inner: 223182562500 }, tokens_burnt: NearToken { inner: 0 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessValue('') }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:567:9:\\nERR_PERMISSION_DENIED\")) }) })"
+        }
+      },
+      {
+        "check": "grant_one_of_three_executes_nothing",
+        "passed": true,
+        "detail": {
+          "status": "InProgress",
+          "grant": null,
+          "duplicate_vote": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:279:9:\\nERR_ALREADY_VOTED\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 2288878321446 }, transaction: ExecutionOutcome { transaction_hash: 6BRYuSLDKzWbJNAD6sAiCNz9EorWiBWq3SEY8veb6L11, block_hash: 13wJTfL36DLyA1adD9ParWL92FFVZG2aUXg2dEaKimCq, logs: [], receipt_ids: [HmjnTCphw6hjAEccbKaAF3ze5KpTibn5sTgZmsceU5k9], gas_burnt: NearGas { inner: 335096166405 }, tokens_burnt: NearToken { inner: 33509616640500000000 }, executor_id: AccountId(\"council1.test.near\"), status: SuccessReceiptId(HmjnTCphw6hjAEccbKaAF3ze5KpTibn5sTgZmsceU5k9) }, receipts: [ExecutionOutcome { transaction_hash: HmjnTCphw6hjAEccbKaAF3ze5KpTibn5sTgZmsceU5k9, block_hash: 3CFxcAQ6YH52pScAaP9yhgCLB5bLtg2BstL3S2G2rryA, logs: [], receipt_ids: [7SSYvMDfbPv6WDNLR7tQY5ebK9WkJEGpczzxnbR9xR89], gas_burnt: NearGas { inner: 1953782155041 }, tokens_burnt: NearToken { inner: 195378215504100000000 }, executor_id: AccountId(\"owner.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:279:9:\\nERR_ALREADY_VOTED\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:279:9:\\nERR_ALREADY_VOTED\")) }) })",
+          "outsider_vote": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:612:9:\\nERR_PERMISSION_DENIED\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 2200645707724 }, transaction: ExecutionOutcome { transaction_hash: 9FZ9JXYVUxSuC8fn3rsp6AMRRPPi1Du3eF9eRWmAQsSG, block_hash: 8Q2wefByfjuqQaAunbjFuE5ocrBQmMRPJeeCqAbb7z6T, logs: [], receipt_ids: [61WEkFByj56BvoFEA68s61rezLEy7jQ9Lgbf538a5B4X], gas_burnt: NearGas { inner: 335096166405 }, tokens_burnt: NearToken { inner: 33509616640500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(61WEkFByj56BvoFEA68s61rezLEy7jQ9Lgbf538a5B4X) }, receipts: [ExecutionOutcome { transaction_hash: 61WEkFByj56BvoFEA68s61rezLEy7jQ9Lgbf538a5B4X, block_hash: 28wBXs6xwgxmDby9iMWstXdTGkQ655jKMeBhJmV18iqD, logs: [], receipt_ids: [2CatLTXmmDqZ6dgadxXFbuEdMFgiCBk8qakfWQLPGZyC], gas_burnt: NearGas { inner: 1865549541319 }, tokens_burnt: NearToken { inner: 186554954131900000000 }, executor_id: AccountId(\"owner.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:612:9:\\nERR_PERMISSION_DENIED\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:612:9:\\nERR_PERMISSION_DENIED\")) }) })"
+        }
+      },
+      {
+        "check": "rejected_proposal_executes_nothing",
+        "passed": true,
+        "detail": {
+          "status": "Rejected",
+          "grant": null,
+          "late_approve": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:625:17:\\nERR_PROPOSAL_NOT_READY_FOR_VOTE\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 2238422486142 }, transaction: ExecutionOutcome { transaction_hash: G22Q9yEFmYZZvcrzawDQ66QgRL2SjDz2eDw2rPjsrkFB, block_hash: 5zX2tTWHLXCyF99jeDwDmuvxKnjMsTK8ZfXLYJoBLKun, logs: [], receipt_ids: [5q3QyeyaLb7is8RGxYfpNA92EGf43Qs8UQujAZ6EKbBR], gas_burnt: NearGas { inner: 335096166405 }, tokens_burnt: NearToken { inner: 33509616640500000000 }, executor_id: AccountId(\"council2.test.near\"), status: SuccessReceiptId(5q3QyeyaLb7is8RGxYfpNA92EGf43Qs8UQujAZ6EKbBR) }, receipts: [ExecutionOutcome { transaction_hash: 5q3QyeyaLb7is8RGxYfpNA92EGf43Qs8UQujAZ6EKbBR, block_hash: BxEJQMyKd3Yoydcc5jZv2CCqJxSgGVhfvRNAyw5LLTv6, logs: [], receipt_ids: [ASXHLRMxTaDbkDps4nmrRjFpczY2QXYhwyuqrZnt5pAT], gas_burnt: NearGas { inner: 1903326319737 }, tokens_burnt: NearToken { inner: 190332631973700000000 }, executor_id: AccountId(\"owner.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:625:17:\\nERR_PROPOSAL_NOT_READY_FOR_VOTE\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:625:17:\\nERR_PROPOSAL_NOT_READY_FOR_VOTE\")) }) })"
+        }
+      },
+      {
+        "check": "grant_two_of_three_executes",
+        "passed": true,
+        "detail": {
+          "grant": {
+            "epoch": 1,
+            "path": "mandate/v1/1",
+            "public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+            "status": "active",
+            "policy": {
+              "per_order_cap_bps": 2000,
+              "outstanding_cap_bps": 2000,
+              "max_concession_bps": 50,
+              "oracle_max_age_sec": 60,
+              "max_confidence_bps": 50,
+              "breaker_drawdown_bps": 200,
+              "turnover_cap_bps": 10000,
+              "order_ttl_sec": 60,
+              "min_remaining_sec": 15,
+              "max_pricing_delay_sec": 30,
+              "proposal_charge_bps": 50
+            },
+            "initial_reference": {
+              "usdc": {
+                "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+                "price": "100000000",
+                "conf": "20000",
+                "expo": -8,
+                "publish_time_sec": "1794055171"
+              },
+              "wnear": {
+                "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+                "price": "300000000",
+                "conf": "60000",
+                "expo": -8,
+                "publish_time_sec": "1794055171"
+              },
+              "observed_at_ns": "1794055180276484000"
+            },
+            "initial_value": "19000000000000000",
+            "turnover_used": "0",
+            "outstanding": "0",
+            "breaker": null,
+            "key_op_in_flight": false
+          },
+          "proposal_status": "Approved",
+          "late_vote": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:625:17:\\nERR_PROPOSAL_NOT_READY_FOR_VOTE\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 2241893975718 }, transaction: ExecutionOutcome { transaction_hash: Hb6kSyMKxNvCPh9Aa6QJeqM1Vpk29qyeiJhFXcTgzXzB, block_hash: CTo4CxrTWQdwhMBBnYufNnNQUtwQRvHRjmY8CgCvh7wB, logs: [], receipt_ids: [3mobL2ct2QYFpRvWVN96C49Y2PucKCWS49goxEefdFEP], gas_burnt: NearGas { inner: 335096166405 }, tokens_burnt: NearToken { inner: 33509616640500000000 }, executor_id: AccountId(\"council3.test.near\"), status: SuccessReceiptId(3mobL2ct2QYFpRvWVN96C49Y2PucKCWS49goxEefdFEP) }, receipts: [ExecutionOutcome { transaction_hash: 3mobL2ct2QYFpRvWVN96C49Y2PucKCWS49goxEefdFEP, block_hash: ECc2JEbrLE8kHxNxy8yK2Gfer23vran1De2kF1CJbofp, logs: [], receipt_ids: [EuHuBkGtw8aqMwgP8BgQUi4Bg28QTbWVgegGNEuPgbdt], gas_burnt: NearGas { inner: 1906797809313 }, tokens_burnt: NearToken { inner: 190679780931300000000 }, executor_id: AccountId(\"owner.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:625:17:\\nERR_PROPOSAL_NOT_READY_FOR_VOTE\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: panicked at sputnikdao2/src/proposals.rs:625:17:\\nERR_PROPOSAL_NOT_READY_FOR_VOTE\")) }) })",
+          "gas": {
+            "proposal": "grant",
+            "action_gas": 230000000000000,
+            "vote_prepaid_gas": 300000000000000,
+            "act_proposal_gas_burnt": 3046385817038,
+            "headroom_after_action_and_dao_callback": 56953614182962,
+            "tx_total_gas_burnt": 26952639910107,
+            "dao_receipts": [
+              {
+                "method": "act_proposal",
+                "attached_gas": 300000000000000,
+                "gas_burnt": 3046385817038,
+                "succeeded": true
+              },
+              {
+                "method": "on_proposal_callback",
+                "attached_gas": 66066098014924,
+                "gas_burnt": 2339149683368,
+                "succeeded": true
+              }
+            ],
+            "mandate_receipts": [
+              {
+                "method": "grant",
+                "attached_gas": 230000000000000,
+                "gas_burnt": 3779418086585,
+                "succeeded": true
+              },
+              {
+                "method": "on_grant_prepared",
+                "attached_gas": 167533593655303,
+                "gas_burnt": 2846056664152,
+                "succeeded": true
+              },
+              {
+                "method": "on_key_added",
+                "attached_gas": 144399651544150,
+                "gas_burnt": 1664324698555,
+                "succeeded": true
+              }
+            ],
+            "verifier_receipts": [
+              {
+                "method": "mt_batch_balance_of",
+                "attached_gas": 12533593655300,
+                "gas_burnt": 2690412428191,
+                "succeeded": true
+              },
+              {
+                "method": "add_public_key",
+                "attached_gas": 19399651544149,
+                "gas_burnt": 3103212669622,
+                "succeeded": true
+              }
+            ]
+          }
+        }
+      },
+      {
+        "check": "agent_trade_under_dao_grant",
+        "passed": true,
+        "detail": {
+          "order": 0,
+          "filled": true,
+          "settled": true,
+          "withheld_order": 1
+        }
+      },
+      {
+        "check": "removed_proposal_executes_nothing",
+        "passed": true,
+        "detail": {
+          "proposal_after_remove": "absent",
+          "grant_status": "active"
+        }
+      },
+      {
+        "check": "revoke_one_of_three_executes_nothing",
+        "passed": true,
+        "detail": {
+          "status": "InProgress",
+          "grant_status": "active"
+        }
+      },
+      {
+        "check": "revoke_two_of_three_removes_key",
+        "passed": true,
+        "detail": {
+          "grant": {
+            "epoch": 1,
+            "path": "mandate/v1/1",
+            "public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+            "status": "revoked",
+            "policy": {
+              "per_order_cap_bps": 2000,
+              "outstanding_cap_bps": 2000,
+              "max_concession_bps": 50,
+              "oracle_max_age_sec": 60,
+              "max_confidence_bps": 50,
+              "breaker_drawdown_bps": 200,
+              "turnover_cap_bps": 10000,
+              "order_ttl_sec": 60,
+              "min_remaining_sec": 15,
+              "max_pricing_delay_sec": 30,
+              "proposal_charge_bps": 50
+            },
+            "initial_reference": {
+              "usdc": {
+                "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+                "price": "100000000",
+                "conf": "20000",
+                "expo": -8,
+                "publish_time_sec": "1794055171"
+              },
+              "wnear": {
+                "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+                "price": "300000000",
+                "conf": "60000",
+                "expo": -8,
+                "publish_time_sec": "1794055171"
+              },
+              "observed_at_ns": "1794055180276484000"
+            },
+            "initial_value": "19000000000000000",
+            "turnover_used": "195000000000000",
+            "outstanding": "0",
+            "breaker": null,
+            "key_op_in_flight": false
+          },
+          "key_on_verifier": false,
+          "withheld_relay_rejected": true,
+          "withheld_state": "released:key_removed",
+          "gas": {
+            "proposal": "revoke",
+            "action_gas": 130000000000000,
+            "vote_prepaid_gas": 300000000000000,
+            "act_proposal_gas_burnt": 3019530886699,
+            "headroom_after_action_and_dao_callback": 156980469113301,
+            "tx_total_gas_burnt": 14484639532733,
+            "dao_receipts": [
+              {
+                "method": "act_proposal",
+                "attached_gas": 300000000000000,
+                "gas_burnt": 3019530886699,
+                "succeeded": true
+              },
+              {
+                "method": "on_proposal_callback",
+                "attached_gas": 166092758419005,
+                "gas_burnt": 2355605519797,
+                "succeeded": true
+              }
+            ],
+            "mandate_receipts": [
+              {
+                "method": "revoke",
+                "attached_gas": 130000000000000,
+                "gas_burnt": 2466965483296,
+                "succeeded": true
+              },
+              {
+                "method": "on_key_removed",
+                "attached_gas": 113322375711652,
+                "gas_burnt": 2038469908920,
+                "succeeded": true
+              }
+            ],
+            "verifier_receipts": [
+              {
+                "method": "remove_public_key",
+                "attached_gas": 13322375711652,
+                "gas_burnt": 3169795739081,
+                "succeeded": true
+              }
+            ]
+          }
+        }
+      },
+      {
+        "check": "recover_both_assets_to_dao_intents_account",
+        "passed": true,
+        "detail": {
+          "mandate_before": [
+            "10029850000",
+            "2990000000000000000000000000"
+          ],
+          "dao_intents_before": [
+            "0",
+            "0"
+          ],
+          "dao_intents_after": [
+            "10029850000",
+            "2990000000000000000000000000"
+          ],
+          "mandate_after": [
+            "0",
+            "0"
+          ],
+          "recovery": [
+            {
+              "asset": "usdc",
+              "in_flight": false,
+              "attempts": 1,
+              "recovered": "10029850000"
+            },
+            {
+              "asset": "wnear",
+              "in_flight": false,
+              "attempts": 1,
+              "recovered": "2990000000000000000000000000"
+            }
+          ],
+          "gas": [
+            {
+              "proposal": "recover usdc",
+              "action_gas": 55000000000000,
+              "vote_prepaid_gas": 300000000000000,
+              "act_proposal_gas_burnt": 3045347800546,
+              "headroom_after_action_and_dao_callback": 231954652199454,
+              "tx_total_gas_burnt": 20439347159805,
+              "dao_receipts": [
+                {
+                  "method": "act_proposal",
+                  "attached_gas": 300000000000000,
+                  "gas_burnt": 3045347800546,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_proposal_callback",
+                  "attached_gas": 241066950448894,
+                  "gas_burnt": 2379078253416,
+                  "succeeded": true
+                }
+              ],
+              "mandate_receipts": [
+                {
+                  "method": "recover",
+                  "attached_gas": 55000000000000,
+                  "gas_burnt": 2379255844642,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_recovery_balance",
+                  "attached_gas": 38366226059111,
+                  "gas_burnt": 2314272457929,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_recovery_transferred",
+                  "attached_gas": 15081762586036,
+                  "gas_burnt": 1651609146112,
+                  "succeeded": true
+                }
+              ],
+              "verifier_receipts": [
+                {
+                  "method": "mt_balance_of",
+                  "attached_gas": 13366226059111,
+                  "gas_burnt": 2592482971863,
+                  "succeeded": true
+                },
+                {
+                  "method": "mt_transfer",
+                  "attached_gas": 20081762586036,
+                  "gas_burnt": 4195709891057,
+                  "succeeded": true
+                }
+              ]
+            },
+            {
+              "proposal": "recover wnear",
+              "action_gas": 55000000000000,
+              "vote_prepaid_gas": 300000000000000,
+              "act_proposal_gas_burnt": 3070259535265,
+              "headroom_after_action_and_dao_callback": 231929740464735,
+              "tx_total_gas_burnt": 20164392239692,
+              "dao_receipts": [
+                {
+                  "method": "act_proposal",
+                  "attached_gas": 300000000000000,
+                  "gas_burnt": 3070259535265,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_proposal_callback",
+                  "attached_gas": 241042036478241,
+                  "gas_burnt": 2403161821423,
+                  "succeeded": true
+                }
+              ],
+              "mandate_receipts": [
+                {
+                  "method": "recover",
+                  "attached_gas": 55000000000000,
+                  "gas_burnt": 2379808012148,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_recovery_balance",
+                  "attached_gas": 38365948857391,
+                  "gas_burnt": 2319949407757,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_recovery_transferred",
+                  "attached_gas": 15078746381417,
+                  "gas_burnt": 1660425547414,
+                  "succeeded": true
+                }
+              ],
+              "verifier_receipts": [
+                {
+                  "method": "mt_balance_of",
+                  "attached_gas": 13365948857391,
+                  "gas_burnt": 2594574020810,
+                  "succeeded": true
+                },
+                {
+                  "method": "mt_transfer",
+                  "attached_gas": 20078746381417,
+                  "gas_burnt": 3854623100635,
+                  "succeeded": true
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "check": "ft_withdraw_to_unregistered_dao_refunds",
+        "passed": true,
+        "detail": {
+          "storage_balance_before": null,
+          "proposal_status": "Approved",
+          "token_receipts": [
+            {
+              "method": "ft_transfer",
+              "succeeded": false
+            }
+          ],
+          "ft_balance_after": "0",
+          "intents_balance_after": "10029850000",
+          "intents_balance_expected": "10029850000",
+          "gas": {
+            "proposal": "ft_withdraw usdc (unregistered)",
+            "action_gas": 100000000000000,
+            "vote_prepaid_gas": 300000000000000,
+            "act_proposal_gas_burnt": 3107266279536,
+            "headroom_after_action_and_dao_callback": 186892733720464,
+            "tx_total_gas_burnt": 16953846675742,
+            "dao_receipts": [
+              {
+                "method": "act_proposal",
+                "attached_gas": 300000000000000,
+                "gas_burnt": 3107266279536,
+                "succeeded": true
+              },
+              {
+                "method": "on_proposal_callback",
+                "attached_gas": 196005087868254,
+                "gas_burnt": 2425216014667,
+                "succeeded": true
+              }
+            ],
+            "mandate_receipts": [],
+            "verifier_receipts": [
+              {
+                "method": "ft_withdraw",
+                "attached_gas": 100000000000000,
+                "gas_burnt": 4673062513298,
+                "succeeded": true
+              },
+              {
+                "method": "ft_resolve_withdraw",
+                "attached_gas": 15000000000000,
+                "gas_burnt": 3430997800542,
+                "succeeded": true
+              }
+            ]
+          }
+        }
+      },
+      {
+        "check": "storage_deposit_two_of_three_registers_dao",
+        "passed": true,
+        "detail": {
+          "storage_deposit_yocto": "1250000000000000000000",
+          "after_one_approval": null,
+          "storage_balance_after": {
+            "total": "1250000000000000000000",
+            "available": "0"
+          },
+          "gas": {
+            "proposal": "storage_deposit usdc",
+            "action_gas": 30000000000000,
+            "vote_prepaid_gas": 300000000000000,
+            "act_proposal_gas_burnt": 3097267031542,
+            "headroom_after_action_and_dao_callback": 256902732968458,
+            "tx_total_gas_burnt": 8212775601188,
+            "dao_receipts": [
+              {
+                "method": "act_proposal",
+                "attached_gas": 300000000000000,
+                "gas_burnt": 3097267031542,
+                "succeeded": true
+              },
+              {
+                "method": "on_proposal_callback",
+                "attached_gas": 266015087116248,
+                "gas_burnt": 2420948240801,
+                "succeeded": true
+              }
+            ],
+            "mandate_receipts": [],
+            "verifier_receipts": []
+          }
+        }
+      },
+      {
+        "check": "dao_ft_withdraw_to_own_account",
+        "passed": true,
+        "detail": {
+          "withdrawals": [
+            {
+              "token": "usdc.test.near",
+              "amount": "10029850000",
+              "ft_before": "0",
+              "ft_after": "10029850000",
+              "intents_after": "0"
+            },
+            {
+              "token": "wnear.test.near",
+              "amount": "2990000000000000000000000000",
+              "ft_before": "0",
+              "ft_after": "2990000000000000000000000000",
+              "intents_after": "0"
+            }
+          ],
+          "usdc_owned_total": "10029850000",
+          "usdc_recovered": "10029850000",
+          "gas": [
+            {
+              "proposal": "ft_withdraw usdc.test.near",
+              "action_gas": 100000000000000,
+              "vote_prepaid_gas": 300000000000000,
+              "act_proposal_gas_burnt": 3108519012905,
+              "headroom_after_action_and_dao_callback": 186891480987095,
+              "tx_total_gas_burnt": 15764563944420,
+              "dao_receipts": [
+                {
+                  "method": "act_proposal",
+                  "attached_gas": 300000000000000,
+                  "gas_burnt": 3108519012905,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_proposal_callback",
+                  "attached_gas": 196003835134885,
+                  "gas_burnt": 2426643995064,
+                  "succeeded": true
+                }
+              ],
+              "mandate_receipts": [],
+              "verifier_receipts": [
+                {
+                  "method": "ft_withdraw",
+                  "attached_gas": 100000000000000,
+                  "gas_burnt": 4307393785403,
+                  "succeeded": true
+                },
+                {
+                  "method": "ft_resolve_withdraw",
+                  "attached_gas": 15000000000000,
+                  "gas_burnt": 2544034667600,
+                  "succeeded": true
+                }
+              ]
+            },
+            {
+              "proposal": "ft_withdraw wnear.test.near",
+              "action_gas": 100000000000000,
+              "vote_prepaid_gas": 300000000000000,
+              "act_proposal_gas_burnt": 3112682340382,
+              "headroom_after_action_and_dao_callback": 186887317659618,
+              "tx_total_gas_burnt": 15790393734188,
+              "dao_receipts": [
+                {
+                  "method": "act_proposal",
+                  "attached_gas": 300000000000000,
+                  "gas_burnt": 3112682340382,
+                  "succeeded": true
+                },
+                {
+                  "method": "on_proposal_callback",
+                  "attached_gas": 195999685223012,
+                  "gas_burnt": 2427842994521,
+                  "succeeded": true
+                }
+              ],
+              "mandate_receipts": [],
+              "verifier_receipts": [
+                {
+                  "method": "ft_withdraw",
+                  "attached_gas": 100000000000000,
+                  "gas_burnt": 4314328367333,
+                  "succeeded": true
+                },
+                {
+                  "method": "ft_resolve_withdraw",
+                  "attached_gas": 15000000000000,
+                  "gas_burnt": 2547896766411,
+                  "succeeded": true
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
