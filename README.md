@@ -260,7 +260,7 @@ Over-cap, injected-withdrawal and owner-recovery cases are blocked by both desig
 When an owner stops trusting an agent, signed orders may still be outstanding. The mandate's answer is to remove the grant's key from `intents.near`. Simpler answers exist, and the verifier supports them: stop issuing and let orders expire, or cancel each order's nonce by signing an empty intent with the same key ([near/intents at 16d04f6](https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/intents/mod.rs#L30-L37)). [contract/tests/compare_revocation.rs](contract/tests/compare_revocation.rs) runs them side by side on the pinned verifier WASM.
 
 - **Same setup for each strategy:** an account holding the same deposits, and three unexpired withheld orders of 1 USDC each, relayed by an unrelated account.
-- **The owner's ledger records two of the three orders.** The third stands for a signature disclosed without being recorded.
+- **The owner-side list deliberately omits the third order.** This models an owner, or an owner's tool, whose list of outstanding nonces is incomplete. The mandate itself records every order on chain before it requests a signature, so a leaked signature or a failed callback leaves no order missing from the contract. The case tests how much the alternatives depend on a complete list; it does not expose a gap in the mandate.
 - **The account's key is a labelled test key**, standing in for the MPC-derived key.
 
 | Owner's response | Signatures by the account key | Withheld orders that still execute before their deadlines | Unrecorded order stopped before its deadline | To resume trading |
@@ -272,8 +272,12 @@ When an owner stops trusting an agent, signed orders may still be outstanding. T
 
 What this shows, and what it does not:
 
-- **Cancelling nonces needs the account's signer and a complete list.** It needs a working signer and a complete list of outstanding nonces. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither. Here a plain account calls `remove_public_key` itself; in the mandate the owner signs `revoke` and the contract makes that call and confirms it in a callback, which T1 tests.
-- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run gives a meaningful value. The runner records it as `revocation_window`: the lifetime left after confirmed removal (a lower bound), the time from the MPC sign request to the signature, and the time from signing to the deadline. With the demo's 60 s and the proposed mainnet 120 s order lifetimes, the gap may be small. That is why the mandate's case also rests on what the alternatives leave out: limits checked before every signature, conservative accounting of signed and disclosed orders (T2, T2b) and recovery without the agent, oracle or MPC (T4).
+- **Cancelling nonces needs the account's signer and a complete list.** With both, cancellation stops every listed order. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither: no signature from the grant's MPC key, while the owner still authorizes the revocation. Here a plain account calls `remove_public_key` itself; in the mandate the owner signs `revoke` and the contract makes that call and confirms it in a callback, which T1 tests.
+- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run gives a meaningful value. The runner records it as `revocation_window`: the lifetime left after confirmed removal (a lower bound), the time from the MPC sign request to the signature, and the time from signing to the deadline. With the demo's 60 s and the proposed mainnet 120 s order lifetimes, the gap may be small. What the experiment validates is the mandate's choice of revocation mechanism, not a capability unique to it. Other products could also remove and rotate keys, and expiry or nonce cancellation can coexist with trading limits. The mandate's value is the complete, tested combination:
+  - limits checked before every signature;
+  - accounting of signed and disclosed orders (T2, T2b);
+  - revocation by key removal, and a regrant on a fresh key (T1);
+  - recovery without the agent, oracle or MPC (T4).
 - **Not tested here:** a relay that lands before the owner's action is final, and mainnet latency. This is a verifier-level experiment; the mandate's own gates are T1 to T4.
 
 ## Comparison with related NEAR projects
