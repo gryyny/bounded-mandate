@@ -10,7 +10,7 @@ import { sha256Hex } from "../src/agent/decision.js";
 import type { FreshObservations } from "../src/agent/objective.js";
 import { BUDGETED_PROMPT_VERSION } from "../src/agent/prompt.js";
 import { NearAiProvider } from "../src/agent/providers.js";
-import { observe, type ObserverManifest } from "../src/agent/observe.js";
+import { ObserverManifest, observe } from "../src/agent/observe.js";
 import { rehearsalInput, rehearsalProvider } from "../src/agent/rehearse.js";
 import {
   NO_APPROVAL,
@@ -45,6 +45,7 @@ const evidence = new CaseRecorder("AGENT", "rehearsal", [
   "planned-grant",
   "planned-grant-cli",
   "observer",
+  "documented-sequence",
   "no-transaction-path",
   "cli-stub-run",
 ]);
@@ -396,18 +397,25 @@ describe("before the first grant", () => {
     evidence.check("planned-grant-cli", () => {
       const obs = preGrant();
       const state = { observations: obs, decimals: DECIMALS, notes: ["n"] };
-      const budget = { owner_inventory_max: { usdc: PLAN.usdc.toString(), wnear: PLAN.wnear.toString() }, max_order_sell: { usdc: (200n * USDC).toString(), wnear: "0" }, max_total_sell: { usdc: (400n * USDC).toString(), wnear: "0" } };
+      // The ceiling is above the planned deposit, so a fallback to it would show.
+      const budget = { owner_inventory_max: { usdc: (2n * PLAN.usdc).toString(), wnear: (2n * PLAN.wnear).toString() }, max_order_sell: { usdc: (200n * USDC).toString(), wnear: "0" }, max_total_sell: { usdc: (400n * USDC).toString(), wnear: "0" } };
       const text = JSON.stringify({ budget, steps: [{ kind: "check" }, { kind: "grant", policy: DEMO_POLICY }] });
-      const got = rehearsalInput(state, { path: "m.json", text });
+      const m = { path: "m.json", text };
+      const deposit = { units: { usdc: PLAN.usdc.toString(), wnear: PLAN.wnear.toString() }, source: "synthetic setup record" };
+      const got = rehearsalInput(state, m, deposit);
       expect(got.planned_grant).toEqual({ source: `manifest m.json (sha256 ${sha256Hex(text)}) grant step policy (epoch 1 assumed: the first grant of a fresh mandate)`, epoch: 1, policy: DEMO_POLICY });
-      expect(got.planned_inventory.units).toEqual(budget.owner_inventory_max);
+      expect(got.planned_inventory).toEqual({ source: "synthetic setup record", units: deposit.units });
+      // The manifest's inventory ceiling is never the deposit; above it, or given twice, is refused.
+      expect(() => rehearsalInput(state, m)).toThrow(/planned deposit is required.*owner_inventory_max is a ceiling, not the deposit/);
+      expect(() => rehearsalInput(state, m, { ...deposit, units: { ...deposit.units, wnear: (2n * PLAN.wnear + 1n).toString() } })).toThrow(/planned wnear \d+ is above the manifest's owner_inventory_max/);
+      expect(() => rehearsalInput({ ...state, planned_inventory: { source: "file", units: deposit.units } }, m, deposit)).toThrow(/given twice/);
       // With a grant on chain the manifest's policy is not used.
-      expect(rehearsalInput({ ...state, observations: observations() }, { path: "m.json", text }).planned_grant).toBeNull();
-      expect(() => rehearsalInput(state, { path: "m.json", text: JSON.stringify({ budget, steps: [{ kind: "check" }] }) })).toThrow(/no grant step to plan from/);
+      expect(rehearsalInput({ ...state, observations: observations() }, m, deposit).planned_grant).toBeNull();
+      expect(() => rehearsalInput(state, { path: "m.json", text: JSON.stringify({ budget, steps: [{ kind: "check" }] }) }, deposit)).toThrow(/no grant step to plan from/);
       // A state observed for another manifest is refused; the manifest's hash is carried into the record.
       expect(got.manifest_sha256).toBe(sha256Hex(text));
-      expect(() => rehearsalInput({ ...state, observed_by: { manifest_sha256: sha256Hex("another manifest") } }, { path: "m.json", text })).toThrow(/observed for manifest/);
-      expect(rehearsalInput({ ...state, observed_by: { manifest_sha256: sha256Hex(text) } }, { path: "m.json", text }).manifest_sha256).toBe(sha256Hex(text));
+      expect(() => rehearsalInput({ ...state, observed_by: { manifest_sha256: sha256Hex("another manifest") } }, m, deposit)).toThrow(/observed for manifest/);
+      expect(rehearsalInput({ ...state, observed_by: { manifest_sha256: sha256Hex(text) } }, m, deposit).manifest_sha256).toBe(sha256Hex(text));
     }));
 
   // gate: AGENT
@@ -417,7 +425,7 @@ describe("before the first grant", () => {
         network: { chain_id: "mainnet", genesis_hash: "G", rpc_url: "https://rpc.invalid" },
         accounts: { mandate: "planned-mandate.near", verifier: "intents.near", oracle: "oracle.near" },
         mandate_config: { usdc: { token: "usdc.near", decimals: 6, price_id: prices.usdc.price_id }, wnear: { token: "wrap.near", decimals: 24, price_id: prices.wnear.price_id } },
-        steps: [{ kind: "grant", policy: { ...DEMO_POLICY, oracle_max_age_sec: 120 } }, { kind: "propose", source: { from: "near-ai", notes: ["feed note"] } }],
+        steps: [{ kind: "grant", policy: { ...DEMO_POLICY, oracle_max_age_sec: 120 } }, { kind: "propose", source: { from: "model", provider: "near-ai", notes: ["feed note"] } }],
       };
       const calls: { method: string; args: Record<string, unknown> }[] = [];
       const bytes = (v: unknown) => ({ result: [...Buffer.from(JSON.stringify(v))] });
@@ -444,7 +452,7 @@ describe("before the first grant", () => {
       expect(state.observed_by).toMatchObject({ chain_id: "mainnet", planned_oracle_max_age_sec: 120 });
       // The state file feeds a planned rehearsal directly.
       expect(state.observed_by.manifest_sha256).toBe(sha256Hex(text));
-      const fed = rehearsalInput(state, { path: "m.json", text });
+      const fed = rehearsalInput(state, { path: "m.json", text }, { units: { usdc: "1", wnear: "1" }, source: "synthetic" });
       expect(fed.planned_grant?.policy.oracle_max_age_sec).toBe(120);
       expect(fed.manifest_sha256).toBe(sha256Hex(text));
       // An unrelated "does not exist" error is not taken for "no mandate account yet".
@@ -457,6 +465,61 @@ describe("before the first grant", () => {
       calls.length = 0;
       await expect(observe(provider("testnet") as never, manifest, "{}", "https://rpc.invalid")).rejects.toThrow(/nothing was read/);
       expect(calls).toEqual([]);
+    }));
+});
+
+describe("the documented qualification sequence", () => {
+  // gate: AGENT
+  it("observe, then rehearse with the planned deposit, on the live-agent template at the approval package's prices", () =>
+    evidence.check("documented-sequence", async () => {
+      const readme = readFileSync(join(TOOLS, "../README.md"), "utf8");
+      const block = /```bash\n(cd tools\nnpx tsx src\/agent\/observe\.ts[\s\S]*?)```/.exec(readme)?.[1] ?? "";
+      for (const flag of ["--manifest", "--out", "--state", "--planned-usdc-units", "--planned-wnear-units", "--provider near-ai"]) expect(block).toContain(flag);
+      // The real template with its placeholders filled by synthetic names; caps, policy and price ids as shipped.
+      const template = JSON.parse(readFileSync(join(SRC, "live/manifest.live-agent.example.json"), "utf8")) as { accounts: Record<string, string> };
+      for (const role of ["mandate", "owner", "agent", "filler"]) template.accounts[role] = `${role}.synthetic-owner.near`;
+      const dir = tmp();
+      const manifestPath = join(dir, "manifest.json");
+      const text = JSON.stringify(template);
+      writeFileSync(manifestPath, text);
+      const m = ObserverManifest.parse(template);
+      // Oracle readings at the approval package's 2026-11-06 prices: USDC $0.99978, NEAR $3.70820 (expo -8), 10 s old.
+      const bytes = (v: unknown) => ({ result: [...Buffer.from(JSON.stringify(v))] });
+      const mantissa = { [m.mandate_config.usdc.price_id]: "99978000", [m.mandate_config.wnear.price_id]: "370820000" };
+      const provider = {
+        viewNodeStatus: () => Promise.resolve({ chain_id: m.network.chain_id, genesis_hash: m.network.genesis_hash }),
+        viewBlock: () => Promise.resolve({ header: { height: 1, hash: "H", timestamp_nanosec: "1010000000000" } }),
+        callFunctionRaw: ({ contractId, method, args }: { contractId: string; method: string; args: Record<string, unknown> }) => {
+          if (method === "get_grant") return Promise.reject(new Error(`account ${contractId} does not exist while viewing`));
+          if (method === "mt_balance_of") return Promise.resolve(bytes("0"));
+          return Promise.resolve(bytes({ price: mantissa[String(args.price_id)], conf: "10000", expo: -8, publish_time: 1_000 }));
+        },
+      };
+      const statePath = join(dir, "rehearsal-state.json");
+      writeFileSync(statePath, JSON.stringify(await observe(provider as never, m, text, m.network.rpc_url)));
+      const env = { ...process.env };
+      delete env.NEAR_AI_API_KEY;
+      const cli = (args: string[]) => spawnSync(join(TOOLS, "node_modules/.bin/tsx"), ["src/agent/rehearse.ts", ...args], { cwd: TOOLS, env, encoding: "utf8" });
+      // The planned deposit of the setup record: 5 USDC + 0.90 wNEAR. A stub stands in for the paid provider.
+      const deposit = ["--planned-usdc-units", "5000000", "--planned-wnear-units", "900000000000000000000000"];
+      const r = cli(["--state", statePath, "--manifest", manifestPath, "--out", join(dir, "out"), ...deposit, "--stub-answer", proposeJson("usdc", 800_000n)]);
+      expect(r.stderr).toBe("");
+      expect(r.status).toBe(0);
+      const rec = verifyRehearsal(readFileSync((JSON.parse(r.stdout) as { path: string }).path, "utf8"));
+      // Independently: 5 x 0.99978 = 4.9989 USD; 0.9 x 3.7082 = 3.33738 USD; USDC share floor(49989 / 83362.8 x 10^4) = 5996 bps.
+      expect(rec).toMatchObject({ model_called: true, grant_basis: { kind: "planned" }, manifest_sha256: sha256Hex(text), verdict: { kind: "proposal" }, pre_signing_check: { problems: [] } });
+      expect(rec.allocation).toMatchObject({ usdc_share_bps: "5996", balanced: false, overweight: "usdc" });
+      expect(rec.inventory.planned.units).toEqual({ usdc: "5000000", wnear: "900000000000000000000000" });
+      // The template's ceiling, 5 USDC + 1.25 wNEAR, would be balanced: 4.9989 / (4.9989 + 4.63525) = 5188 bps, no call.
+      const ceiling = cli(["--state", statePath, "--manifest", manifestPath, "--out", join(dir, "ceiling"), "--planned-usdc-units", "5000000", "--planned-wnear-units", "1250000000000000000000000"]);
+      expect(ceiling.status).toBe(0);
+      const atCeiling = verifyRehearsal(readFileSync((JSON.parse(ceiling.stdout) as { path: string }).path, "utf8"));
+      expect(atCeiling).toMatchObject({ model_called: false, verdict: { kind: "no-action", reason: "balanced" } });
+      expect(atCeiling.allocation?.usdc_share_bps).toBe("5188");
+      // Leaving the deposit out is refused instead of falling back to the ceiling.
+      const omitted = cli(["--state", statePath, "--manifest", manifestPath, "--out", join(dir, "omitted")]);
+      expect(omitted.status).toBe(2);
+      expect(omitted.stderr).toMatch(/planned deposit is required/);
     }));
 });
 
@@ -530,7 +593,15 @@ describe("no transaction path", () => {
       delete env.NEAR_AI_API_KEY;
       delete env.ANTHROPIC_API_KEY;
       const cli = (args: string[]) => spawnSync(join(TOOLS, "node_modules/.bin/tsx"), ["src/agent/rehearse.ts", ...args], { cwd: TOOLS, env, encoding: "utf8" });
-      const r = cli(["--state", state, "--manifest", manifest, "--out", out, "--stub-answer", proposeJson("usdc", 100n * USDC)]);
+      const planned = ["--planned-usdc-units", (900n * USDC).toString(), "--planned-wnear-units", (200n * WNEAR).toString()];
+      // Without the planned deposit, or above the manifest's ceiling, the CLI refuses before anything else.
+      const missing = cli(["--state", state, "--manifest", manifest, "--out", join(dir, "missing")]);
+      expect({ status: missing.status, written: existsSync(join(dir, "missing")) }).toEqual({ status: 2, written: false });
+      expect(missing.stderr).toMatch(/planned deposit is required/);
+      const above = cli(["--state", state, "--manifest", manifest, "--out", join(dir, "above"), "--planned-usdc-units", "1", "--planned-wnear-units", (250n * WNEAR + 1n).toString()]);
+      expect(above.status).toBe(2);
+      expect(above.stderr).toMatch(/planned wnear \d+ is above the manifest's owner_inventory_max/);
+      const r = cli(["--state", state, "--manifest", manifest, "--out", out, ...planned, "--stub-answer", proposeJson("usdc", 100n * USDC)]);
       expect(r.stderr).toBe("");
       expect(r.status).toBe(0);
       const summary = JSON.parse(r.stdout) as { path: string; integrity_sha256: string; qualifies_live_provider: boolean; transaction: string };
@@ -540,15 +611,15 @@ describe("no transaction path", () => {
       expect(rec.verdict.kind).toBe("proposal");
       expect(rec.sale_budget).toEqual(saleBudget([100n * USDC, 300n * USDC], [WNEAR, WNEAR]));
       expect(rec.sale_budget_source).toMatch(/nothing sold yet/);
-      expect(rec.inventory.planned.units).toEqual(caps);
-      expect(rec.inventory.planned.source).toMatch(/budget\.owner_inventory_max/);
-      expect(rehearsalInput(stateOnly, { path: manifest, text: readFileSync(manifest, "utf8") }).sale_budget).toEqual(rec.sale_budget);
-      const refused = cli(["--state", state, "--manifest", manifest, "--out", join(dir, "refused"), "--provider", "near-ai", "--model", MODEL, "--timeout-ms", "30000", "--max-tokens", "500"]);
+      expect(rec.inventory.planned.units).toEqual({ usdc: (900n * USDC).toString(), wnear: (200n * WNEAR).toString() });
+      expect(rec.inventory.planned.source).toMatch(/given on the command line/);
+      expect(rehearsalInput(stateOnly, { path: manifest, text: readFileSync(manifest, "utf8") }, { units: rec.inventory.planned.units, source: "x" }).sale_budget).toEqual(rec.sale_budget);
+      const refused = cli(["--state", state, "--manifest", manifest, "--out", join(dir, "refused"), ...planned, "--provider", "near-ai", "--model", MODEL, "--timeout-ms", "30000", "--max-tokens", "500"]);
       expect(refused.status).toBe(2);
       expect(refused.stderr).toMatch(/paid inference/);
       expect(existsSync(join(dir, "refused"))).toBe(false);
       expect(readdirSync(out).length).toBe(1);
-      expect(() => rehearsalInput(stateOnly, null)).toThrow(/planned inventory is required/);
+      expect(() => rehearsalInput(stateOnly, null)).toThrow(/planned deposit is required/);
     }));
 });
 

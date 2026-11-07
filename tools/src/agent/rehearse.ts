@@ -3,15 +3,20 @@
 // refuses unless the owner's approval is given explicitly with --approve-paid-inference and --approval-reference.
 //
 //   npx tsx src/agent/rehearse.ts --state <state.json> [--manifest <manifest.json>] [--out <dir>]
+//       [--planned-usdc-units <n> --planned-wnear-units <n> [--planned-source <text>]]
 //       [--provider stub [--stub-answer <decision JSON text>]]
 //       [--provider near-ai --model <id> --timeout-ms <n> --max-tokens <n> --approve-paid-inference --approval-reference <text>]
 //
 // state.json holds `observations`, `decimals` and `notes` (a live decision recording has all three; before the first
 // grant, src/agent/observe.ts writes them from read-only RPC), plus optional `sale_budget`, `sale_budget_source`,
-// `planned_inventory` and `planned_grant`. Without them, --manifest supplies the planned inventory
-// (budget.owner_inventory_max), the sale budget (max_order_sell; max_total_sell with nothing sold yet) and, only when
-// the observations hold no grant, the planned grant (the policy of the manifest's grant step, epoch 1 assumed: a
-// fresh mandate's first grant).
+// `planned_inventory` and `planned_grant`. The planned inventory is the deposit the setup record approves (for
+// the live-agent template, 5 USDC + 0.90 wNEAR in base units, the wNEAR units derived on setup day): give it with
+// --planned-usdc-units and --planned-wnear-units, or as planned_inventory in the state file. It is never taken from
+// the manifest's budget.owner_inventory_max, which is a ceiling, not the deposit (at the ceiling the template's
+// inventory is balanced and the model would not be called); with --manifest, a planned inventory above that ceiling
+// is refused. --manifest also supplies the sale budget (max_order_sell; max_total_sell with nothing sold yet) and,
+// only when the observations hold no grant, the planned grant (the policy of the manifest's grant step, epoch 1
+// assumed: a fresh mandate's first grant).
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -52,7 +57,13 @@ function grantStepPolicy(caps: z.infer<typeof ManifestCaps>): unknown {
   return caps.steps?.find((step) => step.kind === "grant")?.policy;
 }
 
-export function rehearsalInput(state: unknown, manifest: { path: string; text: string } | null): RehearsalInput {
+/** The planned deposit given on the command line (base units, from the approved setup record). */
+export interface PlannedDeposit {
+  units: { usdc: string; wnear: string };
+  source: string;
+}
+
+export function rehearsalInput(state: unknown, manifest: { path: string; text: string } | null, deposit: PlannedDeposit | null = null): RehearsalInput {
   const s = StateFile.parse(state);
   const caps = manifest === null ? null : ManifestCaps.parse(JSON.parse(manifest.text));
   const manifestSha = manifest === null ? null : sha256Hex(manifest.text);
@@ -60,8 +71,20 @@ export function rehearsalInput(state: unknown, manifest: { path: string; text: s
     throw new RehearsalRefusal(`rehearsal: the state was observed for manifest ${s.observed_by.manifest_sha256}, not ${manifestSha ?? "(no --manifest)"}; observe again with the manifest you rehearse with`);
   }
   const label = manifest === null ? "" : `manifest ${manifest.path} (sha256 ${sha256Hex(manifest.text)})`;
-  const planned = s.planned_inventory ?? (caps === null ? undefined : { source: `${label} budget.owner_inventory_max`, units: caps.budget.owner_inventory_max });
-  if (planned === undefined) throw new RehearsalRefusal("rehearsal: planned inventory is required (planned_inventory in the state file, or --manifest)");
+  if (s.planned_inventory !== undefined && deposit !== null) throw new RehearsalRefusal("rehearsal: the planned inventory is given twice (state file and command line); give it once");
+  const planned = s.planned_inventory ?? (deposit === null ? undefined : { source: deposit.source, units: PerAsset.parse(deposit.units) });
+  if (planned === undefined) {
+    throw new RehearsalRefusal(
+      "rehearsal: the planned deposit is required: --planned-usdc-units and --planned-wnear-units from the approved setup record (or planned_inventory in the state file). The manifest's owner_inventory_max is a ceiling, not the deposit.",
+    );
+  }
+  if (caps !== null) {
+    for (const a of ["usdc", "wnear"] as const) {
+      if (BigInt(planned.units[a]) > BigInt(caps.budget.owner_inventory_max[a])) {
+        throw new RehearsalRefusal(`rehearsal: planned ${a} ${planned.units[a]} is above the manifest's owner_inventory_max ${caps.budget.owner_inventory_max[a]}`);
+      }
+    }
+  }
   let budget: SaleBudget | null = s.sale_budget ?? null;
   let budgetSource = s.sale_budget_source ?? (s.sale_budget === undefined ? "none" : "state file");
   if (s.sale_budget === undefined && caps !== null) {
@@ -97,6 +120,17 @@ interface Args {
   "approval-reference"?: string | undefined;
 }
 
+/** The --planned-* flags: both units or neither. */
+export function plannedDeposit(values: { "planned-usdc-units"?: string | undefined; "planned-wnear-units"?: string | undefined; "planned-source"?: string | undefined }): PlannedDeposit | null {
+  const usdc = values["planned-usdc-units"];
+  const wnear = values["planned-wnear-units"];
+  if (usdc === undefined && wnear === undefined) return null;
+  if (usdc === undefined || wnear === undefined) throw new RehearsalRefusal("rehearsal: give both --planned-usdc-units and --planned-wnear-units");
+  const units = PerAsset.safeParse({ usdc, wnear });
+  if (!units.success) throw new RehearsalRefusal("rehearsal: planned units must be non-negative integers in base units (USDC 6 decimals, wNEAR 24)");
+  return { units: units.data, source: values["planned-source"] ?? "planned deposit given on the command line (operator-declared; check it against the approved setup record)" };
+}
+
 /** Builds the provider; a real provider is constructed (and its key read) only with explicit approval. */
 export function rehearsalProvider(args: Args, env: NodeJS.ProcessEnv): { rp: RehearsalProvider; approval: PaidInferenceApproval } {
   const kind = args.provider ?? "stub";
@@ -128,12 +162,16 @@ async function main(): Promise<void> {
       "max-tokens": { type: "string" },
       "approve-paid-inference": { type: "boolean" },
       "approval-reference": { type: "string" },
+      "planned-usdc-units": { type: "string" },
+      "planned-wnear-units": { type: "string" },
+      "planned-source": { type: "string" },
     },
   });
-  const { rp, approval } = rehearsalProvider(values, process.env);
+  // Inputs are checked before the provider is built, so a refused input never reads a provider key.
   const statePath = z.string().min(1).parse(values.state);
   const manifest = values.manifest === undefined ? null : { path: values.manifest, text: readFileSync(values.manifest, "utf8") };
-  const input = rehearsalInput(JSON.parse(readFileSync(statePath, "utf8")), manifest);
+  const input = rehearsalInput(JSON.parse(readFileSync(statePath, "utf8")), manifest, plannedDeposit(values));
+  const { rp, approval } = rehearsalProvider(values, process.env);
   const rec = await rehearse(input, rp, approval);
   const dir = resolve(values.out ?? join(import.meta.dirname, "../../../out/agent-rehearsal"));
   mkdirSync(dir, { recursive: true });

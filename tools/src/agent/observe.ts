@@ -47,7 +47,8 @@ export function plannedFromManifest(m: ObserverManifest): { policy: Policy; note
   const grant = m.steps.find((s) => s.kind === "grant");
   if (grant === undefined) throw new Error("observe: the manifest has no grant step to plan from");
   const policy = Policy.strict().parse(grant.policy);
-  const propose = m.steps.find((s) => s.kind === "propose" && z.object({ source: z.object({ from: z.literal("near-ai") }).loose() }).loose().safeParse(s).success);
+  // The live model step's source, as the runner's manifest schema has it: { from: "model", provider: "near-ai", notes }.
+  const propose = m.steps.find((s) => s.kind === "propose" && z.object({ source: z.object({ from: z.literal("model"), provider: z.literal("near-ai") }).loose() }).loose().safeParse(s).success);
   const notes = propose === undefined ? [] : z.array(z.string()).parse((propose.source as { notes?: unknown }).notes);
   return { policy, notes };
 }

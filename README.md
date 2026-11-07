@@ -379,9 +379,12 @@ Optional live agent, tested in sandbox only with synthetic provider answers; it 
 cd tools
 npx tsx src/agent/observe.ts --manifest <approved manifest> --out ../out/rehearsal-state.json
 npx tsx src/agent/rehearse.ts --state ../out/rehearsal-state.json --manifest <approved manifest> \
+  --planned-usdc-units <setup record's USDC deposit> --planned-wnear-units <setup record's wNEAR deposit> \
   --provider near-ai --model <model id> --timeout-ms <ms> --max-tokens <n> \
   --approve-paid-inference --approval-reference "<owner approval>"
 ```
+
+The planned deposit is the setup record's, in base units: for the live-agent template, 5 USDC + 0.90 wNEAR is `5000000` and `900000000000000000000000`, with the wNEAR units recomputed on setup day. The rehearsal refuses to run without it, and refuses a deposit above the manifest's `owner_inventory_max`. That maximum, 5 USDC + 1.25 wNEAR, is a ceiling, not the deposit: at the 2026-11-06 prices it is 51.9% USDC, inside the no-call band, so the model would not be called.
 
 ## Known limits
 
