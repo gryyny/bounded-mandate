@@ -2,12 +2,20 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/4fec11b",
+      "revision": "4fec11b7a575079b488670f3ed3a36092a236dd2",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance with 34 required cases (CONSOLE.wallet-sandbox added); demo bound to the acceptance run; no machine-local path in any report command",
+      "run": "evidence/4fec11b/run.json",
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1447 s cold (TypeScript 542/542, Rust 196 passed), acceptance run 20261107T111603772Z-24c65d876a11; make demo exit 0 in 62 s, 59/59 (setup 15.8 s, story 20.2 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42367428212: make test certified in 2014 s (acceptance run 20261107T112045344Z-82a1f9a9c4b4), make demo 73 s, 59/59 (setup 14.4 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 781793eb..., walkthrough 179.7 s sha256 1b38ee59...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched their sha256, loaded and answered, 0 CSP violations (console/wallet-adapter-check.json; network-dependent, outside make test, no account, nothing signed). An earlier fresh clone at 98cc5fe failed make test (exit 2 after 1444 s: license check, wallet fixture not named in NOTICE; fixed in 4fec11b); not certified."
+    },
+    {
       "path": "evidence/f5e34f9",
       "revision": "f5e34f908dc0c3778bb576a1434075141208b56a",
-      "status": "certified",
+      "status": "superseded",
       "rules": "gate-report/2 acceptance with 33 required cases; demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/f5e34f9/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1452 s cold (TypeScript 528/528, Rust 196 passed), acceptance run 20261106T201821422Z-4d1bf9e7552e; make demo exit 0 in 60 s, 59/59 (setup 15.9 s, story 20.4 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42287182833: make test certified in 1873 s (acceptance run 20261106T202234672Z-79591c398dfb), make demo 64 s, 59/59 (setup 13.2 s, story 20.0 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 3b830e1b..., walkthrough 179.7 s sha256 e2f262f4...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. An earlier fresh-clone attempt at 3418307 failed (make test exit 2 after 1094 s: T5 test race, fixed in f5e34f9); not certified."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1452 s cold (TypeScript 528/528, Rust 196 passed), acceptance run 20261106T201821422Z-4d1bf9e7552e; make demo exit 0 in 60 s, 59/59 (setup 15.9 s, story 20.4 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42287182833: make test certified in 1873 s (acceptance run 20261106T202234672Z-79591c398dfb), make demo 64 s, 59/59 (setup 13.2 s, story 20.0 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 3b830e1b..., walkthrough 179.7 s sha256 e2f262f4...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. An earlier fresh-clone attempt at 3418307 failed (make test exit 2 after 1094 s: T5 test race, fixed in f5e34f9); not certified. Superseded on 7 November 2026 by 4fec11b, which adds the external-wallet connector, the pre-grant rehearsal and the corrected qualification rule."
     },
     {
       "path": "evidence/0e915a2",

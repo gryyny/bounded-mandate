@@ -1,0 +1,155 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "CONSOLE",
+  "case": "wallet-sandbox",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261107T111603772Z-24c65d876a11",
+  "source": {
+    "revision": "4fec11b7a575079b488670f3ed3a36092a236dd2",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794051359,
+  "data": {
+    "checks": [
+      {
+        "name": "in-page-wallet-list",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "connect-through-near-connect",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wallet-signs-runner-intents",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wallet-reject-sends-nothing",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wallet-closed-keeps-pending",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "runner-imports-wallet-hashes",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "reload-while-wallet-asks",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "framed-console-refuses-wallet",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "adapter-pins-enforced",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wallet-on-other-account-disabled",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "wallet": "SANDBOX TEST WALLET (not a wallet) through NEAR Connect 0.11.4 (a test double, not a wallet provider)",
+    "browser": "chromium headless (playwright)",
+    "runner": {
+      "exit_code": 0,
+      "message": "completed"
+    },
+    "handoffs": [
+      {
+        "kind": "revoke_external",
+        "sha": "7423f6ee394523fd9959f1858de279f30c962a7a8e19a0ed1a5ed6d4aae50f84",
+        "tx_hash": "3VQmW7Nkftm1LM8W2y57QaoaWGv8N98DxJsrd6kdNDMF"
+      },
+      {
+        "kind": "recover_external",
+        "sha": "c62d3601c052cd74e94c8f1a7cdd7033e1217aec641e4c7d29e3796226cb80c9",
+        "tx_hash": "2XYFciJXcTmsgWbZv2922aPdrJZVxZLx4A4JTUKScE7d"
+      },
+      {
+        "kind": "recover_external",
+        "sha": "ed970a3f16d3b13eec32ff20b73d8fe82c2d65a44f425aff5c423afbade42e66",
+        "tx_hash": "12WK9JH3uhk4L5AXVLNuet5DsJEJiFwtU6YUWXGDoH3x"
+      },
+      {
+        "kind": "withdraw_external",
+        "sha": "2c8b228b499bd9bfad7cc74427ec1eb9dd9a75215ef0122a75f268833053a204",
+        "tx_hash": "BXhUG46jHsYhmNksMjEYPVdb8nfVbjQ8VHzTrwEALbC"
+      },
+      {
+        "kind": "withdraw_external",
+        "sha": "6509d2563b9468ffc34995bbdc3caf2b0b57d1a4ed4accd2f20060e8f913948d",
+        "tx_hash": "BUAk7WxYxk12nHf7Lj8soA7YhggfSPQMTViZgcEEPpu2"
+      }
+    ],
+    "rejected_in_wallet": [
+      {
+        "kind": "recover_external",
+        "nonce_unchanged": true,
+        "wallet_requests": 0
+      }
+    ],
+    "sign_requests": [
+      {
+        "at": 1794051346492,
+        "via": "wallet",
+        "intent_sha256": "80be8342639aacdabc5a2402ac067e4ac7b1e95f33ff4687c42018d3fccd8a32",
+        "status": "submitted",
+        "tx_hash": "3VQmW7Nkftm1LM8W2y57QaoaWGv8N98DxJsrd6kdNDMF"
+      },
+      {
+        "at": 1794051348458,
+        "via": "wallet",
+        "intent_sha256": "1dd6a495cbeb04ff1e7c6be2cf9c8178e7664d73dd01cff35cf08288abe1591f",
+        "status": "submitted",
+        "tx_hash": "2XYFciJXcTmsgWbZv2922aPdrJZVxZLx4A4JTUKScE7d"
+      },
+      {
+        "at": 1794051350609,
+        "via": "wallet",
+        "intent_sha256": "bfe32130f93410ab7d8355ed38a7de228b3c9d5beb7cc90710ab3dcdba770b20",
+        "status": "submitted",
+        "tx_hash": "12WK9JH3uhk4L5AXVLNuet5DsJEJiFwtU6YUWXGDoH3x"
+      },
+      {
+        "at": 1794051353059,
+        "via": "wallet",
+        "intent_sha256": "b0cabae9292734904fd23f65f9a17d3d01cb8d6bfd2e04b7bf2e5d7fb8eb56e1",
+        "status": "submitted",
+        "tx_hash": "BXhUG46jHsYhmNksMjEYPVdb8nfVbjQ8VHzTrwEALbC"
+      },
+      {
+        "at": 1794051354609,
+        "via": "wallet",
+        "intent_sha256": "1407041b335d9b4e5c3bc2f74817a260a733fb44ad97d9a8f87b952a9fd6225b",
+        "status": "submitted",
+        "tx_hash": "BUAk7WxYxk12nHf7Lj8soA7YhggfSPQMTViZgcEEPpu2"
+      }
+    ],
+    "page_requests_to_other_hosts": []
+  }
+}
