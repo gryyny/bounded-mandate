@@ -1,6 +1,7 @@
 // Renders the static owner console: one self-contained HTML file with no backend. Read-only for every visitor; the
 // owner's revoke, recover and withdraw controls enable only for the contract's owner on the expected network and
-// deployment, and are signed outside the page. Its single inline script is client.ts, pinned by hash in the CSP.
+// deployment, and are signed outside the page. Its inline scripts are client.ts and, when the page offers external
+// wallets, the pinned NEAR Connect library (connector.ts); both are pinned by hash in the CSP.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,7 +12,8 @@ import { STYLES } from "../page/styles.js";
 import { MAINNET_GENESIS_HASH } from "../page/verify.js";
 import { asObject, asString, canonicalJson, chainOutcome, receiptViews, rpcCall, rpcErrorText, sha256Hex, statusKind } from "../page/verify-client.js";
 import { Evidence } from "../types.js";
-import { CONSOLE_FUNCTIONS, type ActionKind, type ConsoleData, type NetworkProfile } from "./client.js";
+import { CONSOLE_FUNCTIONS, type ActionKind, type ConsoleData, type NetworkProfile, type WalletProfile } from "./client.js";
+import { nearConnectBundle, pinnedWallets, scriptHash, testWalletManifest } from "./connector.js";
 import { recordedSection } from "./recorded.js";
 
 /** Gas per owner action (TGas). revoke/recover match the live manifest template; withdraw/register are provisional. */
@@ -63,6 +65,11 @@ export interface ConsoleOptions {
   profiles?: NetworkProfile[];
   /** Base URL of the local sandbox test signer ("" = this page's own origin), or null for none. */
   localSigner?: string | null;
+  /**
+   * External wallets through NEAR Connect (default true): the pinned list on mainnet profiles and, on a page served
+   * by the local test signer, the labelled sandbox test wallet on sandbox profiles.
+   */
+  wallets?: boolean;
   pollMs?: number;
   timeoutMs?: number;
 }
@@ -78,6 +85,8 @@ install({
   doc: document,
   rpcFetch: (u, i) => fetch(u, i),
   localFetch: (u, i) => fetch(u, i),
+  connector: window.__nearConnect ? (o) => new window.__nearConnect.NearConnector(o) : null,
+  framed: (() => { try { return window.top !== window.self; } catch { return true; } })(),
   store: __store,
   now: () => new Date().toISOString(),
   later: (f, ms) => { setTimeout(f, ms); },
@@ -89,6 +98,25 @@ install({
 }
 
 export const consoleScriptHash = (script: string): string => `sha256-${createHash("sha256").update(script, "utf8").digest("base64")}`;
+
+/** Wallet lists by profile id: pinned wallets on mainnet, the sandbox test wallet only where a test signer serves it. */
+export function walletProfiles(profiles: NetworkProfile[], localSigner: string | null): Record<string, WalletProfile> {
+  const pinned = pinnedWallets();
+  const out: Record<string, WalletProfile> = {};
+  for (const p of profiles) {
+    if (p.kind === "mainnet") {
+      out[p.id] = {
+        network: "mainnet",
+        manifest: { version: pinned.library.version, wallets: pinned.wallets.map((w) => w.manifest) },
+        pins: Object.fromEntries(pinned.wallets.map((w) => [w.manifest.id, { commit: w.pin.commit, age_rule_met: w.pin.age_rule_met }])),
+      };
+    } else if (localSigner !== null) {
+      const test = testWalletManifest();
+      out[p.id] = { network: "testnet", manifest: { version: "sandbox", wallets: [test] }, pins: { [test.id]: null } };
+    }
+  }
+  return out;
+}
 
 const CONSOLE_STYLES = `
 .mode.live { color: var(--pass); border: 1px solid currentColor; }
@@ -184,10 +212,16 @@ function liveSection(data: ConsoleData): string {
 
 function ownerSection(data: ConsoleData): string {
   const local = data.local_signer !== null;
+  const wallets = data.wallets;
+  const walletNote =
+    wallets === null
+      ? ""
+      : `<p><span class="mode label">NEAR Connect ${escapeHtml(wallets.library_version)}</span> External wallets connect through NEAR Connect. Only the wallets listed in this page are offered (no remote wallet list); on mainnet each wallet's adapter is pinned to a commit and runs in a sandboxed frame. The wallet signs and broadcasts; the page holds no key and checks every returned transaction on chain against the exact preview. ${local ? "On a local sandbox the only wallet offered is the labelled SANDBOX TEST WALLET, a test double that asks the local test signer to sign." : "Compatibility with a specific wallet is established only when its owner connects it (see About)."}</p>`;
   return `<p>Revoke, recover and withdraw are enabled only when all three hold: the connected signer is the contract's <code>owner_id</code>, the RPC's chain is the chosen network (genesis check), and the mandate account runs the expected code. Each action is shown exactly before anything is signed, and is signed outside this page.</p>
 <div class="panel">
 <h3>1 · Signer</h3>
-<p class="controls-row"><label for="signer-kind">Signing adapter</label><select id="signer-kind">${local ? `<option value="local">Local sandbox test signer</option>` : ""}<option value="manual">Manual near CLI handoff</option></select><input id="signer-account" placeholder="owner account id" spellcheck="false" autocomplete="off"><button id="signer-connect" type="button">Connect</button></p>
+<p class="controls-row"><label for="signer-kind">Signing adapter</label><select id="signer-kind">${wallets === null ? "" : `<option value="wallet">External wallet (NEAR Connect)</option>`}${local ? `<option value="local">Local sandbox test signer</option>` : ""}<option value="manual">Manual near CLI handoff</option></select><input id="signer-account" placeholder="owner account id" spellcheck="false" autocomplete="off"><button id="signer-connect" type="button">Connect</button></p>
+${walletNote}
 ${local ? `<p><span class="mode test-signer">test signer</span> The local sandbox test signer is a Node process on this machine that holds a sandbox owner key and refuses any chain but its own sandbox. It stands in for a wallet in tests; it is not a wallet and proves no wallet compatibility.</p>` : ""}
 <p id="signer-status" class="source" role="status">Not connected.</p>
 </div>
@@ -210,8 +244,8 @@ ${local ? `<p><span class="mode test-signer">test signer</span> The local sandbo
 const ABOUT = `<ul class="about">
 <li><strong>No backend, no keys.</strong> This page is one static file. It holds no private key and no model credential; it reads public RPC state and hands transactions to a signer outside the page.</li>
 <li><strong>Two sources, never mixed.</strong> “Live” values come from the RPC you chose, after its genesis check, at one final block. “Recorded” values come from a sandbox run's evidence file. Neither is ever substituted for the other.</li>
-<li><strong>Signing adapters.</strong> The local sandbox test signer is a local sandbox adapter, not a wallet. It is offered only when this page is served by <code>tools/src/console/serve.ts</code>, signs with a sandbox key in a Node process on this machine, refuses other chains and signs only the owner calls this console offers on the served deployment. The manual handoff shows the exact <code>near</code> CLI command and tracks the hash you paste.</li>
-<li><strong>External wallets are untested.</strong> No wallet provider (browser extension, mobile or hardware wallet) has been exercised with this console. Compatibility with any external wallet is an untested, owner-assisted gate; nothing here claims it.</li>
+<li><strong>Signing adapters.</strong> External wallets connect through NEAR Connect (pinned library, in-page wallet list, adapters pinned by commit; see <code>fixtures/wallets/near-connect.json</code>). The local sandbox test signer is a local sandbox adapter, not a wallet. It is offered only when this page is served by <code>tools/src/console/serve.ts</code>, signs with a sandbox key in a Node process on this machine, refuses other chains and signs only the owner calls this console offers on the served deployment. The manual handoff shows the exact <code>near</code> CLI command and tracks the hash you paste.</li>
+<li><strong>Which wallets are verified.</strong> The NEAR Connect path (wallet list, sandboxed adapter, signature request, cancel, hash import) is tested end to end in a local sandbox with the labelled SANDBOX TEST WALLET only. No real wallet provider has signed through this console yet: compatibility with the owner's actual wallet is an owner-assisted check, and nothing here claims it.</li>
 <li><strong>The runner verifies.</strong> The handoff record (intent sha256, transaction hash, signer) is imported by the runner, which checks the chain, signer, key, receiver, every action and argument, the receipt tree and the end state. The console's own final-state display is a convenience, not that verification.</li>
 <li><strong>Never resubmitted.</strong> A cancelled signature or a rejected transaction leaves nothing pending. A reload during a pending action resumes polling only.</li>
 </ul>`;
@@ -221,20 +255,30 @@ export function renderConsoleHtml(evidence: unknown, opts: ConsoleOptions = {}):
   const parsed = Evidence.safeParse(evidence);
   if (!parsed.success) throw new Error(`evidence failed schema validation:\n${z.prettifyError(parsed.error)}`);
   const ev = parsed.data;
+  const profiles = opts.profiles ?? [mainnetProfile()];
+  if (profiles.length === 0) throw new Error("the console needs at least one network profile");
+  const localSigner = opts.localSigner ?? null;
+  const script = consoleScript();
+  const walletsByProfile = opts.wallets === false ? {} : walletProfiles(profiles, localSigner);
+  const bundle = Object.keys(walletsByProfile).length === 0 ? null : nearConnectBundle();
+  // NEAR Connect runs each wallet adapter in a sandboxed srcdoc iframe, which inherits this page's CSP; its inline
+  // scripts carry this nonce. It is fixed per build (the page is static), derived from the two pinned scripts, and
+  // hex because NEAR Connect drops every nonce character outside [A-Za-z0-9+/=].
+  const nonce = bundle === null ? null : createHash("sha256").update(`${script}\n${bundle}`).digest("hex").slice(0, 32);
   const data: ConsoleData = {
-    profiles: opts.profiles ?? [mainnetProfile()],
-    local_signer: opts.localSigner ?? null,
+    profiles,
+    local_signer: localSigner,
     timeout_ms: opts.timeoutMs ?? 15_000,
     poll_ms: opts.pollMs ?? 1_000,
+    wallets: bundle === null || nonce === null ? null : { library_version: pinnedWallets().library.version, nonce, profiles: walletsByProfile },
   };
-  if (data.profiles.length === 0) throw new Error("the console needs at least one network profile");
-  const script = consoleScript();
+  const scriptSrc = [`'${consoleScriptHash(script)}'`, ...(bundle === null || nonce === null ? [] : [`'${scriptHash(bundle)}'`, `'nonce-${nonce}'`])].join(" ");
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src '${consoleScriptHash(script)}'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:${bundle === null ? "" : " https:"}; script-src ${scriptSrc}; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <title>Bounded mandate — owner console</title>
@@ -257,9 +301,9 @@ ${section("§1", "live", "live", "Live chain state", liveSection(data))}
 ${section("§2", "owner", "owner", "Owner controls", ownerSection(data))}
 ${section("§3", "recorded", "recorded", "Recorded evidence (sandbox)", recordedSection(ev))}
 ${section("§4", "about", "about", "About this console", ABOUT)}
-<footer>Generated by tools/src/console/render.ts from schema-validated evidence (revision ${escapeHtml(ev.source.product_commit.slice(0, 12))}). Self-contained: no external files. Its one inline script makes network requests only when you press a button, or to resume polling an action already pending in this browser.</footer>
+<footer>Generated by tools/src/console/render.ts from schema-validated evidence (revision ${escapeHtml(ev.source.product_commit.slice(0, 12))}). Self-contained: no external files. Its inline scripts make network requests only when you press a button, or to resume polling an action already pending in this browser; a wallet's pinned adapter is fetched only when you choose that wallet.</footer>
 </main>
-<script>${script}</script>
+${bundle === null ? "" : `<script>${bundle}</script>\n`}<script>${script}</script>
 </body>
 </html>
 `;

@@ -5,14 +5,20 @@
 // requests only from its own origin and Host, refuses to be framed, and signs only the owner calls the console offers,
 // each bound to its receiver in the served deployment (mandate, verifier, the mandate's two token contracts) and to
 // this signer's own account as beneficiary. It is not a wallet and its use proves nothing about any external wallet.
-import { createHash } from "node:crypto";
+//
+// It also serves the adapter of the labelled SANDBOX TEST WALLET (connector.ts), which the console loads through NEAR
+// Connect exactly as it loads a real wallet's. NEAR Connect runs adapters in sandboxed frames with an opaque origin,
+// so the adapter's sign requests arrive with Origin "null"; they are accepted only with this process's random token,
+// which only this origin's page can read (the adapter is served same-origin only), and pass the same checks.
+import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { JsonRpcProvider, actions, baseEncode, encodeTransaction, type KeyPair } from "near-api-js";
 import { z } from "zod";
 import { NearClient } from "../near/client.js";
 import { MAINNET_GENESIS_HASH } from "../page/verify.js";
-import { signableOf, type Signable } from "./intent.js";
+import { TEST_WALLET_EXECUTOR_PATH, testWalletExecutor } from "./connector.js";
+import { intentSha256, signableOf, type Signable } from "./intent.js";
 
 export const TEST_SIGNER_LABEL = "LOCAL SANDBOX TEST SIGNER (not a wallet)";
 
@@ -52,15 +58,38 @@ export interface SignerOptions {
 
 export interface SignRequestLog {
   at: number;
+  /** "console": the page's own request (local adapter); "wallet": the sandbox test wallet's adapter via NEAR Connect. */
+  via: "console" | "wallet";
   intent_sha256: string | null;
   status: string;
   tx_hash: string | null;
 }
 
-const json = (res: ServerResponse, code: number, body: unknown): void => {
-  res.writeHead(code, { "Content-Type": "application/json", ...SECURITY_HEADERS });
+const json = (res: ServerResponse, code: number, body: unknown, extra: Record<string, string> = {}): void => {
+  res.writeHead(code, { "Content-Type": "application/json", ...SECURITY_HEADERS, ...extra });
   res.end(JSON.stringify(body));
 };
+
+/** CORS for the sandboxed (opaque-origin) wallet adapter frame only. */
+const WALLET_CORS = { "Access-Control-Allow-Origin": "null", "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "content-type, x-test-wallet-token", "Access-Control-Max-Age": "0", Vary: "Origin" };
+
+const WalletRequest = z
+  .object({
+    signerId: z.string().min(2),
+    receiverId: z.string().min(2),
+    network: z.literal("testnet"),
+    actions: z
+      .array(
+        z
+          .object({
+            type: z.literal("FunctionCall"),
+            params: z.object({ methodName: z.string().min(1), args: z.record(z.string(), z.unknown()), gas: z.string().regex(DECIMAL), deposit: z.string().regex(DECIMAL) }).strict(),
+          })
+          .strict(),
+      )
+      .length(1),
+  })
+  .loose();
 
 async function readBody(req: IncomingMessage): Promise<string> {
   let size = 0;
@@ -79,6 +108,8 @@ export class LocalSandboxSigner {
   readonly requests: SignRequestLog[] = [];
   private readonly signed = new Map<string, { tx_hash: string; public_key: string }>();
   private readonly client: NearClient;
+  /** Authenticates the sandbox test wallet's adapter; one per process, readable only by this origin's page. */
+  private readonly walletToken = randomBytes(32).toString("hex");
 
   private constructor(
     private readonly opts: SignerOptions,
@@ -172,11 +203,34 @@ export class LocalSandboxSigner {
       json(res, 200, await this.sign(req));
       return;
     }
+    if (req.method === "GET" && url.pathname === TEST_WALLET_EXECUTOR_PATH) {
+      // Fetched by NEAR Connect from this origin's page; never served to another site (no cross-site script include).
+      if (req.headers["sec-fetch-site"] !== "same-origin") {
+        json(res, 403, { error: "the test wallet adapter is served to this origin only" });
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cross-Origin-Resource-Policy": "same-origin", ...SECURITY_HEADERS });
+      res.end(testWalletExecutor(this.origin, this.opts.accountId, this.walletToken));
+      return;
+    }
+    if (url.pathname === "/wallet/sign" && req.method === "OPTIONS") {
+      if (req.headers.origin !== "null") {
+        json(res, 403, { error: "wallet requests come only from the sandboxed adapter frame" });
+        return;
+      }
+      res.writeHead(204, { ...SECURITY_HEADERS, ...WALLET_CORS });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/wallet/sign" && req.method === "POST") {
+      json(res, 200, await this.walletSign(req), WALLET_CORS);
+      return;
+    }
     json(res, 404, { error: "not found" });
   }
 
   private async sign(req: IncomingMessage): Promise<Record<string, unknown>> {
-    const log: SignRequestLog = { at: Date.now(), intent_sha256: null, status: "refused", tx_hash: null };
+    const log: SignRequestLog = { at: Date.now(), via: "console", intent_sha256: null, status: "refused", tx_hash: null };
     this.requests.push(log);
     const refuse = (error: string) => ({ status: "refused", error });
     if (req.headers.origin !== this.origin) return refuse(`requests are accepted only from ${this.origin}`);
@@ -192,6 +246,40 @@ export class LocalSandboxSigner {
     const sha = intent.sha256;
     log.intent_sha256 = sha;
     if (body.intent_sha256 !== sha) return refuse("intent_sha256 does not match the intent");
+    return this.signChecked(intent, log);
+  }
+
+  /** The sandbox test wallet's request: NEAR Connect's signAndSendTransaction parameters, one function call. */
+  private async walletSign(req: IncomingMessage): Promise<Record<string, unknown>> {
+    const log: SignRequestLog = { at: Date.now(), via: "wallet", intent_sha256: null, status: "refused", tx_hash: null };
+    this.requests.push(log);
+    const refuse = (error: string) => ({ status: "refused", error });
+    if (req.headers.origin !== "null") return refuse("wallet requests come only from the sandboxed adapter frame");
+    if (req.headers["x-test-wallet-token"] !== this.walletToken) return refuse("missing or wrong test wallet token");
+    if (req.headers["content-type"]?.startsWith("application/json") !== true) return refuse("content type must be application/json");
+    let parsed: z.infer<typeof WalletRequest>;
+    try {
+      parsed = WalletRequest.parse(JSON.parse(await readBody(req)));
+    } catch (e) {
+      return refuse(`unreadable wallet request: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}`);
+    }
+    const intent: Signable = {
+      sha256: intentSha256(parsed),
+      source: "console",
+      network: this.chain,
+      signer_id: parsed.signerId,
+      public_key: null,
+      receiver_id: parsed.receiverId,
+      actions: parsed.actions.map((a) => ({ method: a.params.methodName, args: a.params.args, gas: a.params.gas, deposit: a.params.deposit })),
+    };
+    log.intent_sha256 = intent.sha256;
+    return this.signChecked(intent, log);
+  }
+
+  /** Every check shared by both entry points, then the confirmation, signing and broadcast. */
+  private async signChecked(intent: Signable, log: SignRequestLog): Promise<Record<string, unknown>> {
+    const refuse = (error: string) => ({ status: "refused", error });
+    const sha = intent.sha256;
     const chain = await LocalSandboxSigner.chainOf(this.opts.rpcUrl);
     if (chain.chain_id !== this.chain.chain_id || chain.genesis_hash !== this.chain.genesis_hash) return refuse("the sandbox RPC now reports another chain");
     if (intent.network.chain_id !== this.chain.chain_id || intent.network.genesis_hash !== this.chain.genesis_hash) return refuse(`the intent is for chain ${intent.network.chain_id}, not this sandbox`);

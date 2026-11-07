@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { ActionKind, ConsoleData, Doc, El, Handoff, Intent, LiveState, NetworkProfile, PendingRecord, SignerInfo } from "../src/console/client.js";
 import { signableOf } from "../src/console/intent.js";
+import { nearConnectBundle, scriptHash } from "../src/console/connector.js";
 import { consoleScript, consoleScriptHash, mainnetProfile, renderConsoleHtml, sandboxProfile } from "../src/console/render.js";
 import { ExternalHandoff, ExternalIntent, intentSha256 } from "../src/live/external.js";
 import type { FetchFn } from "../src/page/verify-client.js";
@@ -117,13 +118,20 @@ const c = client();
 describe("static rendering", () => {
   const html = renderConsoleHtml(storyEvidence(), { profiles: [profile, mainnetProfile()], localSigner: "" });
 
-  it("pins its single inline script by hash in the CSP and holds no key material", () => {
-    const script = /<script>([\s\S]*)<\/script>/.exec(html)?.[1] ?? "";
-    expect(script).toBe(consoleScript());
-    expect(html).toContain(`script-src '${consoleScriptHash(script)}'`);
-    expect(html.match(/<script/g)).toHaveLength(1);
+  it("pins its two inline scripts (the console and the NEAR Connect library) by hash in the CSP and holds no key material", () => {
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
+    expect(scripts).toEqual([nearConnectBundle(), consoleScript()]);
+    const nonce = /'nonce-([0-9a-f]{32})'/.exec(html)?.[1];
+    expect(html).toContain(`script-src '${consoleScriptHash(consoleScript())}' '${scriptHash(nearConnectBundle())}' 'nonce-${nonce ?? ""}'`);
+    // The library's own source mentions "<script" in strings (the adapter frame it builds); outside it, two tags.
+    expect(html.replace(nearConnectBundle(), "").match(/<script/g)).toHaveLength(2);
     expect(html).not.toMatch(/ed25519:[1-9A-HJ-NP-Za-km-z]{60,}/); // no secret key (64-byte) anywhere
     expect(html).not.toMatch(/private_key|secret/i);
+    // Without wallets the page has only the console script, pinned alone, and no nonce.
+    const bare = renderConsoleHtml(storyEvidence(), { profiles: [profile], wallets: false });
+    expect(bare.match(/<script/g)).toHaveLength(1);
+    expect(bare).toContain(`script-src '${consoleScriptHash(consoleScript())}'; connect-src`);
+    expect(bare).not.toContain("nonce-");
   });
 
   it("labels recorded evidence as sandbox and recorded, separately from the live view", () => {
@@ -137,12 +145,13 @@ describe("static rendering", () => {
     expect(live).not.toContain("chain verified");
   });
 
-  it("states that external wallets are untested and the test signer is not a wallet", () => {
-    expect(html).toContain("External wallets are untested.");
+  it("states that no real wallet provider is verified and that the test signer and test wallet are not wallets", () => {
     expect(html).toContain("not a wallet and proves no wallet compatibility");
+    expect(html).toContain("On a local sandbox the only wallet offered is the labelled SANDBOX TEST WALLET, a test double");
     const about = html.slice(html.indexOf('id="about"'));
     expect(about).toContain("The local sandbox test signer is a local sandbox adapter, not a wallet.");
-    expect(about).toContain("External wallets are untested.");
+    expect(about).toContain("tested end to end in a local sandbox with the labelled SANDBOX TEST WALLET only. No real wallet provider has signed through this console yet");
+    expect(about).not.toMatch(/wallet-compatible|compatible with (your|any) wallet/i);
   });
 
   it("offers the local test signer only when served by it", () => {

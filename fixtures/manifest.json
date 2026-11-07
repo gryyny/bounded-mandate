@@ -54,6 +54,13 @@
       "kind": "provenance-record",
       "source": "Read-only mainnet RPC queries recorded by the repository author for sputnik/sputnikdao2-2.3.1.wasm",
       "license": "MIT (this repository)"
+    },
+    "wallets/near-connect.json": {
+      "sha256": "187b32d729deae3b8ef5c5a3b3dd59720bbaf9d0d23510984b4629222e56aece",
+      "kind": "curated-external-metadata",
+      "source": "Wallet entries of the NEAR Connect manifest at hot-dao/near-selector@9cee11c04cfd42f5a420688f808d4aca612b5fde (repository/manifest.json, sha256 recorded inside), with each adapter (executor) URL replaced by the raw file at a pinned commit and that file's sha256; wallets whose adapter is not on a commit-pinnable host, or that need WalletConnect, are listed as excluded with the reason",
+      "license": "MIT (hot-dao/near-selector manifest data); the adapters it points to are fetched at run time from their own repositories and are not part of this repository",
+      "retrieved_at": "2026-11-07"
     }
   }
 }

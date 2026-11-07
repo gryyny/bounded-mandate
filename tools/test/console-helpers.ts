@@ -110,3 +110,20 @@ export async function waitFinal(page: Page, sha: string, timeout = 60_000): Prom
 export async function handoffText(page: Page, sha: string): Promise<string> {
   return (await page.textContent(`pre[data-handoff="${sha}"]`)) ?? "";
 }
+
+/** Connects the owner's "external wallet": NEAR Connect's picker, then the wallet `walletId` in it. */
+export async function connectWallet(page: Page, walletId: string): Promise<string> {
+  await page.selectOption("#signer-kind", "wallet");
+  await page.click("#signer-connect");
+  await page.locator(`.hot-connector-popup .connect-item[data-type="${walletId}"]`).click();
+  await page.locator("#signer-status", { hasText: /^(Connected|Not connected|No external wallet|This page is framed)/ }).waitFor();
+  return (await page.textContent("#signer-status")) ?? "";
+}
+
+/** Answers the SANDBOX TEST WALLET's own prompt, shown by NEAR Connect in the adapter's sandboxed frame. */
+export async function walletPrompt(page: Page, choice: "approve" | "reject"): Promise<string> {
+  const frame = page.locator(".hot-connector-popup iframe").last().contentFrame();
+  const summary = (await frame.locator("#tw-summary").textContent()) ?? "";
+  await frame.locator(choice === "approve" ? "#tw-approve" : "#tw-reject").click();
+  return summary;
+}

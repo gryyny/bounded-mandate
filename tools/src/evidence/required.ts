@@ -22,8 +22,11 @@ export const REQUIRED_CASES = {
   WITHDRAW: ["both-assets", "unregistered-owner", "failed-receipt-retry"],
   /** The primary live-agent template's full sequence in live-sandbox on the exact deployment binary (synthetic provider). */
   LIVE: ["agent-template"],
-  /** The owner console in headless Chromium against sandbox through the labelled local test signer; not an external wallet. */
-  CONSOLE: ["browser-sandbox", "access-controls"],
+  /**
+   * The owner console in headless Chromium against sandbox: through the labelled local test signer, and through NEAR
+   * Connect with the labelled sandbox test wallet. Neither is a real wallet provider.
+   */
+  CONSOLE: ["browser-sandbox", "access-controls", "wallet-sandbox"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */

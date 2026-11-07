@@ -182,7 +182,7 @@ describe("owner flow through the console, imported by the runner", () => {
       expect(live).toContain("No grant: the agent has no authority.");
       const c = await controls(page);
       expect(Object.values(c.enabled).some((v) => v)).toBe(false);
-      expect(c.reasons).toEqual(["connect a signer (the local sandbox test signer or the manual CLI handoff)"]);
+      expect(c.reasons).toEqual(["connect a signer (an external wallet, the local sandbox test signer or the manual CLI handoff)"]);
       await shot(page, "read-only-desktop");
       const m = await openConsole(browser(), signer().origin, { width: 390, height: 844 });
       await readState(m.page);
