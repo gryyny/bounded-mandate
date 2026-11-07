@@ -31,7 +31,7 @@ const withDecision = (ev: Evidence): Evidence => ({
   ...ev,
   assertions: ev.assertions.map((a) =>
     a.id === "model-proposal-on-chain"
-      ? { ...a, observed: { ...(a.observed as object), decision: { model: STORY.model, decision_text: JSON.stringify({ action: "propose", proposal: { sell: "usdc", sell_amount: STORY.sell.toString(), max_concession_bps: 40 }, reason: "SYNTHETIC reason: USDC is overweight" }), prompt_sha256: "SYNTHETIC", raw_output_sha256: "SYNTHETIC" } } }
+      ? { ...a, observed: { ...(a.observed as object), decision: { model: STORY.model, decision_text: JSON.stringify({ action: "propose", proposal: { sell: "usdc", sell_amount: STORY.sell.toString(), max_concession_bps: 40 }, reason: "SYNTHETIC reason: USDC is overweight" }), prompt_sha256: "SYNTHETIC", raw_output_sha256: "SYNTHETIC", adapter_verdict: { kind: "proposal", proposal: { sell: "usdc", sell_amount: STORY.sell.toString(), max_concession_bps: 40 } } } } }
       : a,
   ),
 });
@@ -90,6 +90,25 @@ describe("short video cut", () => {
     expect(first?.captions[1]).toBe("One local sandbox run with labelled test doubles and a scripted proposal, not model output, in eight steps.");
     expect(first?.body).not.toContain("replayed model recording");
     expect(shortScenes(ev, bindDemo(ev, null), false)[0]?.captions[1]).toBe("One local sandbox run with labelled test doubles and a replayed model recording, in eight steps.");
+  });
+
+  it("calls the trade scripted when the replayed model declined, in both cuts", () => {
+    // The demo still records mode "recorded-model" and a decision after a decline, then trades a scripted proposal.
+    const declined = (ev: Evidence): Evidence => ({
+      ...ev,
+      assertions: ev.assertions.map((a) =>
+        a.id === "model-proposal-on-chain" ? { ...a, passed: false, observed: { ...(a.observed as object), decision: { ...((a.observed as { decision: object }).decision), adapter_verdict: { kind: "decline", reason: "SYNTHETIC decline" } } } } : a,
+      ),
+    });
+    const ev = declined(storyEvidence());
+    const short = shortScenes(ev, bindDemo(ev, null), false);
+    expect(short[0]?.captions[1]).toBe("One local sandbox run with labelled test doubles and a scripted proposal, not model output, in eight steps.");
+    expect(short.flatMap((s) => [s.body, ...s.captions]).join(" ")).not.toMatch(/replayed model recording|recorded genuine model output/i);
+    const walked = walkthroughScenes(declined(withDecision(storyEvidence())), null, bindDemo(ev, null), STEPS, {}, STORY.model);
+    const trade = walked.find((s) => s.title.startsWith("2a ·"));
+    expect(trade?.title).toBe("2a · Scripted proposal, not model output");
+    expect(trade?.captions.join(" ")).not.toMatch(/recorded genuine model output|replayed/i);
+    expect(walked.flatMap((s) => s.captions).join(" ")).not.toMatch(/replayed with no provider call|the model step is a replay/);
   });
 
   it("never titles or narrates a step that is not evidence with its success wording", () => {

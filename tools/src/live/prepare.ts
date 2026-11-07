@@ -27,7 +27,7 @@ const AccountId = z.string().regex(/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*
 const PublicKey = z.string().regex(/^ed25519:[1-9A-HJ-NP-Za-km-z]{32,44}$/, "ed25519 public key");
 const PerAsset = z.object({ usdc: Units, wnear: Units }).strict();
 const Approval = z.object({ approved_by: z.string().min(1), reference: z.string().min(1) }).strict();
-const AbsolutePath = z.string().startsWith("/", "absolute path outside the repository");
+const AbsolutePath = z.string().startsWith("/", "absolute path (keep credentials outside both repositories)");
 
 /** The approved setup record (A) and the runner inputs (B1-B3, C) in machine-readable form. */
 export const PrepareInput = z

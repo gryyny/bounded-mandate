@@ -144,8 +144,15 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const grantStep = stepOf("Grant and limits");
   const initial = (obs("grant-initial-value") as { contract: string }).contract;
   const model = stepOf("Bounded agent proposal");
-  const decision = (obs("model-proposal-on-chain") as { decision: { decision_text: string; prompt_sha256: string; raw_output_sha256: string } }).decision;
-  const proposal = (JSON.parse(decision.decision_text) as { proposal: { sell: string; sell_amount: string; max_concession_bps: number } }).proposal;
+  const modelObs = obs("model-proposal-on-chain") as {
+    mode?: string;
+    order?: { sell_amount: string; concession_bps: number } | null;
+    decision: { prompt_sha256: string; raw_output_sha256: string; adapter_verdict?: { kind: string; proposal?: { sell: string; sell_amount: string; max_concession_bps: number } } } | null;
+  };
+  const decision = modelObs.decision;
+  const verdict = decision?.adapter_verdict;
+  // The trade is model output only when the replayed verdict was a proposal; otherwise the demo used a scripted one.
+  const proposal = modelObs.mode === "recorded-model" && verdict?.kind === "proposal" && verdict.proposal !== undefined ? verdict.proposal : null;
   const reason = modelReason(ev);
   const fill = stepOf("Filler fills");
   const trade = (obs("trade-executed") as { signed: { sell_amount: string; buy_amount: string }; before: Record<string, string>; after: Record<string, string> });
@@ -260,7 +267,22 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
       captions: [narrate("console", story.get("console")?.caption ?? "")],
       strip: stateAfter("Mandate reviewed in the console"),
     },
-    {
+    proposal === null || decision === null
+      ? {
+          kind: "demo",
+          labels: ["Scripted proposal"],
+          title: "2a · Scripted proposal, not model output",
+          body:
+            kv([
+              ["Proposal", modelObs.order == null ? "not in this evidence" : `sell ${usdc(modelObs.order.sell_amount)}, concession ${String(modelObs.order.concession_bps)} bps`],
+              ["Recorded model verdict", verdict === undefined ? "none" : verdict.kind],
+            ]) +
+            txs(/propose_order \((order 1|first order)\)/) +
+            checks(model),
+          captions: [narrate("trade", "No recorded model proposal was available, so the first order used a scripted proposal. It is not model output.")],
+          strip: stateAfter("Bounded agent proposal"),
+        }
+      : {
       kind: "demo",
       labels: ["Recorded genuine model output"],
       title: `2a · Recorded genuine model output, ${modelName} (replayed)`,
@@ -362,7 +384,7 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
       title: "Limits",
       body: list([...ev.unknowns, status.sentence].map(esc)),
       captions: [
-        "Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; the model step is a replay. No guarantee of profit or a maximum loss.",
+        `Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; ${proposal === null ? "the first order used a scripted proposal, not model output" : "the model step is a replay"}. No guarantee of profit or a maximum loss.`,
         "Revocation is not instant: signed orders can still execute while it is pending. The claim covers orders after confirmed key removal.",
       ],
     },
@@ -431,7 +453,7 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   const steps = ownerJourney(ev, stages);
   const status = certification(binding);
   // "Replayed model recording" only when the trade's proposal is recorded model output; a scripted one is never called that.
-  const replayed = steps.find((j) => j.key === "trade")?.labels.includes("recorded genuine model output") === true && ev.environment.model_mode !== "live";
+  const replayed = steps.find((j) => j.key === "trade")?.labels.includes("recorded genuine model output") === true && ev.environment.model_mode === "recorded-model";
   const what = replayed ? "One local sandbox run with labelled test doubles and a replayed model recording" : "One local sandbox run with labelled test doubles and a scripted proposal, not model output";
   const mainnet = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run: pending approval — no mainnet transaction has been executed.";
   const notShown = steps.filter((j) => j.outcome !== "held");

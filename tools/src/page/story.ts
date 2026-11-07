@@ -121,7 +121,7 @@ const SHAPES = {
   "grant-initial-value": z.object({ contract: dec }),
   "grant-active": z.object({ epoch: z.number(), path: z.string(), public_key: z.string().nullable(), policy: Policy, initial_reference: Reference.nullable().optional() }),
   "agent-one-restricted-key": z.array(z.object({ permission: z.object({ FunctionCall: z.object({ method_names: z.array(z.string()), receiver_id: z.string() }) }) })),
-  "model-proposal-on-chain": z.object({ mode: z.string(), decision: z.object({ model: z.string() }).nullable(), order: OrderLike.extend({ concession_bps: z.number() }).nullable() }),
+  "model-proposal-on-chain": z.object({ mode: z.string(), decision: z.object({ model: z.string(), adapter_verdict: z.object({ kind: z.string() }).optional() }).nullable(), order: OrderLike.extend({ concession_bps: z.number() }).nullable() }),
   revoked: z.object({ status: z.string().optional(), key_registered: z.boolean(), grant_public_key: z.string().nullable().optional() }),
   "console-review": ConsoleReview,
   "revoke-through-console": ConsoleRevoke,
@@ -424,7 +424,8 @@ export function revocationStory(ev: Evidence): Stage[] {
       const model = b.observed("model-proposal-on-chain");
       const trade = b.observed("trade-executed");
       b.check("settled-release");
-      const modelName = model !== null && model.mode === "recorded-model" && model.decision !== null ? model.decision.model : null;
+      // Model output only when the replayed verdict was a proposal: after a decline or a refusal the first order is scripted.
+      const modelName = model !== null && model.mode === "recorded-model" && model.decision?.adapter_verdict?.kind === "proposal" ? model.decision.model : null;
       const reason = modelReason(ev);
       const s = trade?.signed;
       const alloc = allocation(ev);
@@ -681,7 +682,7 @@ export interface JourneyStep {
   rail: string;
   /** The status word when every stage held; otherwise the outcome is shown. */
   done: string;
-  /** Worst outcome of its stages: missing, then not-held, then inconclusive, then held. */
+  /** Worst outcome of its stages: not-held, then missing, then inconclusive, then held. */
   outcome: StageOutcome;
   /** One line from the run: the stages' short lines when held, else the first non-held stage's narration. */
   result: string | null;

@@ -345,7 +345,8 @@ export function deadlineText(deadlineNs: string | null, blockNs: string | null):
   const at = new Date(Number(BigInt(deadlineNs) / 1000000n)).toISOString().replace("T", " ").replace(/\.[0-9]+Z$/, " UTC");
   if (blockNs === null || !/^[0-9]+$/.test(blockNs)) return at;
   const leftNs = BigInt(deadlineNs) - BigInt(blockNs);
-  return leftNs > 0n ? `${at} (${(leftNs / 1000000000n).toString()} s left at the block read)` : `${at} (passed at the block read)`;
+  // The verifier still accepts an order at exact equality with its deadline (it rejects deadline < block time).
+  return leftNs >= 0n ? `${at} (${(leftNs / 1000000000n).toString()} s left at the block read)` : `${at} (passed at the block read)`;
 }
 
 /** What the owner can do next after a final action; display only. */

@@ -884,6 +884,20 @@ describe("evidence page: the owner's journey on the first screen", () => {
     expect([...html.matchAll(/aria-label="(Step [0-9] detail)">detail<\/a>/g)].map((m) => m[1])).toEqual(KEYS.map((_, i) => `Step ${String(i + 1)} detail`));
   });
 
+  it("labels the trade a scripted proposal when the replayed model declined", () => {
+    const ev = storyEvidence();
+    const declined = Evidence.parse({
+      ...ev,
+      assertions: ev.assertions.map((a) =>
+        a.id === "model-proposal-on-chain" ? { ...a, passed: false, observed: { ...(a.observed as object), decision: { ...((a.observed as { decision: object }).decision), adapter_verdict: { kind: "decline", reason: "SYNTHETIC decline" } } } } : a,
+      ),
+    });
+    const trade = card(renderHtml(declined, { acceptance: null, live: null }), "trade");
+    expect(trade).toContain("scripted proposal");
+    expect(trade).not.toContain("recorded genuine model output");
+    expect(trade).not.toContain("synthetic-model-1");
+  });
+
   it("states each step's recorded outcome with readable amounts and its labels", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
     // Expected amounts derived from the SYNTHETIC raw inputs: 12.34 USDC sold for 4 wNEAR; 5 wNEAR withheld for 14.99 USDC.
@@ -906,7 +920,8 @@ describe("evidence page: the owner's journey on the first screen", () => {
     for (const label of ['<span class="mode sandbox" title="execution mode">sandbox</span>', '<span class="mode recorded-model">recorded model output</span>', '<span class="mode pending">provider calls: none</span>', '<span class="mode pending">mainnet: none</span>']) {
       expect(replayed).toContain(label);
     }
-    expect(html).not.toContain("provider calls: none");
+    const withoutMode = Object.fromEntries(Object.entries(storyEvidence().environment).filter(([k]) => k !== "model_mode"));
+    expect(renderHtml(Evidence.parse({ ...storyEvidence(), environment: withoutMode }), { acceptance: null, live: null })).not.toContain("provider calls: none");
     expect(html.indexOf("Revocation is not instant")).toBeLessThan(html.indexOf('id="story"'));
   });
 

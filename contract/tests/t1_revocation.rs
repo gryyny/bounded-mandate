@@ -163,6 +163,10 @@ async fn t1_withheld_order_fails_after_removal_and_regrant() -> anyhow::Result<(
         live,
         "simulate_intents must accept the withheld order before revocation: {why}"
     );
+    l.notes.push(format!(
+        "withheld order {} simulated before revocation: accepted ({why})",
+        wo["id"]
+    ));
     let out = w.revoke(None).await;
     assert!(out.is_success(), "revoke: {}", out.failure_text());
     let g = w.grant_view().await?;

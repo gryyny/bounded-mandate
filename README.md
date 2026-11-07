@@ -81,7 +81,7 @@ The product is the complete control system, not any one of its parts:
 
 These are the users we are building for; there are no customers, revenue or adoption today. Next, in order: an independent security review → one treasury pilot → integrations validated against real callers (for example the Agent API, see [Complementary architecture](#complementary-architecture)).
 
-## What it guarantees, and what it does not
+## What is claimed, and what is not
 
 The claim, certified in sandbox (T1, T4): after removal of the grant's signing key is confirmed, withheld signed orders fail, including after a regrant; the owner recovers the remaining assets without the agent, oracle or MPC.
 

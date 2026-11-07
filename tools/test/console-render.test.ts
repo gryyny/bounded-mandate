@@ -225,7 +225,8 @@ describe("live view", () => {
     expect(text).toContain("$60.00");
     expect(text).toContain("1970-01-01 00:01:01 UTC (38 s left at the block read)");
     expect(text).toContain("including one that was signed and held back (step 4). Revoking (step 5) stops it once the key removal is confirmed.");
-    expect(c.deadlineText("61000000000", "61000000000")).toBe("1970-01-01 00:01:01 UTC (passed at the block read)");
+    expect(c.deadlineText("61000000000", "61000000000")).toBe("1970-01-01 00:01:01 UTC (0 s left at the block read)");
+    expect(c.deadlineText("61000000000", "61000000001")).toBe("1970-01-01 00:01:01 UTC (passed at the block read)");
     // Less than a second left is still before the deadline.
     expect(c.deadlineText("61000000000", "60500000000")).toBe("1970-01-01 00:01:01 UTC (0 s left at the block read)");
     expect(c.fmtUsd("1899800000000000")).toBe("$1,899.80");

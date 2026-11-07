@@ -195,7 +195,7 @@ export function storyEvidence(): Evidence {
     {
       step: "Bounded agent proposal (recorded genuine model output) -> propose_order",
       receipts: [tx("agent propose_order (first order)")],
-      assertions: [held("model-proposal-on-chain", { mode: "recorded-model", decision: { model: s.model }, order: { id: "6", sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString(), concession_bps: 40 } })],
+      assertions: [held("model-proposal-on-chain", { mode: "recorded-model", decision: { model: s.model, adapter_verdict: { kind: "proposal", proposal: { sell: "usdc", sell_amount: s.sell.toString(), max_concession_bps: 40 } } }, order: { id: "6", sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString(), concession_bps: 40 } })],
       state: state("active", true, 1, s.before),
     },
     {
@@ -288,7 +288,7 @@ export function storyEvidence(): Evidence {
     return o;
   });
   return evidence({
-    environment: { label: "SYNTHETIC specimen", steps: JSON.stringify(offsets) },
+    environment: { label: "SYNTHETIC specimen", model_mode: "recorded-model", steps: JSON.stringify(offsets) },
     receipts: steps.flatMap((st) => st.receipts),
     assertions: steps.flatMap((st) => st.assertions),
   });
