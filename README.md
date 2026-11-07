@@ -1,91 +1,51 @@
 # Bounded mandate
 
-*Let an agent trade your treasury within limits you control. When you stop trusting it, withdraw its outstanding authority and recover your assets.*
+Give an AI agent trading power. Keep the power to stop it.
 
-**An AI agent trades a USDC/wNEAR treasury on NEAR Intents, only through a contract that enforces its limits and signs every order itself.**\
-**Revoking the grant removes the contract's signing key from `intents.near`; once that is confirmed, every order already signed for the grant fails, withheld ones included.**\
-**The owner then takes the assets back without the agent, the oracle or the signing network.**
+The agent trades a USDC/wNEAR treasury on NEAR Intents, but only through a contract that checks its limits and signs every order itself. To stop it, the owner revokes: the contract removes its signing key from `intents.near`, and once that removal is confirmed, every outstanding order signed for the grant fails, including one someone held back. The owner then takes the remaining assets back without the agent, the oracle or the MPC signing network.
 
-Sandbox-certified at revision 958d411 (fresh clone and CI); evidence in [evidence/958d411](evidence/958d411). No mainnet transaction has been executed.
+| Evidence | State |
+| --- | --- |
+| Sandbox execution | **Certified at revision 958d411**, in a fresh clone and in CI: all 35 required cases ([evidence/958d411](evidence/958d411)). Our contract and the exact mainnet Intents verifier WASM execute; the MPC signer, oracle and tokens are labelled test doubles. |
+| Model output | A genuine recorded `claude-haiku-5-5` interaction, replayed into the contract. |
+| Model provider calls | None. No gate or demo calls a model or needs a model key. |
+| Mainnet | Not run. No mainnet transaction has been executed. |
 
-![Guard versus mandate: in our re-implementation of a guard design, a withheld signed order still executes after the agent is paused, and a regrant revives a second one that removing the key on Intents had blocked; after the mandate's revocation the verifier rejects it, and a regrant signs with a new key](docs/guard-vs-mandate.svg)
+## What the owner does
+
+Each step runs in `make demo`. The last column names the certified gate report that proves it, or the demo's own story check in `demo.json`, which is not an acceptance result.
+
+| # | The owner | Demo stage | Proven by |
+| --- | --- | --- | --- |
+| 1 | Understands the mandate and its limits: assets, caps, price bound and loss breaker | Grant and limits; Console review | [demo.json](evidence/958d411/demo.json) (`grant-active`, `console-review`); limits: [T3.concession](evidence/958d411/tests/T3.concession.json), [T3.breaker](evidence/958d411/tests/T3.breaker.json), [BOUNDARY.contract](evidence/958d411/tests/BOUNDARY.contract.json) |
+| 2 | Sees a useful permitted trade: the recorded model proposal, signed and filled within the limits | Bounded proposal and trade | Reaches `propose_order`: [MODEL.recorded-proposal](evidence/958d411/tests/MODEL.recorded-proposal.json); signed and filled as signed: `model-proposal-on-chain`, `trade-executed` in [demo.json](evidence/958d411/demo.json); every fill within the 0.5% concession: [T3.concession](evidence/958d411/tests/T3.concession.json) |
+| 3 | Sees a hostile request, clearly labelled as injected or scripted, refused at its boundary | Hostile requests | [BOUNDARY.attacks](evidence/958d411/tests/BOUNDARY.attacks.json), [attack log](#attack-log) |
+| 4 | Identifies the authentic withheld signed order: the verifier's simulation accepts that exact bundle | Withheld order | [demo.json](evidence/958d411/demo.json) (`withheld-executable`); [T1.withheld-regrant](evidence/958d411/tests/T1.withheld-regrant.json), which also requires `simulate_intents` to accept the withheld order before revocation |
+| 5 | Revokes through the owner controls, after checking the exact preview | Revocation through the console | [CONSOLE.browser-sandbox](evidence/958d411/tests/CONSOLE.browser-sandbox.json) (the test also requires the preview to equal the runner's intent; the report records the outcome) |
+| 6 | Sees that same unexpired order rejected for the removed key, after confirmed key removal | Withheld relay rejected | [T1.withheld-regrant](evidence/958d411/tests/T1.withheld-regrant.json) (every relay after removal must fail with the verifier's missing-key error for the mandate while the order is unexpired; the report records each error and the remaining lifetime); `withheld-rejected` in [demo.json](evidence/958d411/demo.json) |
+| 7 | Recovers the remaining assets to its Intents account without the agent, oracle or MPC | Recovery | [T4.dependency-failure](evidence/958d411/tests/T4.dependency-failure.json) |
+| 8 | Separately withdraws both assets from its Intents account to its own NEAR account, outside every recovery claim | Owner withdrawal | [WITHDRAW.both-assets](evidence/958d411/tests/WITHDRAW.both-assets.json), [WITHDRAW.unregistered-owner](evidence/958d411/tests/WITHDRAW.unregistered-owner.json) |
+
+Between the revoke request and confirmed removal, orders already signed may still execute; step 6 happens after confirmation. In the demo the console's Revoke is signed by the labelled local sandbox test signer, not a wallet, and recovery and withdrawal are direct owner calls. The full stage list is under [What the demo runs](#what-the-demo-runs).
 
 ## Try it
 
 ```sh
 git clone https://github.com/gryyny/bounded-mandate.git && cd bounded-mandate   # private until the lead publishes it
-make test    # every acceptance gate; 1496 s cold in a macOS arm64 fresh clone at 958d411
-make demo    # the unfunded sandbox story; 62 s on the warm build
+make demo    # the unfunded sandbox story; 60 s warm at 958d411
 open out/page/index.html out/console/index.html   # evidence page and owner console (xdg-open on Linux)
+make test    # every acceptance gate; 1496 s cold in a macOS arm64 fresh clone at 958d411
 ```
 
-No funds, model key or private repository. Platform needs, expected output and what each command proves are under [For reviewers](#for-reviewers).
+After setup ([platform needs](#platform-needs)), `make demo` tells the story in about a minute; the first run also downloads and builds. No funds, model key or private repository. Without installing anything, open the committed evidence page, [evidence/958d411/page/index.html](evidence/958d411/page/index.html). Expected output and what each command proves are under [For reviewers](#for-reviewers).
 
 ## Why NEAR
 
-- **A contract owns its Intents settlement account and signs for it.** The mandate contract is the account on `intents.near` that holds the treasury, and it gets every signature for that account from `v1.signer` through Chain Signatures, on its own derivation path `mandate/v1/<epoch>`. No person or server holds the order-signing key. That is what makes revocation a key removal: the contract calls `remove_public_key` on its own Intents account, and the verifier then refuses every order signed with that key. A regrant derives a key on a new path.
+- **A contract owns its Intents settlement account and signs for it.** The mandate contract is the account on `intents.near` that holds the treasury, and it gets every signature for that account from `v1.signer` through Chain Signatures, on its own derivation path `mandate/v1/<epoch>`. No single person or server holds the order-signing key; the MPC network's nodes hold only key shares. That is what makes revocation a key removal: the contract calls `remove_public_key` on its own Intents account, and the verifier then refuses every order signed with that key. A regrant derives a key on a new path.
 - **The NEAR Intents verifier** keeps each account's signing keys on chain (`add_public_key`, `remove_public_key`) and checks that the key exists when it executes a signed intent. Anyone can check the key with a view call.
 - **Function-call access keys** restrict the agent's account at the protocol level: calls to other methods, deposits, transfers and key changes are refused before the contract runs (ten of the certified cases in the [attack log](#attack-log)).
 - **Permissionless `execute_intents`** lets our filler, or anyone, settle the exact signed bundle; no hosted relayer is trusted.
 - **Sputnik DAO** can be the owner, so grant, revoke, recovery and withdrawal become threshold-voted proposals (sandbox; certified at 958d411, see [Status](#status)).
-
-## Who needs this and what is next
-
-- **DAO treasuries** that want an agent to rebalance within limits the DAO votes on, and to revoke and recover by proposal.
-- **Funds running agents** that need trading limits and revocation they can check on chain rather than take on trust.
-- **Agent builders** who want to offer their users a mandate with a verifiable off switch.
-
-These are the users we are building for; there are no customers, revenue or adoption today. Next, in order: an independent security review → one treasury pilot → integrations validated against real callers (for example the Agent API, see [Complementary architecture](#complementary-architecture)).
-
-## For reviewers
-
-| Command | Expected last line | Measured at 958d411 | What it proves |
-| --- | --- | --- | --- |
-| `make test` | A line starting `CERTIFIED: run`, followed by the run id and `out/evidence/acceptance.json`. A tree with uncommitted changes ends `COMPLETE BUT UNCERTIFIED (dirty tree)` instead. | macOS arm64 fresh clone: 1496 s cold, including dependency and Chromium downloads and the first build. GitHub Actions ubuntu-24.04, run 42383961240: 1941 s. | All 35 required cases of the 16 gates passed in one run of a clean tree, bound to the revision and the spec, fixture and WASM hashes ([Required gates](#required-gates)). |
-| `make demo` | `setup … ms \| story … ms \| 59/59 assertions passed \| browser start … ms (not in setup or story)` | macOS arm64: 60 s warm (setup 16.0 s, demonstration 20.4 s, browser start 0.5 s; the rest is `npm ci` and the cached WASM build). Linux CI: 65 s (setup 12.7 s, demonstration 20.2 s). | The nine-stage revocation story on a local sandbox ([What the demo runs](#what-the-demo-runs)). The 59 assertions are story checks, not acceptance results. |
-| Open `out/page/index.html` and `out/console/index.html` | Both open from disk. The page makes no network request before you press its verification button; the console makes none before a button press, except to resume an action already pending in that browser. | Not timed. | The evidence page binds the demo to the acceptance run and shows gates as certified only after `make test` passed on the same clean revision, otherwise "not certified for this demo". The console is the static owner console with no backend: a read-only view, and exact previews of the owner's revoke, recover and withdrawal, signed outside the page. |
-
-Platform needs:
-- Rust via rustup; the toolchain (1.97.1, with the `wasm32-unknown-unknown` target) is pinned in `rust-toolchain.toml` and installs on first use.
-- `cargo-near` 0.22.0: `cargo install cargo-near --version 0.22.0 --locked`. On Linux install `libudev-dev` and `pkg-config` first.
-- Node.js 24 and npm.
-- Network access on the first run: crates, npm packages, the NEAR sandbox binary and Playwright's pinned headless Chromium, which both targets download once and reuse.
-- On Linux, Chromium's system libraries once: `cd tools && npm ci --ignore-scripts && npx playwright install --with-deps chromium` (as in CI).
-
-### Found and fixed
-
-An independent review of this release found these problems before certification; each fix is in the certified revisions f01b496 through 958d411:
-- **An owner transaction could be absorbed by a later runner-signed step, and owner keys not in the manifest were invisible.** The runner now requires each signing key's exact chain nonce before every send and import, and snapshots the owner's complete key set; any difference stops the run.
-- **The demo claimed a console review and a console revocation without opening the console.** Both now run through the console in headless Chromium.
-- **A loose match accepted a relay failure as the effect of revocation.** Only the verifier's exact removed-key error counts, at a rejection block before the order's deadline.
-- **Unknown console reads.** They never confirm key removal and never enable withdrawal.
-- **The local test signer** is bound to the deployment and the owner.
-
-A second review, of the presentation and release changes, found these before f5e34f9 was certified:
-- **The first-screen diagram overstated the guard comparison.** The withheld order revived by a regrant is a second one, which removing the key on Intents had blocked; the diagram and alt text now say so.
-- **A video "site check" was claimed but never ran.** The site check now requests both planned video URLs and compares them with the certified cuts in `video.json`; `--video` requires the manifest.
-- **Committed evidence recorded machine-local paths.** Gate reports now record repository-relative commands, and acceptance refuses a report that records an absolute path.
-- **A T5 test race** (the signer's pending request read once, a block too early) failed one fresh-clone run at 3418307; the test now polls for it.
-- **Fees of refused handoffs** are counted against the fee cap.
-- **Unrecorded transactions.** A closing check looks for unrecorded owner, agent and filler transactions before a run reports completion.
-
-A third review, after f5e34f9, found implementation gaps that the owner's approvals would have hit; all are fixed and re-reviewed in 4fec11b, certified again with the deposit fix below in bc3fed6 and with the comparison (COMPARE) in 958d411:
-- **No external-wallet connector.** The console now connects the owner's wallet through NEAR Connect, with an in-page wallet list and each adapter checked against a pinned sha256 before it runs (CONSOLE.wallet-sandbox).
-- **Provider qualification could not run before the first grant.** The rehearsal now decides on the planned grant, labelled as not on chain.
-- **A rejected proposal could still "qualify" the provider.** Only an accepted proposal whose pre-signing checks pass, or a decline, qualifies; the verifier re-derives the claim.
-- **The wallet check was planned at a step where Revoke is correctly disabled.** It is now a connection check before the run; the cancelled-signature check happens at the run's first recovery.
-- **A closed wallet window counted as a cancellation.** A wallet's error now leaves the action pending until the owner forgets it.
-- **Wallet lists and adapter code could be planted** through the shared origin's storage or NEAR Connect's cache. Storage is in memory, the cache holds nothing, and only pinned bytes run.
-- **The rehearsal state was not bound to its manifest.** It is now.
-- **A fresh clone at 98cc5fe failed the license check**, because NOTICE did not name the wallet fixture. NOTICE now names it and the inlined library.
-- **The rehearsal fell back to the inventory ceiling (5 USDC + 1.25 wNEAR) instead of the planned deposit (5 USDC + 0.90 wNEAR).** At the approval package's prices the ceiling is balanced and the model is never called. The deposit is now required and checked against the ceiling, and a test runs the documented commands on the real template (bc3fed6).
-
-## What you get
-
-- **Delegation without a key.** The agent proposes trades; it never holds funds or a key that can sign orders or move assets. Its only NEAR key can call `propose_order` and nothing else.
-- **Limits the agent cannot change.** Before signing, the contract checks per-order, outstanding and turnover caps, a price concession of at most 0.5% against the oracle, and a 2% loss breaker.
-- **Revocation that covers signed orders.** Pausing an agent stops new orders, but orders it already signed stay valid. Here the owner's `revoke` removes the grant's signing key from NEAR Intents; once the removal is confirmed, every outstanding order of that grant fails, including one someone held back, and a later grant signs with a different key.
-- **Recovery without dependencies.** `recover` moves both balances to the owner's Intents account with no agent, oracle or signing network involved. Withdrawing from there to the owner's NEAR account is the owner's own later step, outside the recovery claim.
 
 ## How it works
 
@@ -103,26 +63,159 @@ flowchart LR
 1. The owner deposits USDC and wNEAR into the mandate's Intents account and grants trading with fixed limits. The contract derives a fresh Ed25519 key on path `mandate/v1/<epoch>` and registers it on `intents.near`.
 2. The agent proposes a sell amount and a concession. The contract reserves exposure, reads both oracle prices and its balances, re-checks every limit, builds the exact order and has the MPC network sign it on the grant's path.
 3. A filler counter-signs the other side and settles both through `execute_intents`.
-4. `revoke` stops new orders at once and removes the grant's key from `intents.near`. After the removal is confirmed, the verifier rejects every order signed with it.
+4. `revoke` stops new authorization when it executes and removes the grant's key from `intents.near`. After the removal is confirmed, the verifier rejects every order signed with it; until then, already-signed orders may still execute.
 5. `recover` transfers both balances to the owner's Intents account.
 
-## What the demo runs
+The product is the complete control system, not any one of its parts:
 
-Nine stages, in order, on a local sandbox with labelled test doubles and recorded model output:
+- **Delegation without a key.** The agent proposes trades; it never holds funds or a key that can sign orders or move assets. Its only NEAR key can call `propose_order` and nothing else.
+- **Limits the agent cannot change.** Before signing, the contract checks per-order, outstanding and turnover caps, a price concession of at most 0.5% against the oracle, and a 2% loss breaker.
+- **Revocation that covers signed orders.** Pausing an agent stops new orders, but orders it already signed stay valid until they expire or are cancelled, and how they can be cancelled depends on the venue (see [Compared with simpler alternatives](#compared-with-simpler-alternatives-compare)). Here the owner's `revoke` removes the grant's signing key from NEAR Intents; once the removal is confirmed, every outstanding order of that grant fails, including one someone held back, and a later grant signs with a different key.
+- **Recovery without dependencies.** `recover` moves both balances to the owner's Intents account with no agent, oracle or signing network involved. Withdrawing from there to the owner's NEAR account is the owner's own later step, outside the recovery claim.
 
-1. **Grant and limits.** The owner grants; the contract registers the grant's derived key on the verifier, and the initial reference value matches the deposits at the posted prices.
-2. **Console review.** The owner console, in headless Chromium, shows the grant status, limits, key presence, fixed accounts and balances exactly as the chain views read them.
-3. **Bounded proposal and trade.** The recorded genuine model proposal reaches `propose_order` and is signed; the filler fills it on the pinned verifier and the reservation is released on settlement.
-4. **Withheld order.** A second, scripted order is signed; the filler counter-signs a complete bundle, `simulate_intents` accepts it, and it is held back.
-5. **Hostile requests.** Every case of the attack suite and the recorded response to an injected prompt is stopped at its boundary.
-6. **Revocation through the console.** The owner checks the exact preview and presses Revoke; the transaction is signed by the local sandbox test signer, not a wallet. Removal of the grant's key is confirmed and the withheld order's reservation is released.
-7. **Withheld relay rejected.** Another account relays the withheld bundle while it is still unexpired; the verifier rejects it for the removed key, before its deadline, with no balance change.
-8. **Recovery.** With the agent stopped, the oracle failing and the MPC on hold, direct owner `recover` calls (not through the console) move both assets to the owner's Intents account.
-9. **Owner withdrawal.** Direct owner `ft_withdraw` calls move both assets to the owner's NEAR account, registering wNEAR storage first because the demo starts the owner unregistered there. This is outside every recovery claim.
+## Who needs this and what is next
 
-The 59 assertions are story checks, not acceptance results; their total is derived at run time.
+- **DAO treasuries** that want an agent to rebalance within limits the DAO votes on, and to revoke and recover by proposal.
+- **Funds running agents** that need trading limits and revocation they can check on chain rather than take on trust.
+- **Agent builders** who want to offer their users a mandate with a verifiable off switch.
 
-## Ways to evaluate
+These are the users we are building for; there are no customers, revenue or adoption today. Next, in order: an independent security review → one treasury pilot → integrations validated against real callers (for example the Agent API, see [Complementary architecture](#complementary-architecture)).
+
+## What it guarantees, and what it does not
+
+The claim, certified in sandbox (T1, T4): after removal of the grant's signing key is confirmed, withheld signed orders fail, including after a regrant; the owner recovers the remaining assets without the agent, oracle or MPC.
+
+- **Revocation takes effect after confirmed key removal**, not when the owner asks. While revocation is pending, already-signed orders may still execute, and executed trades are not reversed. Removing the key needs no list of outstanding orders and no signature from the grant's MPC key; the owner still authorizes `revoke`.
+- **Not guaranteed:** principal, profit, execution availability or a maximum total loss. Market moves, stale references, fees and orders still executable when the loss breaker trips can lose more than the stated 0.5% execution concession. An adversarial agent can make economically poor permitted trades.
+- **Trusted:** the owner. The contract has no upgrade method: upgrade and emergency-rescue authority exist only if the deployment leaves the owner a full-access key on the mandate account (the demo deploys without one). NEAR, the Intents verifier and its admins, and the token contracts must keep working.
+- **Evidence so far:** sandbox execution only, with labelled test doubles for the MPC signer, oracle and tokens, and recorded model output. No mainnet run.
+
+## Comparisons
+
+The comparisons validate the mandate's mechanism under one threat model. They do not show that the mandate is better than these products overall, and several of them are broader.
+
+### Matched baseline (T5)
+
+We applied the same threat model to our own re-implementation of the [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) design (pinned 225d37d), adapted to the same USDC/wNEAR `token_diff` authority on the pinned Intents verifier. Results describe that re-implementation in a local sandbox, not the deployed Claw Guard product; the adaptations are recorded with the results.
+
+![Guard versus mandate: in our re-implementation of a guard design, a withheld signed order still executes after the agent is paused, and a regrant revives a second one that removing the key on Intents had blocked; after the mandate's revocation the verifier rejects it, and a regrant signs with a new key](docs/guard-vs-mandate.svg)
+
+Executed in sandbox:
+
+- its own revocation (pause and remove the agent) leaves withheld signed orders executable;
+- removing the key on Intents stops them, but a regrant re-registers the same fixed-path key and revives them;
+- a signature disclosed while the signer callback fails is released from accounting, so executed volume exceeded its daily cap.
+
+Over-cap, injected-withdrawal and owner-recovery cases are blocked by both designs. The evidence page claims an increment only from a certified run in which the matching mandate gate passed.
+
+### Compared with simpler alternatives (COMPARE)
+
+When an owner stops trusting an agent, signed orders may still be outstanding. The mandate's answer is to remove the grant's key from `intents.near`. Simpler answers exist, and the verifier supports them: stop issuing and let orders expire, or cancel each order's nonce by signing an empty intent with the same key ([near/intents at 16d04f6](https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/intents/mod.rs#L30-L37)). [contract/tests/compare_revocation.rs](contract/tests/compare_revocation.rs) runs them side by side on the pinned verifier WASM.
+
+- **Same setup for each strategy:** an account holding the same deposits, and three unexpired withheld orders of 1 USDC each, relayed by an unrelated account.
+- **The owner-side list deliberately omits the third order.** This models an owner, or an owner's tool, whose list of outstanding nonces is incomplete. The mandate itself records every order on chain before it requests a signature, so a leaked signature or a failed callback leaves no order missing from the contract. The case tests how much the alternatives depend on a complete list; it does not expose a gap in the mandate. In the table, "unrecorded" means missing from that external owner-side list.
+- **The account's key is a labelled test key**, standing in for the MPC-derived key.
+
+| Owner's response | Signatures by the account key | Withheld orders that still execute before their deadlines | Unrecorded order stopped before its deadline | To resume trading |
+| --- | ---: | ---: | --- | --- |
+| Stop issuing, wait for expiry | 0 | 3 of 3; each stops only at its own deadline | no (only at its deadline, as an expired one shows) | nothing |
+| Cancel recorded nonces (empty signed intents) | 2, one per recorded order | 1 of 3 (the unrecorded one) | no | same key |
+| **Remove the key, resume with a fresh key (the mandate)** | **0 by the account key; the owner still signs `revoke`** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
+| Remove the key, re-add the same key | 0 by the account key | 0 of 3 while removed, 3 of 3 after the re-add | yes while removed, no after the re-add | same key, which revives every unexpired order |
+
+What this shows, and what it does not:
+
+- **Cancelling nonces needs the account's signer and a complete list.** With both, cancellation stops every listed order. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither: no signature from the grant's MPC key, while the owner still authorizes the revocation. Here a plain account calls `remove_public_key` itself; in the mandate the owner signs `revoke` and the contract makes that call and confirms it in a callback, which T1 tests.
+- **Effective cancellation is venue-specific.** The cancellation tested here names each order's nonce, so it needs the list. Some venues can invalidate earlier signatures without one: on Seaport, for example, the offerer increments its counter on chain, which invalidates every order it signed before, including ones it did not track ([Seaport documentation](https://github.com/ProjectOpenSea/seaport/blob/7f966fe7bd75932beb0366f6485aa720512b1259/docs/SeaportDocumentation.md)). This experiment covers the pinned Intents verifier only.
+- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run gives a meaningful value. The runner records it as `revocation_window`: the lifetime left after confirmed removal (a lower bound), the time from the MPC sign request to the signature, and the time from signing to the deadline. With the demo's 60 s and the proposed mainnet 120 s order lifetimes, the gap may be small. What the experiment validates is the mandate's choice of revocation mechanism, not a capability unique to it. Other products could also remove and rotate keys, and expiry or nonce cancellation can coexist with trading limits. The mandate's value is the complete, tested combination:
+  - limits checked before every signature;
+  - accounting of signed and disclosed orders (T2, T2b);
+  - revocation by key removal, and a regrant on a fresh key (T1);
+  - recovery without the agent, oracle or MPC (T4).
+- **Not tested here:** a relay that lands before the owner's action is final, and mainnet latency. This is a verifier-level experiment; the mandate's own gates are T1 to T4.
+
+### Comparison with related NEAR projects
+
+What this repository demonstrates together, in the sandbox gates certified for revision 958d411 [1]:
+
+1. **Bounded trading.** The agent only proposes; before signing, the contract enforces per-order, outstanding and turnover caps, a price bound against the oracle and a loss breaker (T2, T3, BOUNDARY).
+2. **Grant-wide invalidation.** Once removal of the grant's key on `intents.near` is confirmed, every outstanding signed order of that grant fails, including orders someone withheld (T1).
+3. **Fresh authority after regrant.** Each grant signs with a key on a new derivation path, so a regrant does not revive earlier orders (T1).
+4. **Conservative accounting.** A reservation is released only on verifier evidence; a signature that was disclosed while the signing callback failed stays reserved (T2b).
+5. **Owner recovery.** `recover` moves both assets to the owner's Intents account without the agent, oracle or MPC (T4).
+
+None of it has run on mainnet yet.
+
+**The official NEAR Intents Agent API** [2, 9] is the closest product, and it is much broader. One owner-signed policy covers actions, assets, per-asset limits, a USD budget, destinations, a timelock, a schedule, owner approval and a freeze, for swaps, transfers and withdrawals to many chains. It is a hosted service in an attested Intel TDX VM with a signed transparency log for every execution; its source is not public yet, so the running images can be checked but not rebuilt. A partner backend acts with a grant token, a bearer credential the owner signs for. Its routes differ in what the backend gets back, so they are compared separately:
+
+- **Hosted actions** (`POST /v1/agents/{agent_id}/swap`, `transfer`, `withdraw`, `shield`, `unshield`): the API and the agent's wallet execute the action; the backend receives a status, not a signed order. Revoking a grant or changing the policy refuses every action that has not reached its dispatch commitment, and a freeze refuses every action; actions past the dispatch commitment cannot be recalled. There is no signed Intents order for the backend to hold back, and the documentation does not describe these routes as returning a signature [2].
+- **Native signing routes** (off until the owner switches each on in the policy's `native` block): the API signs with the agent's own NEAR, EVM or Solana key and returns the signature to the backend once, without broadcasting it: NEP-413 messages for listed relying parties, EVM and Solana messages and transactions, EVM typed data. The policy's destinations, budget, timelock, schedule and approval do not apply to them. A NEP-413 signature already issued stays valid for its relying party until that party expires the nonce. The NEAR key can never sign for or call `intents.near` [2, 9].
+- **`evm/sign-intent` and `solana/sign-intent`** (off unless the owner sets `evm.sign_intent` or `solana.sign_intent`) [9]: the EVM or Solana key signs a NEAR Intents payload (`transfer` intents only, `signer_id` = that key's own Intents account) and the route returns it to the caller, who publishes it (1Click, `intents.near` or a solver relay). The policy's destinations, assets, limits, budget, timelock, schedule and owner approval do not apply; the owner's own `sign_intent` rules do (receivers, 1Click deposits, withdrawal addresses, slippage). Anyone holding a signed payload can publish it until its deadline: up to 96 hours for one that pays only 1Click deposits, otherwise 300 seconds. The examples README says: "Freezing the account refuses new payloads but cannot recall one already signed." These routes are documented in the examples repository at commit `2552895`, read 2026-11-06; the hosted Native Accounts page we read the same day did not list them.
+
+This is documentation evidence, not a tested weakness. We have not called the Agent API; the examples README itself states this behaviour and advises listing only the owner's own withdrawal addresses and signing payloads that are due soon. Ordinary hosted execution is not described this way.
+
+This project makes a narrower trade-off: one NEAR contract enforces the limits and signs every Intents order, revocation is a key removal on `intents.near` that, once confirmed, voids the grant's outstanding signed orders and that anyone can check with a view call, and the owner's recovery is a contract call that involves no agent, oracle, MPC or API. It covers one asset pair.
+
+How to read the table. Each project was read at the pinned commit or on the dated documentation listed under Sources; later versions may differ. The projects solve different problems, and several are broader than this one; the table compares only how they handle delegated authority. Each cell names its basis: **D** documented in the project's README or docs, **S** read in its source at the pinned commit, **E** executed by us. "Not documented" means we found no statement, not that the feature is missing.
+
+| Project | Where limits are enforced | What revocation invalidates | After regrant | Uncertain or disclosed signatures | Recovery: destination and dependencies | Public reproducibility |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Bounded mandate** (this repository) [1]. Agent trading of USDC/wNEAR from a contract-owned Intents account. Sandbox only so far. | In the mandate contract, before it signs: caps, oracle price bound, loss breaker. E | New proposals at once. After confirmed removal of the grant's key on `intents.near`: every outstanding signed order of the grant, withheld ones included. E | A new key on a new path (`mandate/v1/<epoch>`); earlier orders stay invalid. E | Released only on verifier evidence; a signature disclosed while its callback failed stays reserved. E | Owner `recover`: `mt_transfer` to the owner's Intents account, with no agent, oracle or MPC; needs NEAR, `intents.near` and the token contracts. E | Gate tests and certified evidence in this repository; the DEPLOY gate deploys a pinned reproducible build of the contract. E |
+| **NEAR Intents Agent API** (official, hosted) [2, 9]. Agent wallets on NEAR Intents under an owner-signed policy: swaps, transfers, withdrawals, confidential balances; optional native signing with the agent's own keys. | Hosted actions, two layers: the API (destinations, USD budget, timelock, schedule; it also counts per-asset limits and the action rate) and the agent's wallet provider (actions, assets, limits, rate, owner approval, freeze). Native routes: only the owner's per-method switch, with the grant, freeze and, for NEAR transfers and calls, assets and limits; `evm/sign-intent` and `solana/sign-intent` add the owner's own `sign_intent` rules [9]. D | Hosted actions: `grant_revoke` or a policy change refuses actions that have not reached their dispatch commitment; queued ones fail with `authorization_stale`. A freeze, an on-chain wallet request, refuses every action. Dispatched actions cannot be recalled. Revoking a grant is an owner-signed message checked by the API, not a chain transaction. Native routes: revocation stops new requests; a NEP-413 signature already returned stays valid for its relying party until the nonce expires. `evm/sign-intent` and `solana/sign-intent`: a signed Intents payload already returned can be published by whoever holds it until its deadline, and a freeze cannot recall it [9]. Recall of other returned EVM or Solana signatures: not documented. D | A new grant needs a new token; a reused one is refused. All grants share one policy and one budget. D | Hosted actions: an `UNCERTAIN` action keeps its budget charge and limit count until its outcome is known; the charge is released only when the provider provably refused or never ran the action. Native signatures are returned at once and recorded in the agent's history, without the signature itself [9]. D | Funds stay in the agent's wallet on NEAR Intents. Documented exits are `withdraw` and `transfer` actions under a grant, to policy destinations. An owner exit that does not use the API: not documented. D | Attested VM with published compose and image digests, and per-execution transparency proofs. Source not public yet: images can be checked, not rebuilt. D |
+| [Veto](https://github.com/0xdopewilly/veto) @a784344 [3]. Payment vault in which an AI screen in a TEE can only veto. Pays on NEAR, on Base through Chain Signatures, from OutLayer wallets and from an Agent API wallet whose grant Veto holds. Testnet; the Agent API path on mainnet. | Vault contract: per-payment and weekly caps, and an enclave-signed verdict checked on-chain. Agent API path: the owner's API policy, with Veto screening before it uses the grant. D, S | `freeze` stops new payments and cancels pending overrides; it does not change EVM payouts the MPC already signed. How such a payout is stopped afterwards: not documented. The owner can also deactivate or remove a single agent (`set_agent_active`, `remove_agent`). Agent API path: Veto holds the wallet's only grant, so the owner's Agent API controls apply. S, D | Not documented. | Spend is recorded before the MPC request and released if the MPC call returns a failure. A signature disclosed while the callback fails: not documented. S | `withdraw_to_owner` at any time, only to the owner; needs the token contract. S | Public source and tests; a script compares a local build with the code hash deployed on testnet. D |
+| [Allowance](https://github.com/soldanoandrea/allowance) @74edffe [4]. Payment vault in which each agent is a function-call key on the vault account. No NEAR Intents in this version; the testnet run is prepared, not run. | The protocol (method-scoped key, no deposits) and the vault contract on every `pay`. D | `kill` pauses, denies queued approvals and deletes every agent key, so the next transaction signed with one is rejected by the protocol. `remove_agent` does the same for one key. D, S | Not applicable in the same form: an agent signs its own NEAR transactions with its function-call key rather than holding standing signed orders. `add_agent` registers a key the owner supplies. S | Not documented. | Owner `withdraw` / `withdraw_ft`, to the owner or a named account. S | Public source, CI, unit tests and a sandbox end-to-end test. The hackathon build is not reproducible; a NEP-330 descriptor is kept. D, S |
+| [Agent Treasury](https://github.com/iskander-kudashev-13/agent-treasury) @46116b1 [5]. USDC vault with per-agent mandates for payroll and cross-chain payouts via 1Click, plus an optional Hyperliquid spot trading agent. Mainnet vault with real payouts and a mainnet trading session. | Payments: in the vault contract. Trading rules: in the off-chain worker, as owner-signed rule sets. D, S | `pause_agent` and `revoke_agent` stop vault payments. The trading kill switch halts bots; open positions stay, and the full stop is revoking the API wallet on Hyperliquid. D, S | Vault: `revoke_agent` is terminal and a new agent is needed. Hyperliquid API wallet: not documented. S | Not documented. | Owner `withdraw` from the vault, which pause does not block. Funds already sent to Hyperliquid return manually. D, S | Public source and contract tests; the mainnet vault is a reproducible build. D |
+| [NEAR Private OTC](https://github.com/Watchmeecryt/near-private-otc) @55d5b64 [6]. Private OTC deal board: sealed terms in an OutLayer TEE, atomic settlement through `execute_intents`. Hosted app on testnet. | No delegated trading limit. The enclave checks that the two intents mirror each other; for an agent, the limit is its account balance. D | Per deal: the maker burns the nonces of its live offers, so those signatures can never settle. D, S | No grant: each party signs with its own key. D | Not documented. | Assets stay in each user's own verifier balance; the user withdraws with a self-signed `ft_withdraw`. D, S | Public source; the verifier's code hash and the enclave's WASM hash are published. A test suite: not documented. D |
+| [Near-LEASH](https://github.com/soze-ki/Near-LEASH) @b122410 [7]. Policy gate for agent spending: EVM transactions through Chain Signatures and funding of 1Click swaps. Testnet, with a live MPC-signed Base Sepolia payment. | In the contract: allowlists, caps, cooldown and on-chain 1Click quote verification. D, S | `pause` and `remove_agent_key` stop new requests. An EVM transaction that was already signed stays valid, subject to its EVM nonce. D, S | `add_agent_key` adds a NEAR key, which signs requests rather than standing orders. Already-signed EVM transactions are governed by their EVM nonce (see the previous column). S | Design spec: a failed or timed-out MPC callback refunds the window debit. D | Owner `withdraw` of NEAR or NEP-141 tokens. S | Public source with unit and sandbox tests; the Intents path has not run on mainnet. D |
+| Claw Guard design, our adaptation (T5) [8]. Our re-implementation of the [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) authority model, adapted to Intents `token_diff`; not their deployed product. | In the guard contract: per-order and daily caps. E | Pause or remove-agent: new proposals only; a withheld order executed. Removing the key on Intents stopped it. E | The same fixed-path key is re-registered, and a second withheld order that the key removal had blocked then executed. E | A signature disclosed while the signer callback failed was released, and executed volume exceeded the daily cap. E | Assets stay in the owner's own Intents account; the strand case was blocked. E | Claw Guard: CI reproducible build and a mainnet deployment (D). Our adaptation: [baseline/claw-guard-adapted](baseline/claw-guard-adapted) and the T5 evidence (E). |
+
+Sources:
+1. This repository; gates executed at source revision `958d411`: [`propose_order`](contract/src/lib.rs#L419), [`revoke`](contract/src/lib.rs#L325), [`recover`](contract/src/lib.rs#L384), [per-grant path](contract/src/state.rs#L54); certified [acceptance](evidence/958d411/acceptance.json), [T1 withheld/regrant](evidence/958d411/tests/T1.withheld-regrant.json), [T2 interleavings](evidence/958d411/tests/T2.sandbox-interleavings.json), [T2b](evidence/958d411/tests/T2b.callback-failed-after-disclosure.json), [T3 concession](evidence/958d411/tests/T3.concession.json), [T3 breaker](evidence/958d411/tests/T3.breaker.json), [BOUNDARY](evidence/958d411/tests/BOUNDARY.contract.json), [T4](evidence/958d411/tests/T4.dependency-failure.json), [DEPLOY](evidence/958d411/tests/DEPLOY.candidate.json).
+2. NEAR Intents Agent API documentation, read 2026-11-05 and reread 2026-11-06 (the native routes were added to the comparison then; the hosted action routes and dispatch commitment rechecked that day): [How it works](https://docs.agentsonintents.com/integration/agent-api/concepts) (pieces, two enforcement layers, owner powers, which owner requests are written on chain), [Policies & Limits](https://docs.agentsonintents.com/integration/agent-api/policies-and-limits) (policy fields, which layer enforces what, freeze, policy change and `authorization_stale`, budget charge release, native rules), [Grants](https://docs.agentsonintents.com/integration/agent-api/grants) (bearer token, revocation, committed actions, token reuse), [Executions](https://docs.agentsonintents.com/integration/agent-api/executions) (dispatch commitment, timelock queue, the `recover` endpoint for undispatched uncertain actions), [Native Accounts](https://docs.agentsonintents.com/integration/agent-api/native-accounts) (native routes, what applies to them, issued NEP-413 signatures stay valid until the nonce expires, `intents.near` never signed for or called), [Status & Errors](https://docs.agentsonintents.com/integration/agent-api/status-and-errors) (`UNCERTAIN`, charge release), [Signing Standards](https://docs.agentsonintents.com/integration/agent-api/signing-standards) (grant revocation is an off-chain consent message; freeze is an on-chain wallet request), [Owner Signing](https://docs.agentsonintents.com/integration/agent-api/owner-signing) (withdraw before delete), [TEE & Attestation](https://docs.agentsonintents.com/integration/agent-api/tee) (TDX VM, funds outside it, source not public yet), [Transparency](https://docs.agentsonintents.com/integration/agent-api/transparency) (per-execution proofs).
+3. Veto at `a7843443e94fb6c98f42f9139c57e0a0deb3129e`: [README L3-L22](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L3-L22), [tests and deployed-code check L28-L54](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L28-L54), [Agent API path L175-L179](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L175-L179), [status L193](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L193), [`freeze`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L685-L698), [`withdraw_to_owner`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L869-L880), [`on_evm_signed`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L904-L933), [`execute_evm`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L1159-L1197).
+4. Allowance at `74edffec98cbeffd88d31223802f088c2d0f10b8`: [README L3-L23](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L3-L23), [not in this version L511-L513](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L511-L513), [testnet L561](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L561), [tests L569](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L569), [`withdraw`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L232-L269), [`withdraw_ft`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L372-L419), [`add_agent`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L467-L507), [`remove_agent`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L569-L585), [`kill`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L657-L684), [build descriptor](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/Cargo.toml#L20-L31).
+5. Agent Treasury at `46116b1c88fc5d5068698dc73de348e62f428136`: [README L1-L9](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L1-L9), [reproducible mainnet vault L27](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L27), [limitations L72-L77, L84-L87, L92-L94, L98](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L72-L98), [contract tests L150](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L150), [API wallet L339-L341](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L339-L341), [mainnet demo L454-L470](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L454-L470), [`request_payment`](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/payment.rs#L51), [`pause_agent` / `resume_agent` / `revoke_agent`](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/agent.rs#L126-L156), [`withdraw`](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/owner.rs#L285-L287).
+6. NEAR Private OTC at `55d5b645bc6212cf975474cee12f1a63e9a37d55`: [README L3](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L3), [verifier hash L43](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L43), [settlement L47](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L47), [cancel L99](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L99), [enclave hash L201](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L201), [keeper cancel L323-L334](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/keeper/index.mjs#L323-L334), [keeper withdraw L335-L339](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/keeper/index.mjs#L335-L339), [agent limits AGENTS.md L89-L99](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/AGENTS.md#L89-L99).
+7. Near-LEASH at `b122410aac152d8a38aa36ebe064baf42c91fc10`: [README L3-L16](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L3-L16), [tests L20-L23](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L20-L23), [paths L65-L78](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L65-L78), [`pause`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L366-L370), [`add_agent_key`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L381), [`remove_agent_key`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L409-L415), [`withdraw`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L476-L490), [signed EVM nonce, spec L182](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/docs/guardrail-spec.md#L182), [MPC callback failure, spec L183](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/docs/guardrail-spec.md#L183).
+8. Claw Guard at `225d37d3c1b04959947fa7c18544fa50e273dcd8` (the design T5 re-implements; the later `ff5fdcb` only adds a disclosure to its README): [issued signatures are not revoked by pause, THREAT_MODEL L233](https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/docs/THREAT_MODEL.md#L233), [DECISIONS L61](https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/docs/DECISIONS.md#L61), [reproducible mainnet build, README L71](https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/README.md#L71). Our adaptation: [fixed path](baseline/claw-guard-adapted/src/lib.rs#L27), [`remove_agent` / `pause`](baseline/claw-guard-adapted/src/lib.rs#L298-L310), [test](baseline/claw-guard-adapted/tests/t5_baseline.rs), [certified result](evidence/958d411/tests/T5.baseline.json).
+9. NEAR Intents Agent API examples repository ([NEAR-Intents-Agent-API/examples](https://github.com/NEAR-Intents-Agent-API/examples), linked from the Native Accounts page) at `25528957276e18ec933eb7d6e8e5c59a5fe033c4`, read 2026-11-06: `07-native-accounts/README.md`, [route table L40-L53](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L40-L53), [revoking a grant stops one caller L59](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L59), [signing returns the signature once and history keeps none L66-L68](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L66-L68), [signing NEAR Intents payloads, deadlines and the freeze L90-L116](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L90-L116), [the NEAR key never reaches the Intents contracts L128-L133](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L128-L133). Documentation only; nothing was executed against the Agent API.
+
+#### Complementary architecture
+
+The two could fit together rather than compete. That is a design possibility, not a built or tested integration, and no user has asked for it yet. The Agent API is for breadth: many chains, assets and action types, hosted execution and per-execution transparency. Bounded mandate is for where trading limits and revocation must be verifiable on chain: the contract checks the limits before it signs, and revocation is a key removal that anyone can check with a view call. An Agent API agent proposing trades to a mandate is a proposed integration, not a built one. It stays untested until two things are tested: caller identity (which account the mandate sees calling `propose_order`; it accepts only its fixed agent account) and invocation compatibility (whether an Agent API route can make that exact call the mandate accepts).
+
+```mermaid
+flowchart LR
+  O["Owner<br/>account or DAO"] -->|"policy and grants"| API["Agent API (hosted)<br/>breadth: chains, assets, actions"]
+  O -->|"grant, revoke, recover"| M["Bounded mandate contract<br/>limits and revocation on chain"]
+  API -->|"swaps, transfers, withdrawals"| W["Agent wallet<br/>on NEAR Intents"]
+  API -.->|"proposed, untested:<br/>propose_order"| M
+  M -->|"signed token_diff orders"| V["intents.near"]
+```
+
+## For reviewers
+
+Everything below is detail for checking the claims: commands and timings, platform needs, the demo stages, review history, gates, the attack log, the mechanism, the live runner and disclosures.
+
+### Commands and timings
+
+| Command | Expected last line | Measured at 958d411 | What it proves |
+| --- | --- | --- | --- |
+| `make test` | A line starting `CERTIFIED: run`, followed by the run id and `out/evidence/acceptance.json`. A tree with uncommitted changes ends `COMPLETE BUT UNCERTIFIED (dirty tree)` instead. | macOS arm64 fresh clone: 1496 s cold, including dependency and Chromium downloads and the first build. GitHub Actions ubuntu-24.04, run 42383961240: 1941 s. | All 35 required cases of the 16 gates passed in one run of a clean tree, bound to the revision and the spec, fixture and WASM hashes ([Required gates](#required-gates)). |
+| `make demo` | `setup … ms \| story … ms \| 59/59 assertions passed \| browser start … ms (not in setup or story)` | macOS arm64: 60 s warm (setup 16.0 s, demonstration 20.4 s, browser start 0.5 s; the rest is `npm ci` and the cached WASM build). Linux CI: 65 s (setup 12.7 s, demonstration 20.2 s). | The nine-stage revocation story on a local sandbox ([What the demo runs](#what-the-demo-runs)). The 59 assertions are story checks, not acceptance results. |
+| Open `out/page/index.html` and `out/console/index.html` | Both open from disk. The page makes no network request before you press its verification button; the console makes none before a button press, except to resume an action already pending in that browser. | Not timed. | The evidence page binds the demo to the acceptance run and shows gates as certified only after `make test` passed on the same clean revision, otherwise "not certified for this demo". The console is the static owner console with no backend: a read-only view, and exact previews of the owner's revoke, recover and withdrawal, signed outside the page. |
+
+`make test` records a run id, clears earlier results and ends with `tools/src/checks/acceptance.ts`. That step writes `out/evidence/acceptance.json` and fails unless every required case of every gate passed in this run, bound to the revision and the spec, fixture and WASM hashes. A run from a tree with uncommitted changes is never certified. Demo checks are story checks, not acceptance results.
+
+### Platform needs
+
+- Rust via rustup; the toolchain (1.97.1, with the `wasm32-unknown-unknown` target) is pinned in `rust-toolchain.toml` and installs on first use.
+- `cargo-near` 0.22.0: `cargo install cargo-near --version 0.22.0 --locked`. On Linux install `libudev-dev` and `pkg-config` first.
+- Node.js 24 and npm.
+- Network access on the first run: crates, npm packages, the NEAR sandbox binary and Playwright's pinned headless Chromium, which both targets download once and reuse. No funds, model key or private repository access.
+- On Linux, Chromium's system libraries once: `cd tools && npm ci --ignore-scripts && npx --no-install playwright install --with-deps chromium` (as in CI).
+
+### Ways to evaluate
 
 | Path | Do | See |
 | --- | --- | --- |
@@ -132,7 +225,7 @@ The 59 assertions are story checks, not acceptance results; their total is deriv
 | Mainnet receipts (pending the approved mainnet run) | Run the read-only commands in [Verify on mainnet](#verify-on-mainnet-read-only) with `curl` and `jq`; no wallet, key or funds | Today: the verifier we test against is byte-identical to the code at `intents.near`. After the approved run: the withheld order's relay receipt failing for the removed key before its deadline, and the recovery receipts: `<MAINNET_RECEIPT_TBD>`. |
 | Attack log | Read the [attack log](#attack-log) | Each malicious request, the layer that stopped it, the enforcing source line and the certified result. |
 
-### Verify on mainnet (read-only)
+#### Verify on mainnet (read-only)
 
 **Pending the approved mainnet run; no mainnet transaction has been executed.** The code-hash check works today. The second block is a template: its placeholders are filled in only after the run, and these commands send no transaction.
 
@@ -167,7 +260,51 @@ curl -sS "$RPC" -H 'Content-Type: application/json' \
 
 The two views above show current state only. The historical proof is the relay transaction's receipts: the verifier receipt fails with the removed-key error in a block before the order's deadline. `has_public_key` cannot say when a key was removed, and `is_nonce_used` can read `false` for a used nonce after the verifier's garbage collector cleans up expired nonces. The evidence page's opt-in panel checks the receipts this way.
 
-## Status
+### What the demo runs
+
+Nine stages, in order, on a local sandbox with labelled test doubles and recorded model output. They follow the owner journey above (stages 1 and 2 are its first step); hostile requests run before the withheld order is signed, so the order keeps more of its lifetime for the relay:
+
+1. **Grant and limits.** The owner grants; the contract registers the grant's derived key on the verifier, and the initial reference value matches the deposits at the posted prices.
+2. **Console review.** The owner console, in headless Chromium, shows the grant status, limits, key presence, fixed accounts and balances exactly as the chain views read them.
+3. **Bounded proposal and trade.** The recorded genuine model proposal reaches `propose_order` and is signed; the filler fills it on the pinned verifier and the reservation is released on settlement.
+4. **Hostile requests.** Every case of the attack suite and the recorded response to an injected prompt is stopped at its boundary.
+5. **Withheld order.** A second, scripted order is signed; the filler counter-signs a complete bundle, `simulate_intents` accepts it, and it is held back.
+6. **Revocation through the console.** The owner checks the exact preview and presses Revoke; the transaction is signed by the local sandbox test signer, not a wallet. Removal of the grant's key is confirmed and the withheld order's reservation is released.
+7. **Withheld relay rejected.** Another account relays the withheld bundle while it is still unexpired; the verifier rejects it for the removed key, before its deadline, with no balance change.
+8. **Recovery.** With the agent stopped, the oracle failing and the MPC on hold, direct owner `recover` calls (not through the console) move both assets to the owner's Intents account.
+9. **Owner withdrawal.** Direct owner `ft_withdraw` calls move both assets to the owner's NEAR account, registering wNEAR storage first because the demo starts the owner unregistered there. This is outside every recovery claim.
+
+The 59 assertions are story checks, not acceptance results; their total is derived at run time.
+
+### Found and fixed
+
+An independent review of this release found these problems before certification; each fix is in the certified revisions f01b496 through 958d411:
+- **An owner transaction could be absorbed by a later runner-signed step, and owner keys not in the manifest were invisible.** The runner now requires each signing key's exact chain nonce before every send and import, and snapshots the owner's complete key set; any difference stops the run.
+- **The demo claimed a console review and a console revocation without opening the console.** Both now run through the console in headless Chromium.
+- **A loose match accepted a relay failure as the effect of revocation.** Only the verifier's exact removed-key error counts, at a rejection block before the order's deadline.
+- **Unknown console reads.** They never confirm key removal and never enable withdrawal.
+- **The local test signer** is bound to the deployment and the owner.
+
+A second review, of the presentation and release changes, found these before f5e34f9 was certified:
+- **The first-screen diagram overstated the guard comparison.** The withheld order revived by a regrant is a second one, which removing the key on Intents had blocked; the diagram and alt text now say so.
+- **A video "site check" was claimed but never ran.** The site check now requests both planned video URLs and compares them with the certified cuts in `video.json`; `--video` requires the manifest.
+- **Committed evidence recorded machine-local paths.** Gate reports now record repository-relative commands, and acceptance refuses a report that records an absolute path.
+- **A T5 test race** (the signer's pending request read once, a block too early) failed one fresh-clone run at 3418307; the test now polls for it.
+- **Fees of refused handoffs** are counted against the fee cap.
+- **Unrecorded transactions.** A closing check looks for unrecorded owner, agent and filler transactions before a run reports completion.
+
+A third review, after f5e34f9, found implementation gaps that the owner's approvals would have hit; all are fixed and re-reviewed in 4fec11b, certified again with the deposit fix below in bc3fed6 and with the comparison (COMPARE) in 958d411:
+- **No external-wallet connector.** The console now connects the owner's wallet through NEAR Connect, with an in-page wallet list and each adapter checked against a pinned sha256 before it runs (CONSOLE.wallet-sandbox).
+- **Provider qualification could not run before the first grant.** The rehearsal now decides on the planned grant, labelled as not on chain.
+- **A rejected proposal could still "qualify" the provider.** Only an accepted proposal whose pre-signing checks pass, or a decline, qualifies; the verifier re-derives the claim.
+- **The wallet check was planned at a step where Revoke is correctly disabled.** It is now a connection check before the run; the cancelled-signature check happens at the run's first recovery.
+- **A closed wallet window counted as a cancellation.** A wallet's error now leaves the action pending until the owner forgets it.
+- **Wallet lists and adapter code could be planted** through the shared origin's storage or NEAR Connect's cache. Storage is in memory, the cache holds nothing, and only pinned bytes run.
+- **The rehearsal state was not bound to its manifest.** It is now.
+- **A fresh clone at 98cc5fe failed the license check**, because NOTICE did not name the wallet fixture. NOTICE now names it and the inlined library.
+- **The rehearsal fell back to the inventory ceiling (5 USDC + 1.25 wNEAR) instead of the planned deposit (5 USDC + 0.90 wNEAR).** At the approval package's prices the ceiling is balanced and the model is never called. The deposit is now required and checked against the ceiling, and a test runs the documented commands on the real template (bc3fed6).
+
+### Status
 
 | Area | State |
 | --- | --- |
@@ -208,13 +345,7 @@ A gate passes only when every one of its required cases ([tools/src/evidence/req
 
 The owner-key rescue (RESCUE.owner-key) is reported separately and never counts toward a gate.
 
-## What it guarantees, and what it does not
-
-The claim: after removal of the grant's signing key is confirmed, withheld signed orders fail, including after a regrant; the owner recovers the remaining assets without the agent, oracle or MPC.
-
-Not guaranteed: principal, profit, execution availability or a maximum total loss. Market moves, stale references, fees and orders still executable when the loss breaker trips can lose more than the stated 0.5% execution concession. While revocation is pending, already-signed orders may still execute. The owner is trusted. The contract has no upgrade method: upgrade and emergency-rescue authority exist only if the deployment leaves the owner a full-access key on the mandate account (the demo deploys without one). NEAR, the Intents verifier and its admins, and the token contracts must keep working.
-
-## Attack log
+### Attack log
 
 Every row is a request the certified attack suite ([tools/src/attacks/suite.ts](tools/src/attacks/suite.ts)) or a revocation gate sent in the sandbox at 958d411. "Stopped by" is the layer that actually refused it, classified from the observed error rather than assumed, and each case also checks that grant, orders, balances and keys were unchanged. Results: [BOUNDARY.attacks](evidence/958d411/tests/BOUNDARY.attacks.json) (39 of 39 cases stopped at the expected layer and contained) and the T1 and T2b reports linked below. Source lines are at revision 958d411 (unchanged since 78e2832); the contract source is unchanged since the certified revision, and the tools lines were rechecked there.
 
@@ -232,7 +363,7 @@ Every row is a request the certified attack suite ([tools/src/attacks/suite.ts](
 
 The contract's own boundary cases (67 sandbox cases, all rejected at their boundary) are in [BOUNDARY.contract](evidence/958d411/tests/BOUNDARY.contract.json). Permitted but poor trades are not attacks the mandate stops: they are bounded by the caps, the concession limit and the loss breaker (T3).
 
-## Mechanism in detail
+### Mechanism in detail
 
 - **Agent.** A separate account whose only key is a function-call key for `propose_order` with a finite allowance. A proposal names only the asset to sell, the amount and a concession of at most 50 bps. It cannot name recipients, payloads, keys, paths or token IDs.
 - **Contract.** It reserves exposure and charges turnover before any external call, reads both oracle prices and its verifier balances, re-checks every cap and the loss breaker, then builds an exact NEP-413 `token_diff` with a versioned nonce and a short deadline. It signs through its own MPC derivation path `mandate/v1/<epoch>`, which is never reused.
@@ -245,129 +376,13 @@ The contract's own boundary cases (67 sandbox cases, all rejected at their bound
 
 Demo policy: per-order and outstanding caps 20% of the initial reference value, turnover cap 100%, concession at most 0.5%, oracle age at most 60 s, confidence at most 0.5%, loss breaker at 2% drawdown, deadline at most 60 s, and a per-proposal charge of 0.5%. These are demonstration settings, not proven production risk limits. With this policy, the measured storage requirement for a full grant (200 proposals of about 780 bytes each, plus grant state) is about 4.67 NEAR in total for the mandate account, including about 3.1 NEAR for the contract code.
 
-## Matched baseline (T5)
-
-We applied the same threat model to our own re-implementation of the [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) design (pinned 225d37d), adapted to the same USDC/wNEAR `token_diff` authority on the pinned Intents verifier. Results describe that re-implementation in a local sandbox, not the deployed Claw Guard product; the adaptations are recorded with the results. Executed in sandbox:
-
-- its own revocation (pause and remove the agent) leaves withheld signed orders executable;
-- removing the key on Intents stops them, but a regrant re-registers the same fixed-path key and revives them;
-- a signature disclosed while the signer callback fails is released from accounting, so executed volume exceeded its daily cap.
-
-Over-cap, injected-withdrawal and owner-recovery cases are blocked by both designs. The evidence page claims an increment only from a certified run in which the matching mandate gate passed.
-
-## Compared with simpler alternatives (COMPARE)
-
-When an owner stops trusting an agent, signed orders may still be outstanding. The mandate's answer is to remove the grant's key from `intents.near`. Simpler answers exist, and the verifier supports them: stop issuing and let orders expire, or cancel each order's nonce by signing an empty intent with the same key ([near/intents at 16d04f6](https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/intents/mod.rs#L30-L37)). [contract/tests/compare_revocation.rs](contract/tests/compare_revocation.rs) runs them side by side on the pinned verifier WASM.
-
-- **Same setup for each strategy:** an account holding the same deposits, and three unexpired withheld orders of 1 USDC each, relayed by an unrelated account.
-- **The owner-side list deliberately omits the third order.** This models an owner, or an owner's tool, whose list of outstanding nonces is incomplete. The mandate itself records every order on chain before it requests a signature, so a leaked signature or a failed callback leaves no order missing from the contract. The case tests how much the alternatives depend on a complete list; it does not expose a gap in the mandate.
-- **The account's key is a labelled test key**, standing in for the MPC-derived key.
-
-| Owner's response | Signatures by the account key | Withheld orders that still execute before their deadlines | Unrecorded order stopped before its deadline | To resume trading |
-| --- | ---: | ---: | --- | --- |
-| Stop issuing, wait for expiry | 0 | 3 of 3; each stops only at its own deadline | no (only at its deadline, as an expired one shows) | nothing |
-| Cancel recorded nonces (empty signed intents) | 2, one per recorded order | 1 of 3 (the unrecorded one) | no | same key |
-| **Remove the key, resume with a fresh key (the mandate)** | **0 by the account key; the owner still signs `revoke`** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
-| Remove the key, re-add the same key | 0 by the account key | 0 of 3 while removed, 3 of 3 after the re-add | yes while removed, no after the re-add | same key, which revives every unexpired order |
-
-What this shows, and what it does not:
-
-- **Cancelling nonces needs the account's signer and a complete list.** With both, cancellation stops every listed order. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither: no signature from the grant's MPC key, while the owner still authorizes the revocation. Here a plain account calls `remove_public_key` itself; in the mandate the owner signs `revoke` and the contract makes that call and confirms it in a callback, which T1 tests.
-- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run gives a meaningful value. The runner records it as `revocation_window`: the lifetime left after confirmed removal (a lower bound), the time from the MPC sign request to the signature, and the time from signing to the deadline. With the demo's 60 s and the proposed mainnet 120 s order lifetimes, the gap may be small. What the experiment validates is the mandate's choice of revocation mechanism, not a capability unique to it. Other products could also remove and rotate keys, and expiry or nonce cancellation can coexist with trading limits. The mandate's value is the complete, tested combination:
-  - limits checked before every signature;
-  - accounting of signed and disclosed orders (T2, T2b);
-  - revocation by key removal, and a regrant on a fresh key (T1);
-  - recovery without the agent, oracle or MPC (T4).
-- **Not tested here:** a relay that lands before the owner's action is final, and mainnet latency. This is a verifier-level experiment; the mandate's own gates are T1 to T4.
-
-## Comparison with related NEAR projects
-
-What this repository demonstrates together, in the sandbox gates certified for revision 958d411 [1]:
-
-1. **Bounded trading.** The agent only proposes; before signing, the contract enforces per-order, outstanding and turnover caps, a price bound against the oracle and a loss breaker (T2, T3, BOUNDARY).
-2. **Grant-wide invalidation.** Once removal of the grant's key on `intents.near` is confirmed, every outstanding signed order of that grant fails, including orders someone withheld (T1).
-3. **Fresh authority after regrant.** Each grant signs with a key on a new derivation path, so a regrant does not revive earlier orders (T1).
-4. **Conservative accounting.** A reservation is released only on verifier evidence; a signature that was disclosed while the signing callback failed stays reserved (T2b).
-5. **Owner recovery.** `recover` moves both assets to the owner's Intents account without the agent, oracle or MPC (T4).
-
-None of it has run on mainnet yet.
-
-**The official NEAR Intents Agent API** [2, 9] is the closest product, and it is much broader. One owner-signed policy covers actions, assets, per-asset limits, a USD budget, destinations, a timelock, a schedule, owner approval and a freeze, for swaps, transfers and withdrawals to many chains. It is a hosted service in an attested Intel TDX VM with a signed transparency log for every execution; its source is not public yet, so the running images can be checked but not rebuilt. A partner backend acts with a grant token, a bearer credential the owner signs for. Its routes differ in what the backend gets back, so they are compared separately:
-
-- **Hosted actions** (`POST /v1/agents/{agent_id}/swap`, `transfer`, `withdraw`, `shield`, `unshield`): the API and the agent's wallet execute the action; the backend receives a status, not a signed order. Revoking a grant or changing the policy refuses every action that has not reached its dispatch commitment, and a freeze refuses every action; actions past the dispatch commitment cannot be recalled. There is no signed Intents order for the backend to hold back, and the documentation does not describe these routes as returning a signature [2].
-- **Native signing routes** (off until the owner switches each on in the policy's `native` block): the API signs with the agent's own NEAR, EVM or Solana key and returns the signature to the backend once, without broadcasting it: NEP-413 messages for listed relying parties, EVM and Solana messages and transactions, EVM typed data. The policy's destinations, budget, timelock, schedule and approval do not apply to them. A NEP-413 signature already issued stays valid for its relying party until that party expires the nonce. The NEAR key can never sign for or call `intents.near` [2, 9].
-- **`evm/sign-intent` and `solana/sign-intent`** (off unless the owner sets `evm.sign_intent` or `solana.sign_intent`) [9]: the EVM or Solana key signs a NEAR Intents payload (`transfer` intents only, `signer_id` = that key's own Intents account) and the route returns it to the caller, who publishes it (1Click, `intents.near` or a solver relay). The policy's destinations, assets, limits, budget, timelock, schedule and owner approval do not apply; the owner's own `sign_intent` rules do (receivers, 1Click deposits, withdrawal addresses, slippage). Anyone holding a signed payload can publish it until its deadline: up to 96 hours for one that pays only 1Click deposits, otherwise 300 seconds. The examples README says: "Freezing the account refuses new payloads but cannot recall one already signed." These routes are documented in the examples repository at commit `2552895`, read 2026-11-06; the hosted Native Accounts page we read the same day did not list them.
-
-This is documentation evidence, not a tested weakness. We have not called the Agent API; the examples README itself states this behaviour and advises listing only the owner's own withdrawal addresses and signing payloads that are due soon. Ordinary hosted execution is not described this way.
-
-This project makes a narrower trade-off: one NEAR contract enforces the limits and signs every Intents order, revocation is a key removal on `intents.near` that voids the grant's outstanding signed orders and that anyone can check with a view call, and the owner's recovery is a contract call that involves no agent, oracle, MPC or API. It covers one asset pair.
-
-How to read the table. Each project was read at the pinned commit or on the dated documentation listed under Sources; later versions may differ. The projects solve different problems, and several are broader than this one; the table compares only how they handle delegated authority. Each cell names its basis: **D** documented in the project's README or docs, **S** read in its source at the pinned commit, **E** executed by us. "Not documented" means we found no statement, not that the feature is missing.
-
-| Project | Where limits are enforced | What revocation invalidates | After regrant | Uncertain or disclosed signatures | Recovery: destination and dependencies | Public reproducibility |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Bounded mandate** (this repository) [1]. Agent trading of USDC/wNEAR from a contract-owned Intents account. Sandbox only so far. | In the mandate contract, before it signs: caps, oracle price bound, loss breaker. E | New proposals at once. After confirmed removal of the grant's key on `intents.near`: every outstanding signed order of the grant, withheld ones included. E | A new key on a new path (`mandate/v1/<epoch>`); earlier orders stay invalid. E | Released only on verifier evidence; a signature disclosed while its callback failed stays reserved. E | Owner `recover`: `mt_transfer` to the owner's Intents account, with no agent, oracle or MPC; needs NEAR, `intents.near` and the token contracts. E | Gate tests and certified evidence in this repository; the DEPLOY gate deploys a pinned reproducible build of the contract. E |
-| **NEAR Intents Agent API** (official, hosted) [2, 9]. Agent wallets on NEAR Intents under an owner-signed policy: swaps, transfers, withdrawals, confidential balances; optional native signing with the agent's own keys. | Hosted actions, two layers: the API (destinations, USD budget, timelock, schedule; it also counts per-asset limits and the action rate) and the agent's wallet provider (actions, assets, limits, rate, owner approval, freeze). Native routes: only the owner's per-method switch, with the grant, freeze and, for NEAR transfers and calls, assets and limits; `evm/sign-intent` and `solana/sign-intent` add the owner's own `sign_intent` rules [9]. D | Hosted actions: `grant_revoke` or a policy change refuses actions that have not reached their dispatch commitment; queued ones fail with `authorization_stale`. A freeze, an on-chain wallet request, refuses every action. Dispatched actions cannot be recalled. Revoking a grant is an owner-signed message checked by the API, not a chain transaction. Native routes: revocation stops new requests; a NEP-413 signature already returned stays valid for its relying party until the nonce expires. `evm/sign-intent` and `solana/sign-intent`: a signed Intents payload already returned can be published by whoever holds it until its deadline, and a freeze cannot recall it [9]. Recall of other returned EVM or Solana signatures: not documented. D | A new grant needs a new token; a reused one is refused. All grants share one policy and one budget. D | Hosted actions: an `UNCERTAIN` action keeps its budget charge and limit count until its outcome is known; the charge is released only when the provider provably refused or never ran the action. Native signatures are returned at once and recorded in the agent's history, without the signature itself [9]. D | Funds stay in the agent's wallet on NEAR Intents. Documented exits are `withdraw` and `transfer` actions under a grant, to policy destinations. An owner exit that does not use the API: not documented. D | Attested VM with published compose and image digests, and per-execution transparency proofs. Source not public yet: images can be checked, not rebuilt. D |
-| [Veto](https://github.com/0xdopewilly/veto) @a784344 [3]. Payment vault in which an AI screen in a TEE can only veto. Pays on NEAR, on Base through Chain Signatures, from OutLayer wallets and from an Agent API wallet whose grant Veto holds. Testnet; the Agent API path on mainnet. | Vault contract: per-payment and weekly caps, and an enclave-signed verdict checked on-chain. Agent API path: the owner's API policy, with Veto screening before it uses the grant. D, S | `freeze` stops new payments and cancels pending overrides; it does not change EVM payouts the MPC already signed. How such a payout is stopped afterwards: not documented. The owner can also deactivate or remove a single agent (`set_agent_active`, `remove_agent`). Agent API path: Veto holds the wallet's only grant, so the owner's Agent API controls apply. S, D | Not documented. | Spend is recorded before the MPC request and released if the MPC call returns a failure. A signature disclosed while the callback fails: not documented. S | `withdraw_to_owner` at any time, only to the owner; needs the token contract. S | Public source and tests; a script compares a local build with the code hash deployed on testnet. D |
-| [Allowance](https://github.com/soldanoandrea/allowance) @74edffe [4]. Payment vault in which each agent is a function-call key on the vault account. No NEAR Intents in this version; the testnet run is prepared, not run. | The protocol (method-scoped key, no deposits) and the vault contract on every `pay`. D | `kill` pauses, denies queued approvals and deletes every agent key, so the next transaction signed with one is rejected by the protocol. `remove_agent` does the same for one key. D, S | Not applicable in the same form: an agent signs its own NEAR transactions with its function-call key rather than holding standing signed orders. `add_agent` registers a key the owner supplies. S | Not documented. | Owner `withdraw` / `withdraw_ft`, to the owner or a named account. S | Public source, CI, unit tests and a sandbox end-to-end test. The hackathon build is not reproducible; a NEP-330 descriptor is kept. D, S |
-| [Agent Treasury](https://github.com/iskander-kudashev-13/agent-treasury) @46116b1 [5]. USDC vault with per-agent mandates for payroll and cross-chain payouts via 1Click, plus an optional Hyperliquid spot trading agent. Mainnet vault with real payouts and a mainnet trading session. | Payments: in the vault contract. Trading rules: in the off-chain worker, as owner-signed rule sets. D, S | `pause_agent` and `revoke_agent` stop vault payments. The trading kill switch halts bots; open positions stay, and the full stop is revoking the API wallet on Hyperliquid. D, S | Vault: `revoke_agent` is terminal and a new agent is needed. Hyperliquid API wallet: not documented. S | Not documented. | Owner `withdraw` from the vault, which pause does not block. Funds already sent to Hyperliquid return manually. D, S | Public source and contract tests; the mainnet vault is a reproducible build. D |
-| [NEAR Private OTC](https://github.com/Watchmeecryt/near-private-otc) @55d5b64 [6]. Private OTC deal board: sealed terms in an OutLayer TEE, atomic settlement through `execute_intents`. Hosted app on testnet. | No delegated trading limit. The enclave checks that the two intents mirror each other; for an agent, the limit is its account balance. D | Per deal: the maker burns the nonces of its live offers, so those signatures can never settle. D, S | No grant: each party signs with its own key. D | Not documented. | Assets stay in each user's own verifier balance; the user withdraws with a self-signed `ft_withdraw`. D, S | Public source; the verifier's code hash and the enclave's WASM hash are published. A test suite: not documented. D |
-| [Near-LEASH](https://github.com/soze-ki/Near-LEASH) @b122410 [7]. Policy gate for agent spending: EVM transactions through Chain Signatures and funding of 1Click swaps. Testnet, with a live MPC-signed Base Sepolia payment. | In the contract: allowlists, caps, cooldown and on-chain 1Click quote verification. D, S | `pause` and `remove_agent_key` stop new requests. An EVM transaction that was already signed stays valid, subject to its EVM nonce. D, S | `add_agent_key` adds a NEAR key, which signs requests rather than standing orders. Already-signed EVM transactions are governed by their EVM nonce (see the previous column). S | Design spec: a failed or timed-out MPC callback refunds the window debit. D | Owner `withdraw` of NEAR or NEP-141 tokens. S | Public source with unit and sandbox tests; the Intents path has not run on mainnet. D |
-| Claw Guard design, our adaptation (T5) [8]. Our re-implementation of the [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) authority model, adapted to Intents `token_diff`; not their deployed product. | In the guard contract: per-order and daily caps. E | Pause or remove-agent: new proposals only; a withheld order executed. Removing the key on Intents stopped it. E | The same fixed-path key is re-registered, and a second withheld order that the key removal had blocked then executed. E | A signature disclosed while the signer callback failed was released, and executed volume exceeded the daily cap. E | Assets stay in the owner's own Intents account; the strand case was blocked. E | Claw Guard: CI reproducible build and a mainnet deployment (D). Our adaptation: [baseline/claw-guard-adapted](baseline/claw-guard-adapted) and the T5 evidence (E). |
-
-Sources:
-1. This repository; gates executed at source revision `958d411`: [`propose_order`](contract/src/lib.rs#L419), [`revoke`](contract/src/lib.rs#L325), [`recover`](contract/src/lib.rs#L384), [per-grant path](contract/src/state.rs#L54); certified [acceptance](evidence/958d411/acceptance.json), [T1 withheld/regrant](evidence/958d411/tests/T1.withheld-regrant.json), [T2 interleavings](evidence/958d411/tests/T2.sandbox-interleavings.json), [T2b](evidence/958d411/tests/T2b.callback-failed-after-disclosure.json), [T3 concession](evidence/958d411/tests/T3.concession.json), [T3 breaker](evidence/958d411/tests/T3.breaker.json), [BOUNDARY](evidence/958d411/tests/BOUNDARY.contract.json), [T4](evidence/958d411/tests/T4.dependency-failure.json), [DEPLOY](evidence/958d411/tests/DEPLOY.candidate.json).
-2. NEAR Intents Agent API documentation, read 2026-11-05 and reread 2026-11-06 (the native routes were added to the comparison then; the hosted action routes and dispatch commitment rechecked that day): [How it works](https://docs.agentsonintents.com/integration/agent-api/concepts) (pieces, two enforcement layers, owner powers, which owner requests are written on chain), [Policies & Limits](https://docs.agentsonintents.com/integration/agent-api/policies-and-limits) (policy fields, which layer enforces what, freeze, policy change and `authorization_stale`, budget charge release, native rules), [Grants](https://docs.agentsonintents.com/integration/agent-api/grants) (bearer token, revocation, committed actions, token reuse), [Executions](https://docs.agentsonintents.com/integration/agent-api/executions) (dispatch commitment, timelock queue, the `recover` endpoint for undispatched uncertain actions), [Native Accounts](https://docs.agentsonintents.com/integration/agent-api/native-accounts) (native routes, what applies to them, issued NEP-413 signatures stay valid until the nonce expires, `intents.near` never signed for or called), [Status & Errors](https://docs.agentsonintents.com/integration/agent-api/status-and-errors) (`UNCERTAIN`, charge release), [Signing Standards](https://docs.agentsonintents.com/integration/agent-api/signing-standards) (grant revocation is an off-chain consent message; freeze is an on-chain wallet request), [Owner Signing](https://docs.agentsonintents.com/integration/agent-api/owner-signing) (withdraw before delete), [TEE & Attestation](https://docs.agentsonintents.com/integration/agent-api/tee) (TDX VM, funds outside it, source not public yet), [Transparency](https://docs.agentsonintents.com/integration/agent-api/transparency) (per-execution proofs).
-3. Veto at `a7843443e94fb6c98f42f9139c57e0a0deb3129e`: [README L3-L22](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L3-L22), [tests and deployed-code check L28-L54](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L28-L54), [Agent API path L175-L179](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L175-L179), [status L193](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md#L193), [`freeze`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L685-L698), [`withdraw_to_owner`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L869-L880), [`on_evm_signed`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L904-L933), [`execute_evm`](https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs#L1159-L1197).
-4. Allowance at `74edffec98cbeffd88d31223802f088c2d0f10b8`: [README L3-L23](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L3-L23), [not in this version L511-L513](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L511-L513), [testnet L561](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L561), [tests L569](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md#L569), [`withdraw`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L232-L269), [`withdraw_ft`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L372-L419), [`add_agent`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L467-L507), [`remove_agent`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L569-L585), [`kill`](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs#L657-L684), [build descriptor](https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/Cargo.toml#L20-L31).
-5. Agent Treasury at `46116b1c88fc5d5068698dc73de348e62f428136`: [README L1-L9](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L1-L9), [reproducible mainnet vault L27](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L27), [limitations L72-L77, L84-L87, L92-L94, L98](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L72-L98), [contract tests L150](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L150), [API wallet L339-L341](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L339-L341), [mainnet demo L454-L470](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L454-L470), [`request_payment`](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/payment.rs#L51), [`pause_agent` / `resume_agent` / `revoke_agent`](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/agent.rs#L126-L156), [`withdraw`](https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/owner.rs#L285-L287).
-6. NEAR Private OTC at `55d5b645bc6212cf975474cee12f1a63e9a37d55`: [README L3](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L3), [verifier hash L43](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L43), [settlement L47](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L47), [cancel L99](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L99), [enclave hash L201](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md#L201), [keeper cancel L323-L334](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/keeper/index.mjs#L323-L334), [keeper withdraw L335-L339](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/keeper/index.mjs#L335-L339), [agent limits AGENTS.md L89-L99](https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/AGENTS.md#L89-L99).
-7. Near-LEASH at `b122410aac152d8a38aa36ebe064baf42c91fc10`: [README L3-L16](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L3-L16), [tests L20-L23](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L20-L23), [paths L65-L78](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L65-L78), [`pause`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L366-L370), [`add_agent_key`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L381), [`remove_agent_key`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L409-L415), [`withdraw`](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs#L476-L490), [signed EVM nonce, spec L182](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/docs/guardrail-spec.md#L182), [MPC callback failure, spec L183](https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/docs/guardrail-spec.md#L183).
-8. Claw Guard at `225d37d3c1b04959947fa7c18544fa50e273dcd8` (the design T5 re-implements; the later `ff5fdcb` only adds a disclosure to its README): [issued signatures are not revoked by pause, THREAT_MODEL L233](https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/docs/THREAT_MODEL.md#L233), [DECISIONS L61](https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/docs/DECISIONS.md#L61), [reproducible mainnet build, README L71](https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/README.md#L71). Our adaptation: [fixed path](baseline/claw-guard-adapted/src/lib.rs#L27), [`remove_agent` / `pause`](baseline/claw-guard-adapted/src/lib.rs#L298-L310), [test](baseline/claw-guard-adapted/tests/t5_baseline.rs), [certified result](evidence/958d411/tests/T5.baseline.json).
-9. NEAR Intents Agent API examples repository ([NEAR-Intents-Agent-API/examples](https://github.com/NEAR-Intents-Agent-API/examples), linked from the Native Accounts page) at `25528957276e18ec933eb7d6e8e5c59a5fe033c4`, read 2026-11-06: `07-native-accounts/README.md`, [route table L40-L53](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L40-L53), [revoking a grant stops one caller L59](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L59), [signing returns the signature once and history keeps none L66-L68](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L66-L68), [signing NEAR Intents payloads, deadlines and the freeze L90-L116](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L90-L116), [the NEAR key never reaches the Intents contracts L128-L133](https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md#L128-L133). Documentation only; nothing was executed against the Agent API.
-
-### Complementary architecture
-
-The two could fit together rather than compete. That is a design possibility, not a built or tested integration, and no user has asked for it yet. The Agent API is for breadth: many chains, assets and action types, hosted execution and per-execution transparency. Bounded mandate is for where trading limits and revocation must be verifiable on chain: the contract checks the limits before it signs, and revocation is a key removal that anyone can check with a view call. An Agent API agent proposing trades to a mandate is a proposed integration, not a built one. It stays untested until two things are tested: caller identity (which account the mandate sees calling `propose_order`; it accepts only its fixed agent account) and invocation compatibility (whether an Agent API route can make that exact call the mandate accepts).
-
-```mermaid
-flowchart LR
-  O["Owner<br/>account or DAO"] -->|"policy and grants"| API["Agent API (hosted)<br/>breadth: chains, assets, actions"]
-  O -->|"grant, revoke, recover"| M["Bounded mandate contract<br/>limits and revocation on chain"]
-  API -->|"swaps, transfers, withdrawals"| W["Agent wallet<br/>on NEAR Intents"]
-  API -.->|"proposed, untested:<br/>propose_order"| M
-  M -->|"signed token_diff orders"| V["intents.near"]
-```
-
-## Layout
-
-| Path | Contents |
-| --- | --- |
-| [SPEC.md](SPEC.md) | Pinned product specification; origin and hash in [spec-source.json](spec-source.json). |
-| `contract/` | Rust mandate contract; `contract/tests/` holds the sandbox and adversarial gate suites. |
-| `stubs/` | Labelled test doubles for the MPC signer, oracle and tokens. |
-| `baseline/` | Our re-implementation of the Claw Guard design, adapted for the matched comparison. |
-| `tools/` | TypeScript model adapter, filler, attack suite, demo, live runner, evidence page, owner console and release checks (`tools/src/release/`: secret scan, site routing and CSP, licenses). |
-| `fixtures/` | Pinned external inputs and recorded model interactions, with provenance in `fixtures/manifest.json`. |
-| `evidence/` | Curated gate and demo evidence, bound to a source revision. |
-| [hosting/](hosting/) | Prepared GitHub Pages workflow, saved disabled, and routing notes. Nothing is published. |
-
-## Requirements
-
-- Rust via rustup (toolchain pinned in `rust-toolchain.toml`) and `cargo-near` 0.22.0 (`cargo install cargo-near --version 0.22.0 --locked`; on Linux install `libudev-dev` and `pkg-config` first).
-- Node.js 24 and npm.
-- Network access for dependency installation and the first downloads of the NEAR sandbox binary and Playwright's pinned headless Chromium. No funds, model key or private repository access.
-- On Linux, Chromium's system libraries: `cd tools && npm ci --ignore-scripts && npx --no-install playwright install --with-deps chromium` once (as in CI).
-
-## Commands
+### Live runner (opt-in, not run on mainnet)
 
 ```sh
 make test   # all local gates (1496 s cold in the 958d411 fresh clone)
 make demo   # unfunded sandbox scenario, out/evidence/demo.json, out/page/index.html and out/console/index.html (60 s warm at 958d411)
 MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live   # opt-in; not spending approval
 ```
-
-`make test` records a run id, clears earlier results and ends with `tools/src/checks/acceptance.ts`. That step writes `out/evidence/acceptance.json` and fails unless every required case of every gate passed in this run, bound to the revision and the spec, fixture and WASM hashes. A run from a tree with uncommitted changes is never certified. Demo checks are story checks, not acceptance results.
 
 `make live` refuses a manifest that does not match the chain: network, the code hashes of the mandate, verifier, signer, oracle and both token contracts, the verifier, signer and oracle versions, the mandate configuration, keys and allowances. Token decimals are compared with the mandate's configuration, not read from `ft_metadata`; that comparison is a manual pre-approval check. It enforces fee, deposit, inventory and filler caps through a hash-chained ledger that survives restarts. It verifies each step's end state from state and receipts, and stops without any replacement order on an ambiguous outcome. Mainnet also requires `MANDATE_LIVE_CONFIRM=<manifest sha256>`.
 
@@ -412,15 +427,28 @@ npx tsx src/agent/rehearse.ts --state ../out/rehearsal-state.json --manifest <ap
   --approve-paid-inference --approval-reference "<owner approval>"
 ```
 
-The planned deposit is the setup record's, in base units: for the live-agent template, 5 USDC + 0.90 wNEAR is `5000000` and `900000000000000000000000`, with the wNEAR units recomputed on setup day. The rehearsal refuses to run without it, and refuses a deposit above the manifest's `owner_inventory_max`. That maximum, 5 USDC + 1.25 wNEAR, is a ceiling, not the deposit: at the 2026-11-06 prices it is 51.9% USDC, inside the no-call band, so the model would not be called.
+The planned deposit is the setup record's, in base units: for the live-agent template, about 60% USDC, for example 5 USDC + 0.91 wNEAR at the 2026-11-07 reading, `5000000` and `910000000000000000000000`, with the wNEAR units recomputed on setup day. The rehearsal refuses to run without it, and refuses a deposit above the manifest's `owner_inventory_max`. That maximum, 5 USDC + 1.25 wNEAR, is a ceiling, not the deposit: near 50/50 it can fall inside the no-call band (51.9% USDC at the 2026-11-06 prices), where the model would not be called.
 
-## Known limits
+### Known limits
 
 - A transient price reading below the breaker threshold stops new authorization for the rest of that grant.
 - A transaction's top-level result can arrive before its detached key-registration or removal receipts finish; tools poll `get_grant` until no key operation is in flight.
 - Registration presence is evidence of our registration or of a verifier-admin key addition; verifier admins can already lock or alter the account, so this adds no new trust.
 - Sandbox timing does not represent mainnet latency.
 - The owner console's wallet path has been exercised through NEAR Connect with the labelled sandbox test wallet only. The pinned real wallet adapters load under the console's CSP, but no real wallet provider has connected an account or signed through the console yet. Meteor's adapter is younger than the 14-day age rule (its release branch keeps only one version); see `fixtures/wallets/near-connect.json`.
+
+### Layout
+
+| Path | Contents |
+| --- | --- |
+| [SPEC.md](SPEC.md) | Pinned product specification; origin and hash in [spec-source.json](spec-source.json). |
+| `contract/` | Rust mandate contract; `contract/tests/` holds the sandbox and adversarial gate suites. |
+| `stubs/` | Labelled test doubles for the MPC signer, oracle and tokens. |
+| `baseline/` | Our re-implementation of the Claw Guard design, adapted for the matched comparison. |
+| `tools/` | TypeScript model adapter, filler, attack suite, demo, live runner, evidence page, owner console and release checks (`tools/src/release/`: secret scan, site routing and CSP, licenses). |
+| `fixtures/` | Pinned external inputs and recorded model interactions, with provenance in `fixtures/manifest.json`. |
+| `evidence/` | Curated gate and demo evidence, bound to a source revision. |
+| [hosting/](hosting/) | Prepared GitHub Pages workflow, saved disabled, and routing notes. Nothing is published. |
 
 ## Disclosures
 
