@@ -6,15 +6,19 @@
 //       [--provider stub [--stub-answer <decision JSON text>]]
 //       [--provider near-ai --model <id> --timeout-ms <n> --max-tokens <n> --approve-paid-inference --approval-reference <text>]
 //
-// state.json holds `observations`, `decimals` and `notes` (a live decision recording has all three), plus optional
-// `sale_budget`, `sale_budget_source` and `planned_inventory`. Without them, --manifest supplies the planned inventory
-// (budget.owner_inventory_max) and the sale budget (max_order_sell; max_total_sell with nothing sold yet).
+// state.json holds `observations`, `decimals` and `notes` (a live decision recording has all three; before the first
+// grant, src/agent/observe.ts writes them from read-only RPC), plus optional `sale_budget`, `sale_budget_source`,
+// `planned_inventory` and `planned_grant`. Without them, --manifest supplies the planned inventory
+// (budget.owner_inventory_max), the sale budget (max_order_sell; max_total_sell with nothing sold yet) and, only when
+// the observations hold no grant, the planned grant (the policy of the manifest's grant step, epoch 1 assumed: a
+// fresh mandate's first grant).
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { sha256Hex } from "./decision.js";
 import { NearAiProvider } from "./providers.js";
+import { PlannedGrant } from "./objective.js";
 import { RehearsalInput, RehearsalRefusal, StubProvider, rehearse, verifyRehearsal, writeRehearsal, type PaidInferenceApproval, type RehearsalProvider } from "./rehearsal.js";
 import { SaleBudget, remainingSaleBudget } from "./snapshot.js";
 
@@ -29,11 +33,22 @@ const StateFile = z
     sale_budget: SaleBudget.nullable().optional(),
     sale_budget_source: z.string().optional(),
     planned_inventory: z.object({ source: z.string(), units: PerAsset }).strict().optional(),
+    planned_grant: PlannedGrant.nullable().optional(),
   })
   .loose();
 
-/** Only the approved caps the rehearsal needs; the full manifest is validated by the live runner. */
-const ManifestCaps = z.object({ budget: z.object({ owner_inventory_max: PerAsset, max_order_sell: PerAsset, max_total_sell: PerAsset }).loose() }).loose();
+/** Only the approved caps and grant policy the rehearsal needs; the full manifest is validated by the live runner. */
+const ManifestCaps = z
+  .object({
+    budget: z.object({ owner_inventory_max: PerAsset, max_order_sell: PerAsset, max_total_sell: PerAsset }).loose(),
+    steps: z.array(z.object({ kind: z.string() }).loose()).optional(),
+  })
+  .loose();
+
+/** The policy of the manifest's first grant step, if it has one. */
+function grantStepPolicy(caps: z.infer<typeof ManifestCaps>): unknown {
+  return caps.steps?.find((step) => step.kind === "grant")?.policy;
+}
 
 export function rehearsalInput(state: unknown, manifest: { path: string; text: string } | null): RehearsalInput {
   const s = StateFile.parse(state);
@@ -47,7 +62,22 @@ export function rehearsalInput(state: unknown, manifest: { path: string; text: s
     budget = remainingSaleBudget(caps.budget, { usdc: 0n, wnear: 0n });
     budgetSource = `${label} max_order_sell / max_total_sell, nothing sold yet (no ledger read)`;
   }
-  return RehearsalInput.parse({ observations: s.observations, decimals: s.decimals, notes: s.notes, sale_budget: budget, sale_budget_source: budgetSource, planned_inventory: planned });
+  const noGrant = (s.observations as { grant?: unknown } | null)?.grant === null;
+  let plannedGrant = s.planned_grant ?? null;
+  if (plannedGrant === null && noGrant && caps !== null) {
+    const policy = grantStepPolicy(caps);
+    if (policy === undefined) throw new RehearsalRefusal("rehearsal: the observations hold no grant and the manifest has no grant step to plan from");
+    plannedGrant = PlannedGrant.parse({ source: `${label} grant step policy (epoch 1 assumed: the first grant of a fresh mandate)`, epoch: 1, policy });
+  }
+  return RehearsalInput.parse({
+    observations: s.observations,
+    decimals: s.decimals,
+    notes: s.notes,
+    sale_budget: budget,
+    sale_budget_source: budgetSource,
+    planned_inventory: planned,
+    planned_grant: plannedGrant,
+  });
 }
 
 interface Args {
@@ -111,6 +141,7 @@ async function main(): Promise<void> {
         provider: rec.provider,
         qualifies_live_provider: rec.qualifies_live_provider,
         qualification: rec.qualification,
+        grant_basis: rec.grant_basis.kind,
         model_called: rec.model_called,
         verdict: rec.verdict,
       },

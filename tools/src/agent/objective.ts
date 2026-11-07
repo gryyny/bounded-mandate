@@ -3,7 +3,7 @@
 // not contract policy and verifies nothing. The mandate re-checks every limit itself. This module reads no chain
 // state and has no chain client: inputs are given (rebalance.ts reads them; rehearsal.ts takes them from a file).
 import { z } from "zod";
-import { GrantView, Proposal, type Asset, type Policy, type PriceObservation } from "../types.js";
+import { GrantView, Policy, Proposal, type Asset, type PriceObservation } from "../types.js";
 import { judge, type AdapterVerdict } from "./decision.js";
 import { buildPrompt, type BuiltPrompt } from "./prompt.js";
 import type { LiveModelCall, LiveModelProvider } from "./providers.js";
@@ -48,6 +48,42 @@ export const FreshObservations = z
   })
   .strict();
 export type FreshObservations = z.infer<typeof FreshObservations>;
+
+/**
+ * A grant the owner plans to make (the approved manifest's grant step), for a rehearsal before any grant exists.
+ * It is an approval input, never a chain reading.
+ */
+export const PlannedGrant = z.object({ source: z.string().min(1), epoch: z.number().int().min(1), policy: Policy.strict() }).strict();
+export type PlannedGrant = z.infer<typeof PlannedGrant>;
+
+/**
+ * The decision inputs as they would be if `planned` were granted at `obs` with `units` deposited: the planned
+ * policy, the observed prices as the initial reference, and `units` valued at those prices rounded down, as the
+ * contract's holdings_value rounds. A rehearsal estimate only; nothing here exists on chain, and the contract
+ * computes the real reference and value when the grant is made. Without two integer prices there is no reference
+ * and inputsFrom refuses.
+ */
+export function plannedObservations(obs: FreshObservations, planned: PlannedGrant, decimals: Record<Asset, number>, units: Record<Asset, string>): FreshObservations {
+  const integer = (p: PriceReading | null): p is PriceReading => p !== null && /^[1-9][0-9]*$/.test(p.price) && /^(0|[1-9][0-9]*)$/.test(p.conf);
+  const { usdc, wnear } = obs.prices;
+  const observation = (p: PriceReading): PriceObservation => ({ price_id: p.price_id, price: p.price, conf: p.conf, expo: p.expo, publish_time_sec: p.publish_time.toString() });
+  const reference = integer(usdc) && integer(wnear) ? { usdc: observation(usdc), wnear: observation(wnear), observed_at_ns: obs.block.timestamp_ns } : null;
+  const value = reference === null ? null : ASSETS.reduce((sum, a) => sum + valueUnits(BigInt(units[a]), decimals[a], reference[a]), 0n);
+  const grant: GrantView = {
+    epoch: planned.epoch,
+    path: `mandate/v1/${String(planned.epoch)}`,
+    public_key: null,
+    status: "active",
+    policy: planned.policy,
+    initial_reference: reference,
+    initial_value: value === null ? null : value.toString(),
+    turnover_used: "0",
+    outstanding: "0",
+    breaker: null,
+    key_op_in_flight: false,
+  };
+  return { ...obs, grant, balances: { usdc: units.usdc, wnear: units.wnear } };
+}
 
 export interface RebalanceInputs {
   grant: GrantView;

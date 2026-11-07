@@ -19,8 +19,18 @@ export interface ChainIds {
   priceIds: Record<Asset, string>;
 }
 
+export interface ObservationOptions {
+  /**
+   * Before the first grant: read both prices with this maximum age (the planned policy's oracle_max_age_sec), and
+   * treat a mandate account that does not exist yet as "no grant". Without it, no grant means no prices.
+   */
+  plannedMaxAgeSec?: number;
+}
+
+const MISSING_ACCOUNT = /does not exist|AccountDoesNotExist|UNKNOWN_ACCOUNT|CodeDoesNotExist|no contract code/i;
+
 /** Reads grant, mandate balances and both oracle prices at one final block (the client's finality). */
-export async function readObservations(client: NearClient, ids: ChainIds): Promise<FreshObservations> {
+export async function readObservations(client: Pick<NearClient, "provider" | "finality">, ids: ChainIds, opts: ObservationOptions = {}): Promise<FreshObservations> {
   const block = await client.provider.viewBlock({ finality: client.finality });
   const height = block.header.height;
   const at = async <T>(contractId: string, method: string, args: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> => {
@@ -28,13 +38,17 @@ export async function readObservations(client: NearClient, ids: ChainIds): Promi
     const text = Buffer.from(raw.result).toString("utf8");
     return schema.parse(text === "" ? null : JSON.parse(text));
   };
-  const grant = await at(ids.mandate, "get_grant", {}, GrantView.nullable());
+  const planned = opts.plannedMaxAgeSec;
+  const grant = await at(ids.mandate, "get_grant", {}, GrantView.nullable()).catch((error: unknown) => {
+    if (planned !== undefined && error instanceof Error && MISSING_ACCOUNT.test(error.message)) return null;
+    throw error;
+  });
   const balance = (a: Asset) => at(ids.verifier, "mt_balance_of", { account_id: ids.mandate, token_id: tokenId(ids.tokens[a]) }, Units);
   const nowSec = BigInt(block.header.timestamp_nanosec) / 1_000_000_000n;
   const errors: string[] = [];
   const price = async (a: Asset): Promise<PriceReading | null> => {
-    if (grant === null) return null;
-    const age = grant.policy.oracle_max_age_sec;
+    const age = grant === null ? planned : grant.policy.oracle_max_age_sec;
+    if (age === undefined) return null;
     try {
       const p = await at(ids.oracle, "get_price_no_older_than", { price_id: ids.priceIds[a], age }, OraclePrice.nullable());
       if (p === null) return null;

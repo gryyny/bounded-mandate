@@ -2,8 +2,15 @@
 // (planned) inventory, it builds the live snapshot and prompt, makes at most one provider call and validates the
 // reply exactly as the live runner does, then writes an integrity-checked record. It never builds, signs or sends
 // a transaction: this module and everything it imports have no chain client, signer or key (asserted by
-// tools/test/agent-rehearsal.test.ts). A rehearsal qualifies a live provider only when it came from an approved
-// real (paid) call; stub rehearsals exercise the code path only.
+// tools/test/agent-rehearsal.test.ts).
+//
+// Before the first grant exists (provider qualification precedes the run that creates it), a rehearsal decides on
+// the PLANNED grant: the approved policy and inventory at the observed prices (objective.plannedObservations). The
+// record labels that basis and never presents the planned grant as a chain reading.
+//
+// A rehearsal qualifies a live provider only when an approved real (paid) call from the requested model produced a
+// final decision the live runner would act on: an accepted proposal whose pre-signing checks pass, or a decline.
+// Stub rehearsals exercise the code path only.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -12,14 +19,17 @@ import { AdapterVerdict, sha256Hex } from "./decision.js";
 import {
   Allocation,
   FreshObservations,
+  PlannedGrant,
   RebalanceVerdict,
   assess,
   callModel,
   inputsFrom,
   judgeCall,
   objectiveProblems,
+  plannedObservations,
   priceMarginProblems,
   type CallResult,
+  type RebalanceInputs,
 } from "./objective.js";
 import { buildPrompt, type BuiltPrompt } from "./prompt.js";
 import type { LiveModelCall, LiveModelProvider } from "./providers.js";
@@ -44,6 +54,8 @@ export const RehearsalInput = z
     sale_budget_source: z.string().min(1),
     /** The inventory the owner approved for the mandate (manifest/approval), not a chain reading. */
     planned_inventory: z.object({ source: z.string().min(1), units: PerAssetUnits }).strict(),
+    /** The grant the owner plans to make; only when no grant exists on chain (observations.grant is null). */
+    planned_grant: PlannedGrant.nullable().optional(),
   })
   .strict();
 export type RehearsalInput = z.infer<typeof RehearsalInput>;
@@ -69,6 +81,17 @@ export class RehearsalRefusal extends Error {}
 
 const PromptRecord = z.object({ version: z.string(), system: z.string(), user: z.string(), sha256: Sha256 }).strict();
 
+const PLANNED_NOTE =
+  "No grant exists on chain. The decision used the PLANNED grant: the approved policy and planned inventory at the observed prices (reference = those prices, initial value = planned inventory valued at them, rounded down). The contract computes the real reference and value when the grant is made.";
+
+/** What the decision's grant and balances came from. */
+const GrantBasis = z.discriminatedUnion("kind", [
+  /** The grant and mandate balances in the observations (chain readings). */
+  z.object({ kind: z.literal("observed") }).strict(),
+  z.object({ kind: z.literal("planned"), on_chain: z.literal(false), grant: PlannedGrant, decision_balances: z.literal("planned inventory"), note: z.literal(PLANNED_NOTE) }).strict(),
+]);
+type GrantBasis = z.infer<typeof GrantBasis>;
+
 const RecordBody = z
   .object({
     schema: z.literal(REHEARSAL_SCHEMA),
@@ -89,6 +112,7 @@ const RecordBody = z
     paid_inference_approval: z.object({ approved: z.boolean(), reference: z.string().nullable(), basis: z.literal("operator-declared") }).strict(),
     qualifies_live_provider: z.boolean(),
     qualification: z.string(),
+    grant_basis: GrantBasis,
     timing: z.object({ started_at: z.string(), finished_at: z.string(), duration_ms: z.number() }).strict(),
     inventory: z
       .object({
@@ -143,15 +167,55 @@ export function canonicalJson(value: unknown): string {
 
 const seal = (body: RecordBody): RehearsalRecord => ({ ...body, integrity: { algorithm: "sha256/canonical-json", sha256: sha256Hex(canonicalJson(body)) } });
 
-function qualification(rp: RehearsalProvider, approval: PaidInferenceApproval, result: CallResult | null, adapter: AdapterVerdict | null): { qualifies: boolean; why: string } {
-  if (rp.class === "stub") return { qualifies: false, why: "STUB provider: exercises the rehearsal path only; it is not model output and does not qualify a live provider" };
-  if (!approval.approved) return { qualifies: false, why: "real provider without paid-inference approval" };
-  if (result === null) return { qualifies: false, why: "no provider call was made (inputs unusable or allocation within the band)" };
-  if (result.error !== null || result.call === null) return { qualifies: false, why: `the approved real call failed: ${result.error ?? "no result"}` };
-  if (result.call.model !== rp.requested_model) return { qualifies: false, why: `the provider reported model ${result.call.model}, requested ${rp.requested_model}` };
-  if (adapter === null || adapter.kind === "rejected") return { qualifies: false, why: "the approved real call answered, but not with a schema-valid decision" };
-  return { qualifies: true, why: `approved real call (${approval.reference ?? ""}) answered from the requested model with a schema-valid ${adapter.kind}` };
+/** The record fields qualification depends on; the writer and the verifier both decide from these alone. */
+interface QualificationFacts {
+  provider: Pick<RecordBody["provider"], "class" | "requested_model" | "reported_model">;
+  approval: PaidInferenceApproval;
+  model_called: boolean;
+  provider_error: string | null;
+  adapter: AdapterVerdict | null;
+  verdict: RebalanceVerdict;
+  pre_signing_check: RecordBody["pre_signing_check"];
+  basis: GrantBasis["kind"];
 }
+
+/**
+ * Qualifies only an approved real call from the requested model whose final decision the live runner would act
+ * on: an accepted proposal with every pre-signing check passing, or a decline. A schema-valid answer that the
+ * objective, budget or pre-signing checks reject does not qualify.
+ */
+export function qualification(f: QualificationFacts): { qualifies: boolean; why: string } {
+  const no = (why: string) => ({ qualifies: false, why });
+  if (f.provider.class === "stub") return no("STUB provider: exercises the rehearsal path only; it is not model output and does not qualify a live provider");
+  if (!f.approval.approved) return no("real provider without paid-inference approval");
+  if (!f.model_called) return no("no provider call was made (inputs unusable or allocation within the band)");
+  if (f.provider_error !== null || f.provider.reported_model === null) return no(`the approved real call failed: ${f.provider_error ?? "no result"}`);
+  if (f.provider.reported_model !== f.provider.requested_model) return no(`the provider reported model ${f.provider.reported_model}, requested ${f.provider.requested_model}`);
+  if (f.adapter === null || f.adapter.kind === "rejected") return no("the approved real call answered, but not with a schema-valid decision");
+  const basis = f.basis === "planned" ? " on the planned grant (not on chain)" : "";
+  const by = `approved real call (${f.approval.reference ?? ""}) from the requested model${basis}`;
+  if (f.verdict.kind === "no-action" && f.verdict.reason === "model-declined") return { qualifies: true, why: `${by} declined; a decline is a legitimate final decision` };
+  if (f.verdict.kind === "rejected") return no(`the approved real call answered with a schema-valid ${f.adapter.kind}, but the final decision was rejected at the ${f.verdict.boundary} boundary: ${f.verdict.problems.join("; ")}`);
+  if (f.verdict.kind !== "proposal") return no(`unexpected final decision ${f.verdict.kind}`);
+  const pre = f.pre_signing_check?.problems ?? ["no pre-signing check was recorded"];
+  if (pre.length > 0) return no(`the approved real call's proposal was accepted, but the pre-signing checks failed: ${pre.join("; ")}`);
+  return { qualifies: true, why: `${by} produced an accepted proposal whose pre-signing checks pass` };
+}
+
+const basisOf = (input: { planned_grant?: PlannedGrant | null | undefined }): GrantBasis =>
+  input.planned_grant === undefined || input.planned_grant === null
+    ? { kind: "observed" }
+    : { kind: "planned", on_chain: false, grant: input.planned_grant, decision_balances: "planned inventory", note: PLANNED_NOTE };
+
+/** The observations the decision uses: the chain readings, or the planned grant and inventory at those prices. */
+function decisionObservations(obs: FreshObservations, basis: GrantBasis, decimals: Record<Asset, number>, planned: Record<Asset, string>): FreshObservations {
+  return basis.kind === "planned" ? plannedObservations(obs, basis.grant, decimals, planned) : obs;
+}
+
+const preSigningProblems = (obs: FreshObservations, inputs: RebalanceInputs, alloc: Allocation, verdict: RebalanceVerdict): RecordBody["pre_signing_check"] =>
+  verdict.kind === "proposal"
+    ? { observations: "same as decision", problems: [...priceMarginProblems(obs, inputs.grant.policy), ...objectiveProblems(inputs, alloc, verdict.proposal)] }
+    : null;
 
 /**
  * One rehearsal. A real provider refuses to run without paid-inference approval, before any request. At most one
@@ -164,8 +228,12 @@ export async function rehearse(rawInput: RehearsalInput, rp: RehearsalProvider, 
   if (approval.approved && (approval.reference === null || approval.reference.trim() === "")) throw new RehearsalRefusal("rehearsal: an approval needs a reference");
   const input = RehearsalInput.parse(rawInput);
   const obs = input.observations;
+  if (input.planned_grant !== undefined && input.planned_grant !== null && obs.grant !== null) {
+    throw new RehearsalRefusal(`rehearsal: a grant exists on chain (epoch ${String(obs.grant.epoch)}); rehearse against it, not against a planned grant`);
+  }
+  const basis = basisOf(input);
   const started = new Date();
-  const usable = inputsFrom(obs, input.decimals, input.sale_budget);
+  const usable = inputsFrom(decisionObservations(obs, basis, input.decimals, input.planned_inventory.units), input.decimals, input.sale_budget);
   let allocation: Allocation | null = null;
   let snapshot: MarketSnapshot | null = null;
   let prompt: BuiltPrompt | null = null;
@@ -187,19 +255,23 @@ export async function rehearse(rawInput: RehearsalInput, rp: RehearsalProvider, 
       const judged = judgeCall(usable.inputs, a.allocation, result);
       adapter = judged.adapter;
       verdict = judged.verdict;
-      if (verdict.kind === "proposal") {
-        preSigning = {
-          observations: "same as decision",
-          problems: [...priceMarginProblems(obs, usable.inputs.grant.policy), ...objectiveProblems(usable.inputs, a.allocation, verdict.proposal)],
-        };
-      }
+      preSigning = preSigningProblems(obs, usable.inputs, a.allocation, verdict);
     }
   }
   const finished = new Date();
   const startedAt = result?.started_at ?? started.toISOString();
   const finishedAt = result?.finished_at ?? finished.toISOString();
   const call = result?.call ?? null;
-  const q = qualification(rp, approval, result, adapter);
+  const q = qualification({
+    provider: { class: rp.class, requested_model: rp.requested_model, reported_model: call?.model ?? null },
+    approval,
+    model_called: result !== null,
+    provider_error: result?.error ?? null,
+    adapter,
+    verdict,
+    pre_signing_check: preSigning,
+    basis: basis.kind,
+  });
   const observed = { usdc: obs.balances.usdc, wnear: obs.balances.wnear };
   const diff = (a: Asset) => (BigInt(observed[a]) - BigInt(input.planned_inventory.units[a])).toString();
   return seal({
@@ -210,6 +282,7 @@ export async function rehearse(rawInput: RehearsalInput, rp: RehearsalProvider, 
     paid_inference_approval: { approved: approval.approved, reference: approval.reference, basis: "operator-declared" },
     qualifies_live_provider: q.qualifies,
     qualification: q.why,
+    grant_basis: basis,
     timing: { started_at: startedAt, finished_at: finishedAt, duration_ms: Date.parse(finishedAt) - Date.parse(startedAt) },
     inventory: {
       planned: input.planned_inventory,
@@ -255,12 +328,27 @@ export function verifyRehearsal(text: string): RehearsalRecord {
   if (rec.qualifies_live_provider && !(rec.provider.class === "real" && rec.paid_inference_approval.approved)) {
     throw new Error("rehearsal record: only an approved real call can qualify a live provider");
   }
-  const usable = inputsFrom(rec.observations, rec.decimals, rec.sale_budget);
+  if (rec.grant_basis.kind === "planned" && rec.observations.grant !== null) throw new Error("rehearsal record: a planned grant is recorded although a grant exists on chain");
+  const q = qualification({
+    provider: rec.provider,
+    approval: rec.paid_inference_approval,
+    model_called: rec.model_called,
+    provider_error: rec.provider_error,
+    adapter: rec.adapter_verdict,
+    verdict: rec.verdict,
+    pre_signing_check: rec.pre_signing_check,
+    basis: rec.grant_basis.kind,
+  });
+  if (q.qualifies !== rec.qualifies_live_provider || q.why !== rec.qualification) {
+    throw new Error(`rehearsal record: the qualification claim does not follow from the recorded decision (${q.why})`);
+  }
+  const usable = inputsFrom(decisionObservations(rec.observations, rec.grant_basis, rec.decimals, rec.inventory.planned.units), rec.decimals, rec.sale_budget);
   if (!usable.ok) {
     if (rec.model_called) throw new Error("rehearsal record: model called on unusable inputs");
     return rec;
   }
   const a = assess(usable.inputs, rec.notes);
+  if (canonicalJson(a.allocation) !== canonicalJson(rec.allocation)) throw new Error("rehearsal record: stored allocation differs from the one derived from its inputs");
   if (a.kind === "balanced") {
     if (rec.model_called) throw new Error("rehearsal record: model called on a balanced allocation");
     return rec;
@@ -284,6 +372,9 @@ export function verifyRehearsal(text: string): RehearsalRecord {
   const judged = judgeCall(usable.inputs, a.allocation, { call, error: rec.provider_error, started_at: rec.timing.started_at, finished_at: rec.timing.finished_at });
   if (canonicalJson(judged.verdict) !== canonicalJson(rec.verdict) || canonicalJson(judged.adapter) !== canonicalJson(rec.adapter_verdict)) {
     throw new Error("rehearsal record: stored verdict differs from the verdict derived from its reply");
+  }
+  if (canonicalJson(preSigningProblems(rec.observations, usable.inputs, a.allocation, judged.verdict)) !== canonicalJson(rec.pre_signing_check)) {
+    throw new Error("rehearsal record: stored pre-signing check differs from the one derived from its inputs");
   }
   return rec;
 }
