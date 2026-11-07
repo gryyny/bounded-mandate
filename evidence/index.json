@@ -2,12 +2,20 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/958d411",
+      "revision": "958d411c204f5ea221f7e395b0ad2accbdfd4985",
+      "status": "certified",
+      "rules": "gate-report/2 acceptance with 35 required cases (COMPARE.revocation-alternatives added); demo bound to the acceptance run; no machine-local path in any report command",
+      "run": "evidence/958d411/run.json",
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1496 s cold (TypeScript 543/543, Rust 197 passed), acceptance run 20261107T145659281Z-b7d707f889f0; make demo exit 0 in 60 s, 59/59 (setup 16.0 s, story 20.4 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42383961240: make test certified in 1941 s (acceptance run 20261107T150135938Z-b5c2d93063c1), make demo 65 s, 59/59 (setup 12.7 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 8b2bdda1..., walkthrough 179.7 s sha256 ae8896db...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed)."
+    },
+    {
       "path": "evidence/bc3fed6",
       "revision": "bc3fed65e146d8556537a3f968b5f42687489215",
-      "status": "certified",
+      "status": "superseded",
       "rules": "gate-report/2 acceptance with 34 required cases; demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/bc3fed6/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1455 s cold (TypeScript 543/543, Rust 196 passed), acceptance run 20261107T123537249Z-030ea9f58f07; make demo exit 0 in 62 s, 59/59 (setup 16.1 s, story 20.3 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42373163926: make test certified in 1941 s (acceptance run 20261107T123927987Z-adfcafbcec9b), make demo 65 s, 59/59 (setup 13.1 s, story 20.1 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 6e85f2ce..., walkthrough 179.7 s sha256 baf2cdc3...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed)."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1455 s cold (TypeScript 543/543, Rust 196 passed), acceptance run 20261107T123537249Z-030ea9f58f07; make demo exit 0 in 62 s, 59/59 (setup 16.1 s, story 20.3 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42373163926: make test certified in 1941 s (acceptance run 20261107T123927987Z-adfcafbcec9b), make demo 65 s, 59/59 (setup 13.1 s, story 20.1 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 6e85f2ce..., walkthrough 179.7 s sha256 baf2cdc3...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed). Superseded on 7 November 2026 by 958d411, which adds the COMPARE gate and the revocation_window instrumentation."
     },
     {
       "path": "evidence/4fec11b",

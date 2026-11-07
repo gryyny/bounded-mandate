@@ -1,0 +1,98 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "CONSOLE",
+  "case": "access-controls",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261107T145659281Z-b7d707f889f0",
+  "source": {
+    "revision": "958d411c204f5ea221f7e395b0ad2accbdfd4985",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794064656,
+  "data": {
+    "checks": [
+      {
+        "name": "wrong-network-disables",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-deployment-disables",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-owner-disables",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "in-page-cancel-sends-nothing",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "signer-cancel-submits-nothing",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "rejected-transaction-submits-nothing",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "intent-mismatch-refused",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "reload-resumes-without-resubmit",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "reload-awaiting-signature-without-resubmit",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "signer-refuses-unbound-receivers",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "signer-refuses-other-beneficiaries",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "signer-refuses-framing",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "signer": "local sandbox test signer (not a wallet)",
+    "browser": "chromium headless (playwright)",
+    "sign_requests": [
+      {
+        "at": 1794064647643,
+        "via": "console",
+        "intent_sha256": "6214d22a67809356049162e56863075f33beccecc719825c7f1f60c7afe04d48",
+        "status": "cancelled",
+        "tx_hash": null
+      }
+    ]
+  }
+}
