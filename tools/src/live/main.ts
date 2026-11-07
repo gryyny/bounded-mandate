@@ -803,9 +803,9 @@ async function relayGate(rt: Runtime, step: Extract<Step, { kind: "relay_withhel
  * propose and revoke is the runner's verified step-done, not a transaction response: a lost response is first
  * recorded as ambiguous and confirmed only by a later reconciliation.
  */
-function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknown> {
+function deadlineTimeline(ledger: Ledger, extra: Probe[], window: Record<string, unknown> | null = null): Record<string, unknown> {
   const w = latestWithheld(ledger);
-  if (w === null) return { deadline_ns: null, phases: extra };
+  if (w === null) return { deadline_ns: null, phases: extra, revocation_window: window };
   const deadlineMs = Number(BigInt(w.deadline_ns) / 1_000_000n);
   const withholdDone = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold").at(-1);
   const intents = ledger.ofKind("tx-intent");
@@ -831,14 +831,45 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[]): Record<string, unknow
   ].map((ph) => ({ ...ph, wall_remaining_ms: deadlineMs - Date.parse(ph.at) }));
   return {
     deadline_ns: w.deadline_ns,
+    revocation_window: window ?? relay?.data.revocation_window ?? null,
     note: "at and wall_remaining_ms use the runner's clock; chain_ns and remaining_ms use the final block's timestamp, which the verifier's deadline check follows. A phase confirmed by runner is the time its step's terminal verification was recorded (after a reconciling resume, if the response was lost), not the block time of finality",
     phases,
   };
 }
 
+/**
+ * What revocation bought for the withheld order, by chain time. Instrumentation only; it decides nothing. The
+ * comparison point is an owner who stops authorizing and waits: from the moment removal was confirmed, that owner
+ * would stay exposed until the order's own deadline. `confirmed` is the first final-block read after the runner
+ * confirmed removal, so removal was final no later than that and the remaining lifetime is at least the value
+ * shown. The MPC signing latency bounds how short order lifetimes could be while trading still works.
+ */
+async function revocationWindow(rt: Runtime, confirmed: Probe): Promise<Record<string, unknown> | null> {
+  const w = latestWithheld(rt.ledger);
+  if (w === null || confirmed.chain_ns === null) return null;
+  const order = await rt.mandate.order(w.order_id);
+  const ms = (later: bigint, earlier: bigint): number => Number((later - earlier) / 1_000_000n);
+  const deadline = BigInt(w.deadline_ns);
+  const removal = BigInt(confirmed.chain_ns);
+  const requested = order?.sign_requested_at_ns == null ? null : BigInt(order.sign_requested_at_ns);
+  const signed = order?.signed_at_ns == null ? null : BigInt(order.signed_at_ns);
+  return {
+    basis: "chain time: the order's own timestamps, and the final block read right after the runner confirmed removal",
+    order_id: w.order_id,
+    deadline_ns: w.deadline_ns,
+    sign_requested_at_ns: requested?.toString() ?? null,
+    signed_at_ns: signed?.toString() ?? null,
+    removal_confirmed_by_ns: confirmed.chain_ns,
+    mpc_sign_latency_ms: requested === null || signed === null ? null : ms(signed, requested),
+    signed_to_deadline_ms: signed === null ? null : ms(deadline, signed),
+    remaining_after_confirmed_removal_ms: ms(deadline, removal),
+    note: "remaining_after_confirmed_removal_ms is how long the withheld order would still have been executable for an owner who stopped authorizing and waited, measured from the same moment; it is a lower bound, since removal was final before the runner's read. Negative means the order had already expired.",
+  };
+}
+
 /** Records a relay that was not broadcast as inconclusive. */
-function skipRelay(rt: Runtime, i: number, skipped: RelaySkipped, probes: Probe[]): void {
-  const verification = { ...skipped.observed, timing: deadlineTimeline(rt.ledger, probes) };
+function skipRelay(rt: Runtime, i: number, skipped: RelaySkipped, probes: Probe[], window: Record<string, unknown> | null = null): void {
+  const verification = { ...skipped.observed, timing: deadlineTimeline(rt.ledger, probes, window) };
   rt.assertions.push({ id: `step-${i + 1}-relay_withheld`, gate: "LIVE", description: "relay_withheld: not sent", passed: false, observed: { ...verification, problems: [skipped.message] } });
   rt.ledger.append("step-done", { step: i, kind: "relay_withheld", verification, classification: "inconclusive", sent: false, finding: `step ${i + 1} relay_withheld: inconclusive, not sent: ${skipped.message}` });
 }
@@ -1511,9 +1542,11 @@ async function relayWithheld(rt: Runtime, i: number, step: Extract<Step, { kind:
     skipRelay(rt, i, new RelaySkipped(`no withheld order: step ${z.number().int().parse(lastWithhold.data.step) + 1} withhold was skipped`, { classification: "inconclusive" }), probes);
     return;
   }
+  let window: Record<string, unknown> | null = null;
   try {
     const pre = await relayGate(rt, step, "relay pre-check");
     probes.push(pre.probe);
+    window = await revocationWindow(rt, pre.probe);
     if (pre.skip !== null) throw new RelaySkipped(pre.skip, pre.observed);
     const p = await plan(rt, i, step);
     const w = latestWithheld(rt.ledger);
@@ -1528,11 +1561,11 @@ async function relayWithheld(rt: Runtime, i: number, step: Extract<Step, { kind:
       const last = await relayGate(rt, step, "relay broadcast");
       probes.push(last.probe);
       if (last.skip !== null) throw new RelaySkipped(last.skip, last.observed);
-      return { timing: probes };
+      return { timing: probes, revocation_window: window };
     });
   } catch (error) {
     if (!(error instanceof RelaySkipped)) throw error;
-    skipRelay(rt, i, error, probes);
+    skipRelay(rt, i, error, probes, window);
   }
 }
 

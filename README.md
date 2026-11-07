@@ -1,5 +1,7 @@
 # Bounded mandate
 
+*Let an agent trade your treasury within limits you control. When you stop trusting it, withdraw its outstanding authority and recover your assets.*
+
 **An AI agent trades a USDC/wNEAR treasury on NEAR Intents, only through a contract that enforces its limits and signs every order itself.**\
 **Revoking the grant removes the contract's signing key from `intents.near`; once that is confirmed, every order already signed for the grant fails, withheld ones included.**\
 **The owner then takes the assets back without the agent, the oracle or the signing network.**
@@ -253,6 +255,27 @@ We applied the same threat model to our own re-implementation of the [Claw Guard
 
 Over-cap, injected-withdrawal and owner-recovery cases are blocked by both designs. The evidence page claims an increment only from a certified run in which the matching mandate gate passed.
 
+## Compared with simpler alternatives (COMPARE)
+
+When an owner stops trusting an agent, signed orders may still be outstanding. The mandate's answer is to remove the grant's key from `intents.near`. Simpler answers exist, and the verifier supports them: stop issuing and let orders expire, or cancel each order's nonce by signing an empty intent with the same key ([near/intents at 16d04f6](https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/intents/mod.rs#L30-L37)). [contract/tests/compare_revocation.rs](contract/tests/compare_revocation.rs) runs them side by side on the pinned verifier WASM.
+
+- **Same setup for each strategy:** an account holding the same deposits, and three unexpired withheld orders of 1 USDC each, relayed by an unrelated account.
+- **The owner's ledger records two of the three orders.** The third stands for a signature disclosed without being recorded.
+- **The account's key is a labelled test key**, standing in for the MPC-derived key.
+
+| Owner's response | Signatures by the account key | Withheld orders that still execute | Covers an order the owner did not record | To resume trading |
+| --- | ---: | ---: | --- | --- |
+| Stop issuing, wait for expiry | 0 | 3 of 3, until each deadline | no | nothing |
+| Cancel recorded nonces (empty signed intents) | 2, one per recorded order | 1 of 3 (the unrecorded one) | no | same key |
+| **Remove the key, resume with a fresh key (the mandate)** | **0: a direct call by the account** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
+| Remove the key, re-add the same key | 0 | 3 of 3 after the re-add | no | same key, which revives every unexpired order |
+
+What this shows, and what it does not:
+
+- **Cancelling nonces needs the account's signer and a complete list.** It needs a working signer and a complete list of outstanding nonces. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither.
+- **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run can measure it: the runner records it as `revocation_window`, giving the lifetime left after confirmed removal, the MPC signing latency and the time from signing to deadline. With 60–120 s order lifetimes the gap may be small. That is why the mandate's case also rests on what the alternatives leave out: limits checked before every signature, conservative accounting of signed and disclosed orders (T2, T2b) and recovery without the agent, oracle or MPC (T4).
+- **Not tested here:** a relay that lands before the owner's action is final, and mainnet latency. This is a verifier-level experiment; the mandate's own gates are T1 to T4.
+
 ## Comparison with related NEAR projects
 
 What this repository demonstrates together, in the sandbox gates certified for revision bc3fed6 [1]:
@@ -301,7 +324,7 @@ Sources:
 
 ### Complementary architecture
 
-The two fit together rather than compete. The Agent API is for breadth: many chains, assets and action types, hosted execution and per-execution transparency. Bounded mandate is for where trading limits and revocation must be verifiable on chain: the contract checks the limits before it signs, and revocation is a key removal that anyone can check with a view call. An Agent API agent proposing trades to a mandate is a proposed integration, not a built one. It stays untested until two things are tested: caller identity (which account the mandate sees calling `propose_order`; it accepts only its fixed agent account) and invocation compatibility (whether an Agent API route can make that exact call the mandate accepts).
+The two could fit together rather than compete. That is a design possibility, not a built or tested integration, and no user has asked for it yet. The Agent API is for breadth: many chains, assets and action types, hosted execution and per-execution transparency. Bounded mandate is for where trading limits and revocation must be verifiable on chain: the contract checks the limits before it signs, and revocation is a key removal that anyone can check with a view call. An Agent API agent proposing trades to a mandate is a proposed integration, not a built one. It stays untested until two things are tested: caller identity (which account the mandate sees calling `propose_order`; it accepts only its fixed agent account) and invocation compatibility (whether an Agent API route can make that exact call the mandate accepts).
 
 ```mermaid
 flowchart LR

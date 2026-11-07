@@ -161,6 +161,11 @@ pub fn token_diff_message(signer: &str, deadline_ns: u64, diff: &[(String, i128)
     .to_string()
 }
 
+/// An empty DefusePayload: executes nothing but commits (invalidates) its nonce for `signer`.
+pub fn empty_intents_message(signer: &str, deadline_ns: u64) -> String {
+    json!({"signer_id": signer, "deadline": rfc3339(deadline_ns), "intents": []}).to_string()
+}
+
 pub fn multipayload(p: &Nep413Payload, public_key: &[u8; 32], signature: &[u8; 64]) -> Value {
     let mut payload = json!({
         "message": p.message,
@@ -283,8 +288,17 @@ impl FillerKey {
         nonce: [u8; 32],
         diff: &[(String, i128)],
     ) -> Value {
+        self.sign_message(
+            verifier,
+            nonce,
+            token_diff_message(signer, deadline_ns, diff),
+        )
+    }
+
+    /// A NEP-413 MultiPayload over any DefusePayload message.
+    pub fn sign_message(&self, verifier: &str, nonce: [u8; 32], message: String) -> Value {
         let payload = Nep413Payload {
-            message: token_diff_message(signer, deadline_ns, diff),
+            message,
             nonce,
             recipient: verifier.to_owned(),
             callback_url: None,

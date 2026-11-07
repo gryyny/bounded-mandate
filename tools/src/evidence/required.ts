@@ -27,6 +27,11 @@ export const REQUIRED_CASES = {
    * Connect with the labelled sandbox test wallet. Neither is a real wallet provider.
    */
   CONSOLE: ["browser-sandbox", "access-controls", "wallet-sandbox"],
+  /**
+   * Matched comparison of the owner's alternatives on the pinned verifier: wait for expiry, cancel recorded nonces,
+   * remove the key and resume with a fresh key, remove and re-add the same key.
+   */
+  COMPARE: ["revocation-alternatives"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */

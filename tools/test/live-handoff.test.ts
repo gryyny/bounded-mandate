@@ -1104,6 +1104,16 @@ describe("primary template (live agent, console-signed owner actions, withdrawal
       const broadcast = relay.timing.phases.find((p) => p.phase === "relay broadcast");
       expect(broadcast?.remaining_ms ?? 0).toBeGreaterThan(0);
       expect(relay.timing.phases.map((p) => p.phase)).toContain("revoke intent written (owner signs outside the runner)");
+      // What revocation bought, by chain time, recomputed from the recorded timestamps and the order's own view.
+      const windowOf = (relay.timing as unknown as { revocation_window: Record<string, string | number | null> }).revocation_window;
+      const withheldOrder = (await new MandateClient(world.client, mt.id).allOrders()).find((o) => o.id === windowOf.order_id);
+      expect(windowOf).toMatchObject({ deadline_ns: withheldOrder?.deadline_ns, signed_at_ns: withheldOrder?.signed_at_ns, sign_requested_at_ns: withheldOrder?.sign_requested_at_ns });
+      const nsToMs = (later: unknown, earlier: unknown) => Number((BigInt(String(later)) - BigInt(String(earlier))) / 1_000_000n);
+      expect(windowOf.remaining_after_confirmed_removal_ms).toBe(nsToMs(windowOf.deadline_ns, windowOf.removal_confirmed_by_ns));
+      expect(windowOf.mpc_sign_latency_ms).toBe(nsToMs(windowOf.signed_at_ns, windowOf.sign_requested_at_ns));
+      expect(windowOf.signed_to_deadline_ms).toBe(nsToMs(windowOf.deadline_ns, windowOf.signed_at_ns));
+      expect(Number(windowOf.remaining_after_confirmed_removal_ms)).toBeGreaterThan((broadcast?.remaining_ms ?? 0) - 1);
+      expect(Number(windowOf.remaining_after_confirmed_removal_ms)).toBeLessThan(Number(windowOf.signed_to_deadline_ms));
       // Agent trade made and settled: one released:settled order besides the refused proposal's absence and the withheld order.
       const orders = await new MandateClient(world.client, mt.id).allOrders();
       expect(orders.map((o) => o.state)).toEqual([

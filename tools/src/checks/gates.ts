@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-export const REQUIRED_GATES = ["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY", "DAO", "AGENT", "HANDOFF", "WITHDRAW", "LIVE", "CONSOLE"] as const;
+export const REQUIRED_GATES = ["T1", "T2", "T2b", "T3", "T4", "T5", "BOUNDARY", "MODEL", "DEPLOY", "DAO", "AGENT", "HANDOFF", "WITHDRAW", "LIVE", "CONSOLE", "COMPARE"] as const;
 
 // Longest names first so `T2b` is never read as `T2`.
 const GATE_TAG = new RegExp(`gate:\\s*(${[...REQUIRED_GATES].sort((a, b) => b.length - a.length).join("|")})\\b`, "g");

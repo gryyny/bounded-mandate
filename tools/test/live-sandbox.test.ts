@@ -623,6 +623,10 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
       "relay prepared",
       "relay broadcast",
     ]);
+    // A skipped relay still records what revocation bought: the lifetime left at the confirmed removal (pre-check read).
+    const windowOf = (observed.timing as unknown as { revocation_window: { remaining_after_confirmed_removal_ms: number; removal_confirmed_by_ns: string; deadline_ns: string } }).revocation_window;
+    expect(windowOf.remaining_after_confirmed_removal_ms).toBe(phase("relay pre-check")?.remaining_ms);
+    expect(windowOf.remaining_after_confirmed_removal_ms).toBe(Number((BigInt(windowOf.deadline_ns) - BigInt(windowOf.removal_confirmed_by_ns)) / 1_000_000n));
     // grant, propose, revoke, recover, recover: the relay was never broadcast.
     expect(sendsOf(calls)).toBe(5);
     expect(ledgerOf(path).ofKind("tx-intent").map((e) => e.data.kind)).not.toContain("relay_withheld");

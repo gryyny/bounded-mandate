@@ -79,6 +79,7 @@ export const GATE_LABEL: Record<string, string> = {
   DEPLOY: "proposed deployment binary exercised in sandbox",
   DAO: "a pinned Sputnik DAO as the fixed owner, threshold-voted (sandbox)",
   AGENT: "runner sale budgets bound the agent; no-transaction provider rehearsal",
+  COMPARE: "the owner's alternatives compared on the verifier: wait, cancel nonces, remove the key",
 };
 
 const json = (value: unknown): string => {
