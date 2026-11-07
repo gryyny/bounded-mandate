@@ -42,6 +42,8 @@ header.docket::before {
 }
 .kicker { font: 600 .74rem/1.2 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin: 0 0 .9rem; }
 h1 { font: 600 clamp(2rem, 4.6vw, 3.4rem)/1.04 var(--serif); letter-spacing: -.015em; margin: 0 0 .6rem; max-width: 22ch; }
+h1.lead-line { font-size: clamp(1.9rem, 4vw, 3rem); max-width: 30ch; }
+.position.lead-sub { font-size: clamp(1.02rem, 1.6vw, 1.18rem); max-width: 78ch; margin-bottom: .4rem; }
 .position { font: 500 clamp(1.15rem, 2.2vw, 1.45rem)/1.35 var(--serif); max-width: 46ch; margin: 0 0 1.2rem; color: var(--accent); }
 ul.modes-key { list-style: none; margin: 0 0 1.3rem; padding: .8rem 1rem; display: grid; gap: .45rem; background: color-mix(in srgb, var(--rule) 22%, var(--sheet)); border: 1px solid var(--rule); font-size: .9rem; }
 ul.modes-key li { display: grid; grid-template-columns: 11.5rem minmax(0, 1fr); gap: .8rem; align-items: baseline; }
@@ -175,6 +177,23 @@ dl.stage-facts dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: ta
 li.stage.withdrawn { border-top-style: dashed; border-top-color: var(--m-sandbox); }
 .stage-state { margin: 0; font: .72rem/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .stage-state span { text-transform: uppercase; letter-spacing: .1em; color: var(--ink); }
+ol.journey { list-style: none; margin: 1.4rem 0 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
+li.jstep { position: relative; background: color-mix(in srgb, var(--rule) 14%, var(--sheet)); border: 1px solid var(--rule-strong); border-top: 4px solid var(--pass); padding: .7rem .8rem .75rem; display: flex; flex-direction: column; gap: .35rem; min-width: 0; animation: rise .5s both cubic-bezier(.2,.7,.2,1); }
+li.jstep.revoked, li.jstep.rejected { border-top-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--sheet)); }
+li.jstep.withdrawn { border-top-style: dashed; border-top-color: var(--m-sandbox); }
+li.jstep.failure, li.jstep.missing { border-top-color: var(--fail); background: color-mix(in srgb, var(--fail-bg) 55%, var(--sheet)); }
+li.jstep.inconclusive { border-top-color: var(--stale); background: color-mix(in srgb, var(--stale-bg) 55%, var(--sheet)); }
+.jhead { display: flex; align-items: baseline; gap: .5rem; margin: 0; }
+.jn { flex: none; font: 700 1.5rem/1 var(--mono); color: var(--muted); }
+li.jstep.revoked .jn, li.jstep.rejected .jn { color: var(--accent); }
+.jtitle { font: 600 1rem/1.2 var(--serif); }
+.jresult { margin: 0; font-size: .86rem; line-height: 1.4; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.jmeta { margin: auto 0 0; display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; font: .7rem/1.3 var(--mono); }
+.jmeta .mode { white-space: normal; line-height: 1.25; font-size: .62rem; }
+.jmeta a { margin-left: auto; }
+p.journey-note { margin: 0 0 1.2rem; font: .78rem/1.5 var(--mono); color: var(--muted); max-width: 90ch; }
+@media (max-width: 980px) { ol.journey { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { ol.journey { grid-template-columns: minmax(0, 1fr); gap: .55rem; } }
 p.planned { margin: .9rem 0 0; font-size: .88rem; overflow-wrap: anywhere; }
 table.attack-log td { vertical-align: top; overflow-wrap: anywhere; }
 td.route { font-weight: 600; min-width: 12rem; }
@@ -222,9 +241,12 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
   .folio > .num { position: static; text-align: left; border-right: 0; border-bottom: 1px solid var(--rule-strong); padding: 0 0 .5rem; margin-bottom: 1rem; font-size: 2.2rem; }
   .folio > .num small { display: inline; margin-left: .6rem; }
   ul.modes-key li { grid-template-columns: 1fr; gap: .2rem; }
+  .mode, .status { white-space: normal; line-height: 1.35; }
+  .verdict { flex-wrap: wrap; } .verdict p { min-width: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
+  dl.kv { grid-template-columns: minmax(0, 1fr); } dl.kv dt { overflow-wrap: anywhere; }
   li.stage + li.stage::before { content: "↓"; position: absolute; top: -1.05rem; left: 1.4rem; font: 700 .9rem/1 var(--mono); color: var(--muted); }
 }
 @media print {
-  body { background: #fff; } .stamp { mix-blend-mode: normal; } details { display: block; } ol.timeline > li, li.stage { animation: none; }
+  body { background: #fff; } .stamp { mix-blend-mode: normal; } details { display: block; } ol.timeline > li, li.stage, li.jstep { animation: none; }
 }
 `;

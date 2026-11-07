@@ -26,8 +26,11 @@ interface Client {
   handoffOf(r: PendingRecord): Handoff | null;
   sha256Hex(text: string): Promise<string>;
   canonicalJson(v: unknown): string;
-  fmtUnits(a: string, d: number): string;
+  fmtUnits(a: string, d: number | null): string;
   fmtShort(a: string, d: number, p: number): string;
+  fmtUsd(units: unknown): string;
+  deadlineText(deadlineNs: string | null, blockNs: string | null): string;
+  nextStep(action: ActionKind, outcome: "success" | "failure", endText: string): string;
   loadRecords(store: unknown): PendingRecord[];
   saveRecord(store: unknown, r: PendingRecord): boolean;
   rpcCall(f: FetchFn, url: string, method: string, params: unknown, timeoutMs: number): ReturnType<Call>;
@@ -36,7 +39,7 @@ interface Client {
 /** The exact inline script of the page, evaluated with no document elements, so its bootstrap wires nothing. */
 function client(): Client {
   const emptyDoc = { getElementById: () => null, createElement: () => null };
-  const names = ["readLive", "renderLive", "ownerGate", "buildIntent", "actionGate", "endState", "fromRunner", "intentDiff", "cliCommand", "txProblems", "handoffOf", "sha256Hex", "canonicalJson", "fmtUnits", "fmtShort", "loadRecords", "saveRecord", "rpcCall"];
+  const names = ["readLive", "renderLive", "ownerGate", "buildIntent", "actionGate", "endState", "fromRunner", "intentDiff", "cliCommand", "txProblems", "handoffOf", "sha256Hex", "canonicalJson", "fmtUnits", "fmtShort", "fmtUsd", "deadlineText", "nextStep", "loadRecords", "saveRecord", "rpcCall"];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const factory = new Function("document", "fetch", "window", `${consoleScript()}\nreturn { ${names.join(", ")} };`) as (d: unknown, f: unknown, w: unknown) => Client;
   return factory(emptyDoc, () => {
@@ -154,6 +157,17 @@ describe("static rendering", () => {
     expect(about).not.toMatch(/wallet-compatible|compatible with (your|any) wallet/i);
   });
 
+  it("leads with the journey and says where each step happens, with the console acting only in steps 5, 7 and 8", () => {
+    expect(html).toContain('<p class="lead">Give an AI agent trading power. Keep the power to stop it.</p>');
+    const guide = html.slice(html.indexOf('<ol class="cjourney"'), html.indexOf("</ol>", html.indexOf('<ol class="cjourney"')));
+    expect([...guide.matchAll(/<li( class="act")?><b><span>([1-8])<\/span>/g)].map((m) => `${m[2] ?? ""}${m[1] === undefined ? "" : " act"}`)).toEqual(["1", "2", "3", "4", "5 act", "6", "7 act", "8 act"]);
+    expect(guide).toContain("Not instant: until key removal is confirmed, signed orders may still execute.");
+    expect(guide).toContain("This page never relays orders");
+    expect(guide).toContain("outside recovery claims");
+    expect(html.indexOf('<ol class="cjourney"')).toBeLessThan(html.indexOf('id="live"'));
+    expect(html).toContain("<h3>C · Owner actions, in journey order</h3>");
+  });
+
   it("offers the local test signer only when served by it", () => {
     expect(html).toContain('<option value="local">');
     expect(renderConsoleHtml(storyEvidence())).not.toContain('<option value="local">');
@@ -193,6 +207,64 @@ describe("live view", () => {
     if (d === null) throw new Error("no deployment");
     expect(c.ownerGate({ ...profile, deployment: { ...d, code_hash: "Other" } }, live, signer).join()).toMatch(/deployment check failed: mandate code hash/);
     expect(c.ownerGate(mainnetProfile(), live, signer)).toEqual(["read the live chain state of this network first"]);
+  });
+
+  it("shows an open signed order, turnover and reservations in readable units next to the raw ones", async () => {
+    // SYNTHETIC: one signed order of 20 wNEAR for 59.831967 USDC, reserved at $60 (value units are 10^-12 USD).
+    const order = { id: "1", sell: "wnear", sell_amount: "20000000000000000000000000", buy: "usdc", buy_amount: "59831967", state: { state: "signed" }, reserved_value: "60000000000000", deadline_ns: "61000000000" };
+    const { call } = synthCall(GENESIS, {
+      list_orders: [order],
+      get_grant: { epoch: 1, path: "mandate/v1/1", public_key: "ed25519:GrantKey", status: "active", policy: { per_order_cap_bps: 2000 }, turnover_used: "69500000000000", outstanding: "60000000000000", breaker: null, key_op_in_flight: false },
+      has_public_key: true,
+    });
+    const live = await c.readLive(call, profile, "http://127.0.0.1:1", "mandate.synthetic");
+    const text = c.renderLive(fakeDoc, profile, { ...live, block: { height: 7, hash: "SynthBlock", time_ns: "23000000000" } }).textContent ?? "";
+    expect(text).toContain("$69.50 / $60.00 at the grant's reference prices (69500000000000 / 60000000000000 value units)");
+    expect(text).toContain("20 wNEAR → 59.831967 USDC");
+    expect(text).toContain("units: 20000000000000000000000000 wnear → 59831967 usdc");
+    expect(text).toContain("$60.00");
+    expect(text).toContain("1970-01-01 00:01:01 UTC (38 s left at the block read)");
+    expect(text).toContain("including one that was signed and held back (step 4). Revoking (step 5) stops it once the key removal is confirmed.");
+    expect(c.deadlineText("61000000000", "61000000000")).toBe("1970-01-01 00:01:01 UTC (passed at the block read)");
+    // Less than a second left is still before the deadline.
+    expect(c.deadlineText("61000000000", "60500000000")).toBe("1970-01-01 00:01:01 UTC (0 s left at the block read)");
+    expect(c.fmtUsd("1899800000000000")).toBe("$1,899.80");
+    expect(c.fmtUsd("not a number")).toBe("not read");
+  });
+
+  it("shows raw units, never whole tokens, when the contract's configuration does not state an asset's decimals", async () => {
+    // SYNTHETIC: a configuration without USDC decimals; an open order selling 1234500 USDC units.
+    const order = { id: "3", sell: "usdc", sell_amount: "1234500", buy: "wnear", buy_amount: "1000000000000000000000000", state: { state: "signed" }, reserved_value: "1234000000000000", deadline_ns: null };
+    const { call } = synthCall(GENESIS, {
+      get_config: { owner_id: "owner.synthetic", agent_id: "agent.synthetic", verifier_id: "intents.synthetic", signer_id: "mpc.synthetic", oracle_id: "oracle.synthetic", usdc: { token: "usdc.synthetic", price_id: "x" }, wnear: { token: "wnear.synthetic", decimals: 24, price_id: "y" } },
+      list_orders: [order],
+      get_grant: { epoch: 1, path: "mandate/v1/1", public_key: "ed25519:GrantKey", status: "active", policy: {}, turnover_used: "0", outstanding: "0", breaker: null, key_op_in_flight: false },
+    });
+    const live = await c.readLive(call, profile, "http://127.0.0.1:1", "mandate.synthetic");
+    expect(live.tokens.usdc?.decimals).toBeNull();
+    const text = c.renderLive(fakeDoc, profile, live).textContent ?? "";
+    expect(text).toContain("1234500 usdc (units) → 1 wNEAR");
+    expect(text).toContain("1234500 (units)");
+    expect(text).not.toContain("1,234,500 USDC");
+    expect(c.fmtUnits("1234500", null)).toBe("1234500 (units)");
+  });
+
+  it("states the next owner step after a final action, and never claims a removal that is not confirmed", () => {
+    expect(c.nextStep("revoke", "success", "revoked (epoch 1): removal confirmed, the grant key is absent on the verifier")).toContain("orders signed under this grant now fail");
+    const unconfirmed = c.nextStep("revoke", "success", "revoking: removal not confirmed; revoke again to retry the removal");
+    expect(unconfirmed).toContain("signed orders may still execute");
+    expect(unconfirmed).not.toContain("now fail");
+    expect(c.nextStep("recover", "failure", "the transaction failed")).toBe("Nothing is retried automatically: read the chain state, then review the action again to retry it deliberately.");
+    expect(c.nextStep("withdraw", "success", "not withdrawn: Intents balance 1")).toContain("stays in the owner's Intents account");
+    expect(c.nextStep("recover", "success", "recovery finished")).toContain("outside recovery claims");
+  });
+
+  it("notes, without disabling, a recovery that would move nothing", async () => {
+    const { call } = synthCall(GENESIS, { mt_balance_of: "0" });
+    const live = await c.readLive(call, profile, "http://127.0.0.1:1", "mandate.synthetic");
+    const gate = c.actionGate("recover", "usdc", live, []);
+    expect(gate.reasons).toEqual([]);
+    expect(gate.notes).toContain("the mandate holds none of this asset now; a recovery would move nothing");
   });
 
   it("formats integer units exactly; display truncation is marked", () => {

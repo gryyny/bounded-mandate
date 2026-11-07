@@ -1,5 +1,6 @@
-// Renders the static evidence page. Order: product position, claim and the run's allocation outcome, the nine-stage
-// journey bound to the demo evidence, three ways to check it, the attack log, mainnet receipts (or the pending panel), the
+// Renders the static evidence page. Order: the lead line, one sentence and the owner's eight-step journey with each
+// step's recorded outcome (first screen), the claim and the run's allocation outcome, the nine detailed stages bound to
+// the demo evidence, three ways to check it, the attack log, mainnet receipts (or the pending panel), the
 // opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
 // acceptance gates per case, the T5 baseline, the Agent API comparison, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
 // certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
@@ -17,7 +18,7 @@ import { caseModeBadge, chip, escapeHtml, modeBadge, word } from "./html.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
-import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, priceText, revocationStory, share, shortHash, stateLine, usd, usdc, wnear, type Stage } from "./story.js";
+import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, ownerJourney, priceText, revocationStory, share, shortHash, stageNumber, stateLine, usd, usdc, wnear, type JourneyStep, type Stage } from "./story.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
 import { agentApiBody } from "./related.js";
 import { STYLES } from "./styles.js";
@@ -25,9 +26,10 @@ import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js
 
 export { escapeHtml } from "./html.js";
 
-/** The product in two plain lines, aligned with the README's opening. */
-export const HEADLINE = "Let an AI agent trade within limits a contract enforces";
-export const SUBTITLE = "Once a revocation is confirmed, signed orders already issued fail too, and the owner takes the remaining assets back without the agent.";
+/** The lead line, verbatim as the README opens, and the product in one sentence. */
+export const HEADLINE = "Give an AI agent trading power. Keep the power to stop it.";
+export const SUBTITLE =
+  "The agent only proposes trades; a NEAR contract signs those within the owner's limits, and once the owner's revocation is confirmed, every outstanding order signed under that grant fails and the owner takes the assets back without the agent.";
 
 export interface RenderExtras {
   /**
@@ -284,14 +286,17 @@ function modesKey(ev: Evidence, live: LiveView): string {
   const model = ev.assertions.some(isModelOutput)
     ? [`<li>${chip("recorded-model", "recorded model output")}<span>The trade proposal replays a recorded genuine model response. No model is called to build this page.</span></li>`]
     : [];
+  // The demo replays recordings; it records model_mode "recorded-model" and makes no provider call.
+  const provider =
+    ev.environment.model_mode === "recorded-model" ? [`<li>${chip("pending", "provider calls: none")}<span>No genuine model-provider call was made in this run; the recorded interaction is replayed.</span></li>`] : [];
   const mainnet =
     live.kind === "mainnet"
       ? `<li>${modeBadge("mainnet")}<span>Mainnet receipts: transactions of an approved <code>make live</code> run, in their own section below.</span></li>`
       : `<li>${chip("pending", "mainnet: none")}<span>No mainnet receipt is shown on this page.</span></li>`;
-  return `<ul class="modes-key" aria-label="Execution modes on this page"><li>${modeBadge(ev.mode)}<span>${escapeHtml(demo)}</span></li>${model.join("")}${mainnet}</ul>`;
+  return `<ul class="modes-key" aria-label="Execution modes on this page"><li>${modeBadge(ev.mode)}<span>${escapeHtml(demo)}</span></li>${model.join("")}${provider.join("")}${mainnet}</ul>`;
 }
 
-function stageCard(s: Stage, i: number, ev: Evidence): string {
+function stageCard(s: Stage, ev: Evidence): string {
   const state = { held: "held", "not-held": "failure", inconclusive: "inconclusive", missing: "missing" }[s.outcome];
   const txs = s.receipts.map(
     ({ index, receipt }) => `<a href="#tx-${String(index)}">tx ${escapeHtml(shortHash(receipt.tx_hash ?? receipt.label))}</a>${receipt.outcome === "failure" ? " (failed)" : ""}`,
@@ -305,7 +310,7 @@ function stageCard(s: Stage, i: number, ev: Evidence): string {
     : s.checks.map(one);
   const labels = s.labels.map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("");
   const facts = s.facts.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
-  return `<li class="stage ${s.key} ${state}" id="stage-${s.key}"><p class="stage-head"><span class="stage-n" aria-hidden="true">${String(i + 1)}</span><span class="stage-title">${escapeHtml(s.title)}</span></p>
+  return `<li class="stage ${s.key} ${state}" id="stage-${s.key}"><p class="stage-head"><span class="stage-n" aria-hidden="true">${stageNumber(s.key)}</span><span class="stage-title">${escapeHtml(s.title)}</span></p>
 <p class="stage-modes">${modeBadge(ev.mode)}${labels}</p>
 ${s.headline === null ? `<p class="headline absent">Not in this evidence: ${escapeHtml(s.missing.join("; "))}</p>` : `<p class="headline${s.outcome === "held" ? "" : " absent"}">${escapeHtml(s.headline)}</p>`}
 ${facts === "" ? "" : `<dl class="stage-facts">${facts}</dl>`}
@@ -331,11 +336,37 @@ ${row("Distance from 50 / 50", offBalance)}
 <p class="source">Balances: story check trade-executed (before and after). Prices: the grant's initial reference recorded in grant-active, ${escapeHtml(priceText(reference))}, read by the contract at ${escapeHtml(isoNs(reference.observed_at_ns))}${ev.mode === "sandbox" ? "; in this sandbox run they are the oracle test double's prices that the demo posted, not market prices" : ""}. Values in integer units, rounded down to the cent; shares to the nearest 0.01%. Valued at fixed reference prices, this is not a measure of profit or loss.</p></div>`;
 }
 
+const JOURNEY_STATE: Record<Stage["outcome"], string> = { held: "held", "not-held": "failure", inconclusive: "inconclusive", missing: "missing" };
+
+/** One step of the first-screen journey: its recorded outcome in words, never a success word for a step that did not hold. */
+function journeyCard(j: JourneyStep): string {
+  const status =
+    j.outcome === "held"
+      ? word("success", j.done)
+      : j.outcome === "not-held"
+        ? word("failure", "did not hold")
+        : j.outcome === "inconclusive"
+          ? word("inconclusive", "inconclusive")
+          : word("missing", "not in this evidence");
+  const labels = j.labels.map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("");
+  const first = j.stages[0];
+  return `<li class="jstep ${j.key} ${JOURNEY_STATE[j.outcome]}" id="journey-${j.key}"><p class="jhead"><span class="jn" aria-hidden="true">${String(j.n)}</span><span class="jtitle">${escapeHtml(j.outcome === "held" ? j.title : j.neutral)}</span></p>
+<p class="jresult">${escapeHtml(j.result ?? "not in this evidence")}</p>
+<p class="jmeta">${status}${labels}${first === undefined ? "" : `<a href="#stage-${first.key}" aria-label="Step ${String(j.n)} detail">detail</a>`}</p></li>`;
+}
+
+/** The first screen's journey: the owner's eight steps, each with this run's recorded outcome. */
+function journeyBlock(ev: Evidence, stages: readonly Stage[]): string {
+  const steps = ownerJourney(ev, stages);
+  return `<ol class="journey" aria-label="The owner's journey in eight steps, as recorded in this run">${steps.map(journeyCard).join("\n")}</ol>
+<p class="journey-note">One ${escapeHtml(ev.mode)} run (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}). Every outcome above is a recorded story check, not an acceptance gate. Amounts are rounded down for reading; exact units are in the detail below. Revocation is not instant: orders may execute while it is pending; the claim is about orders after confirmed key removal.</p>`;
+}
+
 function storySection(ev: Evidence): string {
   const stages = revocationStory(ev);
-  return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The journey in ${String(stages.length)} stages, from one ${escapeHtml(ev.mode)} run</h2>
+  return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The journey in detail: ${String(stages.length)} recorded stages from one ${escapeHtml(ev.mode)} run</h2>
 <p class="source">Every value is read from out/evidence/demo.json (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1), and its state line is read through contract and verifier views at the end of that step. Story checks never mark an acceptance gate (§2).</p>
-<ol class="stages">${stages.map((s, i) => stageCard(s, i, ev)).join("\n")}</ol></section>`;
+<ol class="stages">${stages.map((s) => stageCard(s, ev)).join("\n")}</ol></section>`;
 }
 
 function casesSection(acc: Acceptance | null, binding: DemoBinding, reports: readonly ReportFile[]): string {
@@ -395,14 +426,14 @@ const plannedLine = (): string =>
   `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing was hosted there when this page was rendered.</p>
 <p class="planned">${chip("pending", PLANNED_LABEL)} Short video <code>${escapeHtml(PLANNED_URLS.video)}</code> · walkthrough <code>${escapeHtml(PLANNED_URLS.walkthrough)}</code>.</p>`;
 
-function pathsSection(live: LiveView, stageCount: number): string {
+function pathsSection(live: LiveView): string {
   const video = `${chip("pending", PLANNED_LABEL)} <code>${escapeHtml(PLANNED_URLS.video)}</code> (local build: out/video/bounded-mandate-short.mp4)`;
   const mainnet =
     live.kind === "mainnet"
       ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
       : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a> · <a href="#verify">read-only checks you can run from this page</a></p>`;
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
-<li><p class="do">Watch the short video</p><p class="see">See: the ${String(stageCount)} stages above captioned with this run's numbers, in under 90 seconds.</p><p>${video}</p></li>
+<li><p class="do">Watch the short video</p><p class="see">See: the eight journey steps above captioned with this run's numbers, in under 90 seconds.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
 <li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (<code>make test</code> took 1470 s cold in a macOS arm64 fresh clone at 0e915a2).</p></li>
 </ol>${plannedLine()}</section>`;
@@ -625,22 +656,23 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <style>${STYLES}</style>
 </head>
 <body>
-<a class="skip" href="#story">Skip to the revocation story</a>
+<a class="skip" href="#story">Skip to the journey in detail</a>
 <main class="dossier">
 <header class="docket">
 <p class="kicker">Bounded mandate · evidence dossier · NEAR Intents · USDC / wNEAR</p>
 <p class="chips" role="status">${headerChips(ev, binding, live)}</p>
-<h1>${escapeHtml(HEADLINE)}</h1>
-<p class="position">${escapeHtml(SUBTITLE)}</p>
+<h1 class="lead-line">${escapeHtml(HEADLINE)}</h1>
+<p class="position lead-sub">${escapeHtml(SUBTITLE)}</p>
+${journeyBlock(ev, revocationStory(ev))}
+${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
 ${modesKey(ev, live)}
 <p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
 ${outcomeBlock(ev)}
 <p class="facts-line">Gates passed and certified for this demo: ${String(passedCount)} / ${String(views.length)}</p>
-${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
 ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
 </header>
 ${storySection(ev)}
-${pathsSection(live, revocationStory(ev).length)}
+${pathsSection(live)}
 ${attackLogSection(ev, acc, binding)}
 ${section("§M", "mainnet", "mainnet", "Mainnet receipts", mainnetBody(live))}
 ${section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", verifySection(ev, verifyData(ev, live)))}

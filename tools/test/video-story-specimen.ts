@@ -194,12 +194,12 @@ export function storyEvidence(): Evidence {
     },
     {
       step: "Bounded agent proposal (recorded genuine model output) -> propose_order",
-      receipts: [tx("agent propose_order (order 1)")],
+      receipts: [tx("agent propose_order (first order)")],
       assertions: [held("model-proposal-on-chain", { mode: "recorded-model", decision: { model: s.model }, order: { id: "6", sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString(), concession_bps: 40 } })],
       state: state("active", true, 1, s.before),
     },
     {
-      step: "Filler fills order 1 (actual trade on the pinned verifier)",
+      step: "Filler fills the first order (actual trade on the pinned verifier)",
       receipts: [tx("filler execute_intents order 6"), tx("settle_order 6")],
       assertions: [
         held("trade-executed", { before: pairStr(s.before), after, signed: { sell: "usdc", sell_amount: s.sell.toString(), buy: "wnear", buy_amount: s.buy.toString() } }),
@@ -208,8 +208,14 @@ export function storyEvidence(): Evidence {
       state: state("active", true, 0, afterPair),
     },
     {
+      step: "Hostile requests refused",
+      receipts: [],
+      assertions: [...ATTACKS.map(attackAssertion), held("injection-recording", { mode: "recorded-model", model: s.model, decision_text: "SYNTHETIC decline", verdict: { kind: "decline" } })],
+      state: state("active", true, 0, afterPair),
+    },
+    {
       step: "Second signed order withheld",
-      receipts: [tx("agent propose_order (order 2, scripted, withheld)", { events: [{ event: "order_sign_requested", data: { order: withheldOrder } }] })],
+      receipts: [tx("agent propose_order (second order, scripted, withheld)", { events: [{ event: "order_sign_requested", data: { order: withheldOrder } }] })],
       assertions: [
         held("withheld-executable", {
           simulation: "accepted",
@@ -224,12 +230,6 @@ export function storyEvidence(): Evidence {
           filler_nonce: "SYNTHETICfillernonce",
         }),
       ],
-      state: state("active", true, 1, afterPair),
-    },
-    {
-      step: "Hostile requests refused",
-      receipts: [],
-      assertions: [...ATTACKS.map(attackAssertion), held("injection-recording", { mode: "recorded-model", model: s.model, decision_text: "SYNTHETIC decline", verdict: { kind: "decline" } })],
       state: state("active", true, 1, afterPair),
     },
     {

@@ -196,7 +196,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     firstProposal = { sell: "usdc", sell_amount: "49900000", max_concession_bps: 20 };
     unknowns.push("first order used a SCRIPTED proposal because no valid recorded model proposal was available; the MODEL assertion below fails");
   }
-  const proposeOutcome = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, firstProposal, "agent propose_order (order 1)"), {
+  const proposeOutcome = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, firstProposal, "agent propose_order (first order)"), {
     proposal: firstProposal,
     proposal_source: decision?.verdict.kind === "proposal" ? "recorded-model" : "scripted",
   });
@@ -213,7 +213,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const prehash = nep413Prehash({ message: first.payload.message, nonce: Buffer.from(first.payload.nonce, "base64"), recipient: first.payload.recipient }).toString("hex");
   rec.check("nep413-cross-check", "T2", "TypeScript NEP-413 prehash equals the contract's payload_hash", prehash === first.payload_hash, { ts: prehash, contract: first.payload_hash });
 
-  await rec.step("Filler fills order 1 (actual trade on the pinned verifier)");
+  await rec.step("Filler fills the first order (actual trade on the pinned verifier)");
   const statePath = join(REPO_ROOT, "out/demo/filler-state.json");
   rmSync(statePath, { force: true }); // fresh sandbox chain: previous runs' order ids are unrelated
   const filler = new Filler({ client, mandate, verifier, account: world.filler.account, key: fillerKey(world), statePath });
@@ -237,33 +237,8 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   const settledFirst = await mandate.order(firstId);
   rec.check("settled-release", "T2", "settle_order released the reservation on the verifier's nonce evidence", settle.success && settledFirst?.state.state === "released" && settledFirst.state.reason === "settled", settledFirst?.state);
 
-  await rec.step("Second signed order withheld");
-  await postPrices(world);
-  const withheldOutcome = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, SCRIPTED_WITHHELD_PROPOSAL, "agent propose_order (order 2, scripted, withheld)"), {
-    proposal_source: "scripted",
-  });
-  const withheldId = z.string().parse(String(withheldOutcome.return_value));
-  const withheld = await settledOrder(mandate, withheldId);
-  const withheldEvent = withheldOutcome.events.find((e) => e.event === "order_signed");
-  const withheldSigned = withheldEvent === undefined ? null : findSignedPayload(withheldEvent.data);
-  if (withheld?.state.state !== "signed" || withheldSigned === null) throw new Error(`withheld order not signed: ${JSON.stringify(withheld?.state)}`);
-  const prepared = await filler.prepare(withheldSigned);
-  if ("shortfall" in prepared) throw new Error(prepared.shortfall);
-  const simProblem = simulationProblem(await verifier.simulate(prepared.bundle));
-  const withheldBundleSha256 = bundleSha256(prepared.bundle);
-  rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)", simProblem === null, {
-    simulation: simProblem ?? "accepted",
-    order_id: withheldId,
-    epoch: withheld.epoch,
-    mandate: mandate.id,
-    signing_public_key: withheldSigned.public_key,
-    mandate_nonce: withheldSigned.payload.nonce,
-    deadline_ns: withheld.deadline_ns,
-    payload_sha256: withheld.payload_hash,
-    bundle_sha256: withheldBundleSha256,
-    filler_nonce: prepared.own.payload.nonce,
-  });
-
+  // Journey order: hostile requests are refused before the order to be withheld is signed, so the withheld order
+  // lives only from its signature to the owner's revocation and relay.
   await rec.step("Hostile requests refused");
   const suite = await runAttackSuite(world);
   for (const r of suite.results) {
@@ -290,6 +265,33 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   } else {
     unknowns.push(`injection recording unavailable: ${injected.reason}`);
   }
+
+  await rec.step("Second signed order withheld");
+  await postPrices(world);
+  const withheldOutcome = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, SCRIPTED_WITHHELD_PROPOSAL, "agent propose_order (second order, scripted, withheld)"), {
+    proposal_source: "scripted",
+  });
+  const withheldId = z.string().parse(String(withheldOutcome.return_value));
+  const withheld = await settledOrder(mandate, withheldId);
+  const withheldEvent = withheldOutcome.events.find((e) => e.event === "order_signed");
+  const withheldSigned = withheldEvent === undefined ? null : findSignedPayload(withheldEvent.data);
+  if (withheld?.state.state !== "signed" || withheldSigned === null) throw new Error(`withheld order not signed: ${JSON.stringify(withheld?.state)}`);
+  const prepared = await filler.prepare(withheldSigned);
+  if ("shortfall" in prepared) throw new Error(prepared.shortfall);
+  const simProblem = simulationProblem(await verifier.simulate(prepared.bundle));
+  const withheldBundleSha256 = bundleSha256(prepared.bundle);
+  rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)", simProblem === null, {
+    simulation: simProblem ?? "accepted",
+    order_id: withheldId,
+    epoch: withheld.epoch,
+    mandate: mandate.id,
+    signing_public_key: withheldSigned.public_key,
+    mandate_nonce: withheldSigned.payload.nonce,
+    deadline_ns: withheld.deadline_ns,
+    payload_sha256: withheld.payload_hash,
+    bundle_sha256: withheldBundleSha256,
+    filler_nonce: prepared.own.payload.nonce,
+  });
 
   await rec.step("Owner revokes in the console; removal confirmed");
   const wantPreview = expectedRevokePreview(world, session);

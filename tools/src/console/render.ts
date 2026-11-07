@@ -183,6 +183,18 @@ article.action p { margin: 0; font-size: .9rem; }
 article.action button { align-self: flex-start; margin-top: auto; }
 p.why { color: var(--fail); font-size: .86rem; }
 p.note { color: var(--stale); font-size: .86rem; }
+#live-body p, #live-status, #signer-status, #intent-status, #console-log { overflow-wrap: anywhere; }
+p.step-tag { font: 700 .68rem/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+article.action.off p.step-tag { color: var(--muted); }
+ol.cjourney { list-style: none; margin: 0 0 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; counter-reset: none; }
+ol.cjourney li { background: color-mix(in srgb, var(--rule) 18%, var(--sheet)); border: 1px solid var(--rule); border-top: 3px solid var(--rule-strong); padding: .55rem .7rem; font-size: .84rem; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+ol.cjourney li.act { border-top-color: var(--accent); }
+ol.cjourney li b { display: block; font: 600 .95rem/1.25 var(--serif); margin-bottom: .15rem; }
+ol.cjourney li b span { font: 700 .8rem/1 var(--mono); color: var(--muted); margin-right: .35rem; }
+ol.cjourney li.act b span { color: var(--accent); }
+p.lead { font: 600 .82rem/1.3 var(--mono); letter-spacing: .06em; color: var(--accent); margin: 0 0 .5rem; }
+@media (max-width: 980px) { ol.cjourney { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { ol.cjourney { grid-template-columns: minmax(0, 1fr); } }
 .review { margin-top: 1rem; background: var(--sheet); border: 2px solid var(--accent); padding: 1rem 1.2rem; overflow-wrap: anywhere; }
 .review h3 { margin-top: 0; }
 .refused { margin-top: 1rem; padding: .8rem 1rem; border-left: 4px solid var(--fail); background: var(--fail-bg); }
@@ -228,20 +240,21 @@ function ownerSection(data: ConsoleData): string {
       : `<p><span class="mode label">NEAR Connect ${escapeHtml(wallets.library_version)}</span> External wallets connect through NEAR Connect, from the wallet list in this page (no remote list, no saved or manually added wallets). On mainnet each wallet's adapter is pinned to a commit, checked against its sha256 before it runs, and runs in a sandboxed frame. A browser-extension wallet that announces itself to the page may also appear; it is labelled as not pinned. The wallet signs and broadcasts; the page holds no key and checks every returned transaction on chain against the exact preview. A wallet that ends a request without a hash leaves the action pending until you paste the hash or forget it. ${local ? "On a local sandbox the only wallet offered is the labelled SANDBOX TEST WALLET, a test double that asks the local test signer to sign." : "Compatibility with a specific wallet is established only when its owner connects it (see About)."}</p>`;
   return `<p>Revoke, recover and withdraw are enabled only when all three hold: the connected signer is the contract's <code>owner_id</code>, the RPC's chain is the chosen network (genesis check), and the mandate account runs the expected code. Each action is shown exactly before anything is signed, and is signed outside this page.</p>
 <div class="panel">
-<h3>1 · Signer</h3>
+<h3>A · Connect a signer</h3>
 <p class="controls-row"><label for="signer-kind">Signing adapter</label><select id="signer-kind">${wallets === null ? "" : `<option value="wallet">External wallet (NEAR Connect)</option>`}${local ? `<option value="local">Local sandbox test signer</option>` : ""}<option value="manual">Manual near CLI handoff</option></select><input id="signer-account" placeholder="owner account id" spellcheck="false" autocomplete="off"><button id="signer-connect" type="button">Connect</button></p>
 ${walletNote}
 ${local ? `<p><span class="mode test-signer">test signer</span> The local sandbox test signer is a Node process on this machine that holds a sandbox owner key and refuses any chain but its own sandbox. It stands in for a wallet in tests; it is not a wallet and proves no wallet compatibility.</p>` : ""}
 <p id="signer-status" class="source" role="status">Not connected.</p>
 </div>
 <div class="panel">
-<h3>2 · Runner intent (optional)</h3>
+<h3>B · Runner intent (optional)</h3>
 <p>Paste the runner's persisted <code>bounded-mandate/external-intent@1</code> record. Then only that action can be signed, and only if the console's own preview, built from live state, equals it field by field.</p>
 <textarea id="intent-text" spellcheck="false" aria-label="Runner intent JSON"></textarea>
 <p class="buttons"><button id="intent-load" type="button">Load intent</button><button id="intent-clear" type="button">Clear</button></p>
 <p id="intent-status" class="source" role="status">No runner intent loaded: the console signs its own preview.</p>
 </div>
-<h3>3 · Actions</h3>
+<h3>C · Owner actions, in journey order</h3>
+<p class="muted">Revoke first (step 5); recovery needs a revoked grant (step 7); withdrawal is the owner's own later step from its Intents account (step 8). Each opens an exact preview; nothing is signed until you confirm it there.</p>
 <div id="actions"><p class="muted">Controls need JavaScript and live state.</p></div>
 <div id="review"></div>
 <p id="console-log" role="status" aria-live="polite"></p>
@@ -249,6 +262,18 @@ ${local ? `<p><span class="mode test-signer">test signer</span> The local sandbo
 <p class="muted">Pending actions are kept in this browser's storage, keyed by the intent's sha256. After a reload the console only resumes polling; it never signs or sends anything again by itself.</p>
 <div id="activity"></div>`;
 }
+
+/** Where each step of the owner's journey happens in this console; the controls act only in steps 5, 7 and 8. */
+const JOURNEY_GUIDE = `<ol class="cjourney" aria-label="The owner's journey and where to find each step">
+<li><b><span>1</span>Read the mandate and its limits</b><a href="#live">§1</a>: grant, limits, fixed accounts and balances, read at one final block.</li>
+<li><b><span>2</span>A permitted trade</b>Made by the agent, not here. Turnover used and balances in <a href="#live">§1</a>; the recorded trade in <a href="#recorded">§3</a>.</li>
+<li><b><span>3</span>Hostile requests refused</b>By the agent key, the contract and the verifier, not by this page; listed in the evidence page's attack log.</li>
+<li><b><span>4</span>Spot a withheld signed order</b><a href="#live">§1</a> Open orders: a signed order stays executable until its deadline or until key removal is confirmed.</li>
+<li class="act"><b><span>5</span>Revoke</b><a href="#owner">§2</a>, signed outside this page. Not instant: until key removal is confirmed, signed orders may still execute.</li>
+<li><b><span>6</span>Check that the same order is rejected</b>After confirmed removal <a href="#live">§1</a> shows the grant key absent on the verifier. This page never relays orders; the recorded relay is in <a href="#recorded">§3</a>.</li>
+<li class="act"><b><span>7</span>Recover</b><a href="#owner">§2</a>: each asset to the owner's Intents account, with no agent, oracle or MPC involved.</li>
+<li class="act"><b><span>8</span>Withdraw</b><a href="#owner">§2</a>: from the owner's Intents account to its NEAR account. The owner's own action, outside recovery claims.</li>
+</ol>`;
 
 const ABOUT = `<ul class="about">
 <li><strong>No backend, no keys.</strong> This page is one static file. It holds no private key and no model credential; it reads public RPC state and hands transactions to a signer outside the page.</li>
@@ -300,8 +325,10 @@ export function renderConsoleHtml(evidence: unknown, opts: ConsoleOptions = {}):
 <header class="docket">
 <p class="kicker">Bounded mandate · owner console · NEAR Intents · USDC / wNEAR</p>
 <p class="chips"><span class="mode label">static page</span> <span class="mode label">no backend</span> <span class="mode label">holds no keys</span></p>
+<p class="lead">Give an AI agent trading power. Keep the power to stop it.</p>
 <h1>Review the mandate. Revoke, recover and withdraw as its owner.</h1>
 <p class="position">Anyone can read the grant, its limits, the key on the verifier, open orders and balances. Only the contract's owner can act, and only by signing outside this page.</p>
+${JOURNEY_GUIDE}
 <div class="sources">
 <div><span class="mode live">live</span><p>Current chain state from an RPC you choose, after a chain-id and genesis check, at one final block (§1).</p></div>
 <div><span class="mode sandbox">sandbox</span> <span class="mode recorded">recorded</span><p>What one <code>make demo</code> run observed in a local sandbox with labelled test doubles (§3). Not live.</p></div>

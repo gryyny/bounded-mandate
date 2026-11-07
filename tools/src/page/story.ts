@@ -1,9 +1,11 @@
-// The demo journey in nine stages, each bound to the demo evidence it shows: grant, console review, bounded proposal and
-// trade, withheld order, hostile requests, revocation, rejected relay, recovery, and the owner's separate withdrawal.
+// The demo journey, bound to the demo evidence it shows. Nine detailed stages (grant, console review, bounded proposal
+// and trade, hostile requests, withheld order, revocation, rejected relay, recovery, and the owner's separate
+// withdrawal) group into the owner's eight-step journey (`ownerJourney`): the mandate's limits, a permitted trade,
+// hostile requests refused, the withheld signed order, revocation, the same order rejected, recovery, withdrawal.
 // The page's opening sequence and both video cuts read it. Every value comes from one run's assertions, receipts and
 // recorded step states; a stage whose evidence is absent lists what is missing and shows no numbers. A stage whose check
-// did not hold, or whose evidence is inconclusive, narrates that outcome instead of its success sentence; acceptance
-// certification is separate.
+// did not hold, or whose evidence is inconclusive, narrates that outcome instead of its success sentence; a journey step
+// shows the worst outcome of its stages. Acceptance certification is separate.
 import { z } from "zod";
 import { SYSTEM_PROMPT } from "../agent/prompt.js";
 import { VALUE_DECIMALS, formatPrice, valueUnits } from "../agent/snapshot.js";
@@ -36,6 +38,9 @@ export const usdc = (raw: string): string => `${units(raw, DECIMALS.usdc, 2)} US
 export const wnear = (raw: string): string => `${units(raw, DECIMALS.wnear, 4)} wNEAR`;
 export const usd = (raw: string): string => `$${units(raw, VALUE_DECIMALS, 2)}`;
 export const amount = (asset: string, raw: string): string => (asset === "usdc" ? usdc(raw) : asset === "wnear" ? wnear(raw) : `${raw} ${asset}`);
+/** Reading form for the journey: USDC to the cent, wNEAR to at most 4 places without trailing zeros; both rounded down. */
+export const readable = (asset: string, raw: string): string =>
+  asset === "usdc" ? usdc(raw) : asset === "wnear" ? `${units(raw, DECIMALS.wnear, 4).replace(/\.?0+$/, "")} wNEAR` : `${raw} ${asset}`;
 /** Shortened hash or key; a curve prefix such as "ed25519:" is kept. */
 export const shortHash = (h: string): string => {
   const colon = h.indexOf(":") + 1;
@@ -96,13 +101,15 @@ export interface Stage {
   checks: StageCheck[];
   /** Narration with this run's numbers, or of the failure/inconclusive outcome; null when evidence is missing. */
   caption: string | null;
+  /** One short outcome line for the eight-step journey, with readable amounts; null when evidence is missing. */
+  short: string | null;
   missing: string[];
   /** Chain state recorded at the end of the demo step this stage ends in; null when the evidence records none. */
   state: StepState | null;
 }
 
 /** Stage fields a stage builder supplies; `failure` replaces the generic sentence when a check did not hold. */
-type Built = Pick<Stage, "headline" | "facts" | "labels" | "caption"> & { failure?: string };
+type Built = Pick<Stage, "headline" | "facts" | "labels" | "caption" | "short"> & { failure?: string };
 
 const dec = z.string().regex(/^-?(0|[1-9][0-9]*)$/);
 const Pair = z.object({ usdc: dec, wnear: dec });
@@ -305,7 +312,7 @@ export const layerCounts = (rows: readonly AttackRow[]): [string, number][] => {
   return [...counts.entries()];
 };
 
-/** The nine journey stages, in order, from one run's evidence. */
+/** The nine detailed stages, in journey order (hostile requests before the withheld order), from one run's evidence. */
 export function revocationStory(ev: Evidence): Stage[] {
   const claimed = new Set<number>();
   const steps = demoSteps(ev.environment);
@@ -323,16 +330,18 @@ export function revocationStory(ev: Evidence): Stage[] {
     const outcome: StageOutcome = b.missing.length > 0 ? "missing" : b.inconclusive.length > 0 ? "inconclusive" : failed.length > 0 ? "not-held" : "held";
     const notHeld = failed.map((c) => `"${c.description}" (${c.id})`).join("; ");
     const failedSentence = failed.length === 0 ? "" : ` Check ${notHeld} did not hold.`;
-    const narration: Record<StageOutcome, { headline: string | null; caption: string | null }> = {
-      held: { headline: built.headline, caption: built.caption },
-      missing: { headline: null, caption: null },
+    const narration: Record<StageOutcome, { headline: string | null; caption: string | null; short: string | null }> = {
+      held: { headline: built.headline, caption: built.caption, short: built.short },
+      missing: { headline: null, caption: null, short: null },
       inconclusive: {
         headline: `inconclusive: ${b.inconclusive.join("; ")}`,
         caption: `${title} is inconclusive in this run: ${b.inconclusive.join("; ")}.${failedSentence} This stage is not shown as evidence.`,
+        short: `inconclusive: ${b.inconclusive.join("; ")}`,
       },
       "not-held": {
         headline: `did not hold: ${failed.map((c) => c.id).join(", ")}`,
         caption: failure === undefined ? `${title}: in this run, check ${notHeld} did not hold. This stage is not shown as evidence.` : `${failure} This stage is not shown as evidence.`,
+        short: failure === undefined ? `did not hold: ${failed.map((c) => c.id).join(", ")}` : failure,
       },
     };
     return { key, title, outcome, ...built, ...narration[outcome], receipts: b.receipts, checks: b.checks, missing: b.missing, state: stateOf(b) };
@@ -366,7 +375,8 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           p === undefined || value === null
             ? null
-            : `The owner grants fixed limits on ${usd(value.contract)}: at most ${pct(p.per_order_cap_bps)}${cap(p.per_order_cap_bps)} per order and ${pct(p.max_concession_bps)} price concession.`,
+            : `The owner grants fixed limits on ${usd(value.contract)}: each order at most ${String(p.per_order_cap_bps / 100)}%${cap(p.per_order_cap_bps)}, price concession at most ${String(p.max_concession_bps / 100)}%.`,
+        short: p === undefined || value === null ? null : `${usd(value.contract)} under mandate at the ${ev.mode === "sandbox" ? "sandbox's " : ""}reference prices; each order at most ${String(p.per_order_cap_bps / 100)}%${cap(p.per_order_cap_bps)}, price concession at most ${String(p.max_concession_bps / 100)}%`,
       };
     }),
     stage("console", "Reviewed in the console", (b) => {
@@ -402,11 +412,13 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           shown === undefined || methods === ""
             ? null
-            : `In the console, read from the sandbox, the owner sees the grant ${shown.grant_status}, its key ${shown.key_on_verifier.replace(/ on .*$/, "")} on the verifier, and limits as granted.`,
+            : `The owner console reads it back from the sandbox: grant ${shown.grant_status}, key ${shown.key_on_verifier.replace(/ on .*$/, "")} on the verifier, limits as granted.`,
+        short: shown === undefined ? null : `read in the owner console: grant ${shown.grant_status}, key ${shown.key_on_verifier.replace(/ on .*$/, "")}, limits as granted`,
       };
     }),
     stage("trade", "Bounded proposal and trade", (b) => {
-      b.tx(/propose_order \(order 1\)/);
+      // Older demos labelled the first proposal "order 1", by position; its on-chain id is 0.
+      b.tx(/propose_order \((order 1|first order)\)/);
       b.tx(/execute_intents order/);
       b.tx(/^settle_order/);
       const model = b.observed("model-proposal-on-chain");
@@ -434,9 +446,34 @@ export function revocationStory(ev: Evidence): Stage[] {
           s === undefined || s.buy_amount === null
             ? null
             : moved === null
-              ? `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal`} sells ${amount(s.sell, s.sell_amount)}. The contract signs it, and our filler executes it for ${amount(s.buy, s.buy_amount)}, exactly as signed.`
+              ? `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal, replayed,`} sells ${readable(s.sell, s.sell_amount)}. The contract signs it, and our filler executes it for ${readable(s.buy, s.buy_amount)}, exactly as signed.`
               : // Kept to one caption frame: the allocation replaces words, not adds a frame.
-                `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal`} sells ${amount(s.sell, s.sell_amount)} for ${amount(s.buy, s.buy_amount)}, signed by the contract and filled exactly. USDC share: ${moved.replace(" → ", " to ")}, target 50%.`,
+                `${modelName === null ? "A scripted proposal" : `A recorded ${modelName} proposal, replayed,`} sells ${readable(s.sell, s.sell_amount)} for ${readable(s.buy, s.buy_amount)}, filled exactly as signed. USDC share: ${moved.replace(" → ", " to ")}, target 50%.`,
+        short:
+          s === undefined || s.buy_amount === null
+            ? null
+            : `sold ${readable(s.sell, s.sell_amount)} for ${readable(s.buy, s.buy_amount)}, as signed; proposed by ${modelName === null ? "a scripted proposal" : `recorded ${modelName} output (replayed)`}`,
+      };
+    }),
+    stage("attacks", "Hostile requests", (b) => {
+      const rows = attackRows(ev);
+      if (rows.length === 0) b.missing.push("attack-* assertions");
+      for (const r of rows) b.check(r.id);
+      const injected = ev.assertions.some((a) => a.id === "injection-recording") ? b.check("injection-recording") : null;
+      const refused = rows.filter((r) => r.passed);
+      const counts = layerCounts(rows);
+      const notContained = rows.filter((r) => r.contained === false).length;
+      if (rows.length > 0 && rows.some((r) => r.contained === null)) b.inconclusive.push("this evidence does not record whether each attack changed state");
+      return {
+        headline: rows.length === 0 ? null : `${String(refused.length)} of ${String(rows.length)} refused · state unchanged${notContained > 0 ? ` except ${String(notContained)}` : ""}`,
+        facts: [...counts.map(([layer, n]): [string, string] => [sentenceStart(layer), `${String(n)} refused`]), ...(injected === null ? [] : [["Injected prompt", "a recorded genuine model response to it left the adapter only as a strict proposal or a decline"] as [string, string]])],
+        labels: ["scripted attacks", ...(injected === null ? [] : ["recorded genuine model output"])],
+        caption:
+          rows.length === 0
+            ? null
+            : `${String(refused.length)} of ${String(rows.length)} scripted hostile requests refused, nothing changed: ${counts.map(([l, n]) => `${l} ${String(n)}`).join(", ")}.`,
+        short: rows.length === 0 ? null : `${String(refused.length)} of ${String(rows.length)} scripted hostile requests refused, no state changed${injected === null ? "" : "; an injected prompt could not express a withdrawal"}`,
+        failure: `Hostile requests: in this run ${String(rows.length - refused.length)} of ${String(rows.length)} were not refused at their expected layer with no state change.`,
       };
     }),
     stage("withheld", "Signed order withheld", (b) => {
@@ -472,27 +509,11 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           o === null || o.buy_amount === null
             ? null
-            : `A second order, ${amount(o.sell, o.sell_amount)} for ${amount(o.buy, o.buy_amount)}, is signed but withheld. The verifier would still accept it.`,
-      };
-    }),
-    stage("attacks", "Hostile requests", (b) => {
-      const rows = attackRows(ev);
-      if (rows.length === 0) b.missing.push("attack-* assertions");
-      for (const r of rows) b.check(r.id);
-      const injected = ev.assertions.some((a) => a.id === "injection-recording") ? b.check("injection-recording") : null;
-      const refused = rows.filter((r) => r.passed);
-      const counts = layerCounts(rows);
-      const notContained = rows.filter((r) => r.contained === false).length;
-      if (rows.length > 0 && rows.some((r) => r.contained === null)) b.inconclusive.push("this evidence does not record whether each attack changed state");
-      return {
-        headline: rows.length === 0 ? null : `${String(refused.length)} of ${String(rows.length)} refused · state unchanged${notContained > 0 ? ` except ${String(notContained)}` : ""}`,
-        facts: [...counts.map(([layer, n]): [string, string] => [sentenceStart(layer), `${String(n)} refused`]), ...(injected === null ? [] : [["Injected prompt", "a recorded genuine model response to it left the adapter only as a strict proposal or a decline"] as [string, string]])],
-        labels: ["scripted attacks", ...(injected === null ? [] : ["recorded genuine model output"])],
-        caption:
-          rows.length === 0
+            : `A second, scripted order, ${readable(o.sell, o.sell_amount)} for ${readable(o.buy, o.buy_amount)}, is signed by the grant key and withheld. The verifier would still accept it.`,
+        short:
+          o === null || o.buy_amount === null
             ? null
-            : `${String(refused.length)} of ${String(rows.length)} scripted hostile requests refused, nothing changed: ${counts.map(([l, n]) => `${l} ${String(n)}`).join(", ")}.`,
-        failure: `Hostile requests: in this run ${String(rows.length - refused.length)} of ${String(rows.length)} were not refused at their expected layer with no state change.`,
+            : `order id ${o.id}: ${readable(o.sell, o.sell_amount)} for ${readable(o.buy, o.buy_amount)}, signed by the grant key${id === null ? "" : ` ${shortHash(id.signing_public_key)}`} and held back${executable === true ? "; the verifier's simulation accepts it" : ""}${id === null ? "" : ` (bundle sha256 ${id.bundle_sha256.slice(0, 8)}…)`}`,
       };
     }),
     stage("revoked", "Owner revocation", (b) => {
@@ -526,7 +547,11 @@ export function revocationStory(ev: Evidence): Stage[] {
             ? null
             : viaConsole === null
               ? "The owner revokes the grant with a direct owner call. The verifier confirms its key is removed; only then is the withheld reservation released."
-              : "In the console, after an exact preview, the owner revokes via the local sandbox test signer (not a wallet); the key's removal is confirmed.",
+              : "After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed.",
+        short:
+          revoked === null
+            ? null
+            : `${viaConsole === null ? "revoked by a direct owner call" : "revoked in the owner console, signed by the local sandbox test signer (not a wallet)"}; key removal confirmed`,
       };
     }),
     stage("rejected", "Withheld order relayed", (b) => {
@@ -575,6 +600,10 @@ export function revocationStory(ev: Evidence): Stage[] {
         labels: [],
         caption:
           secondsLeft === null ? null : `Another account relays the withheld order ${String(secondsLeft)} s before its deadline. The verifier rejects it: the signing key no longer exists.`,
+        short:
+          secondsLeft === null
+            ? null
+            : `${rej?.bundle_sha256 !== undefined && id !== null && rej.bundle_sha256 === id.bundle_sha256 ? `the same bundle (sha256 ${id.bundle_sha256.slice(0, 8)}…)` : "the withheld order"}, relayed by another account ${String(secondsLeft)} s before its deadline; the verifier rejects it because the signing key no longer exists`,
       };
     }),
     stage("recovered", "Recovery to the owner's Intents account", (b) => {
@@ -596,7 +625,8 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           rec === null
             ? null
-            : `With the oracle failing and the MPC double on hold, the owner recovers ${usdc(rec.recovered.usdc)} and ${wnear(rec.recovered.wnear)} into its Intents account.`,
+            : `With the oracle failing and the MPC test double on hold, the owner recovers ${readable("usdc", rec.recovered.usdc)} and ${readable("wnear", rec.recovered.wnear)} into its Intents account.`,
+        short: rec === null ? null : `${readable("usdc", rec.recovered.usdc)} and ${readable("wnear", rec.recovered.wnear)} to the owner's Intents account, with the oracle failing and the MPC test double on hold`,
       };
     }),
     stage("withdrawn", "Owner withdrawal to NEAR", (b) => {
@@ -630,11 +660,79 @@ export function revocationStory(ev: Evidence): Stage[] {
         caption:
           w === null || done.length === 0
             ? null
-            : `Separately, outside recovery, the owner withdraws ${done.map(amountOf).join(" and ")} to its NEAR account, registering storage only where needed.`,
+            : `Separately, outside recovery, the owner withdraws ${done.map((a) => readable(a.asset, a.amount)).join(" and ")} to its NEAR account, registering storage only where needed.`,
+        short: w === null || done.length === 0 ? null : `${done.map((a) => readable(a.asset, a.amount)).join(" and ")} from the owner's Intents account to its NEAR account`,
         failure: `Owner withdrawal: ${failedText === "" ? "the withdrawal did not complete as recorded" : failedText}.`,
       };
     }),
   ];
+}
+
+export type JourneyKey = "mandate" | "trade" | "attacks" | "withheld" | "revoked" | "rejected" | "recovered" | "withdrawn";
+
+export interface JourneyStep {
+  n: number;
+  key: JourneyKey;
+  /** The owner's view of the step, in a few words; claims the outcome, so shown only when every stage held. */
+  title: string;
+  /** The step named without claiming its outcome, for a step that did not hold. */
+  neutral: string;
+  /** One word for a progress rail. */
+  rail: string;
+  /** The status word when every stage held; otherwise the outcome is shown. */
+  done: string;
+  /** Worst outcome of its stages: missing, then not-held, then inconclusive, then held. */
+  outcome: StageOutcome;
+  /** One line from the run: the stages' short lines when held, else the first non-held stage's narration. */
+  result: string | null;
+  /** Execution labels beyond the run's mode, from its stages. */
+  labels: string[];
+  stages: Stage[];
+}
+
+/** The owner's eight steps and the detailed stages each groups. */
+export const JOURNEY: readonly { key: JourneyKey; title: string; neutral: string; rail: string; done: string; stages: readonly StageKey[] }[] = [
+  { key: "mandate", title: "Read the mandate and its limits", neutral: "The mandate and its limits", rail: "Limits", done: "reviewed", stages: ["limits", "console"] },
+  { key: "trade", title: "The agent makes a permitted trade", neutral: "The agent's trade", rail: "Trade", done: "executed", stages: ["trade"] },
+  { key: "attacks", title: "Hostile requests are refused", neutral: "Hostile requests", rail: "Hostile", done: "refused", stages: ["attacks"] },
+  { key: "withheld", title: "Spot the withheld signed order", neutral: "The withheld signed order", rail: "Withheld", done: "signed, held back", stages: ["withheld"] },
+  { key: "revoked", title: "Revoke with the owner controls", neutral: "Owner revocation", rail: "Revoke", done: "removal confirmed", stages: ["revoked"] },
+  { key: "rejected", title: "The same order is rejected", neutral: "The withheld order relayed", rail: "Rejected", done: "rejected", stages: ["rejected"] },
+  { key: "recovered", title: "Recover without agent, oracle or MPC", neutral: "Recovery", rail: "Recover", done: "recovered", stages: ["recovered"] },
+  { key: "withdrawn", title: "Withdraw to the owner's NEAR account", neutral: "Owner withdrawal", rail: "Withdraw", done: "withdrawn", stages: ["withdrawn"] },
+];
+
+/** A check that did not hold outranks absent evidence, which outranks an inconclusive one. */
+const WORST: readonly StageOutcome[] = ["not-held", "missing", "inconclusive", "held"];
+
+/**
+ * The owner's eight-step journey from one run's evidence; each step's outcome is the worst of its stages. A stage
+ * whose checks held but whose outcome line cannot be built from the recorded values makes its step "missing": a
+ * success status is never shown without the values it stands for.
+ */
+export function ownerJourney(ev: Evidence, stages: readonly Stage[] = revocationStory(ev)): JourneyStep[] {
+  return JOURNEY.map((j, i) => {
+    const of = j.stages.flatMap((k) => stages.filter((s) => s.key === k));
+    const unbuilt = of.filter((s) => s.outcome === "held" && s.short === null).map((s) => `${s.title}: its outcome values are not recorded in this evidence`);
+    const worst = WORST.find((o) => of.some((s) => s.outcome === o)) ?? "missing";
+    const outcome: StageOutcome = worst === "held" && unbuilt.length > 0 ? "missing" : of.length === 0 ? "missing" : worst;
+    const first = of.find((s) => s.outcome === outcome);
+    const result =
+      outcome === "held"
+        ? of.map((s) => s.short).join("; ")
+        : outcome === "missing"
+          ? `not in this evidence: ${[...of.flatMap((s) => s.missing), ...unbuilt].join("; ")}`
+          : (first?.short ?? null);
+    return { n: i + 1, key: j.key, title: j.title, neutral: j.neutral, rail: j.rail, done: j.done, outcome, result, labels: [...new Set(of.flatMap((s) => s.labels))], stages: of };
+  });
+}
+
+/** Journey number of a detailed stage: "1a", "1b" for a step with two stages, else the step number. */
+export function stageNumber(key: StageKey): string {
+  const i = JOURNEY.findIndex((j) => j.stages.includes(key));
+  const j = JOURNEY[i];
+  if (j === undefined) return "?";
+  return j.stages.length === 1 ? String(i + 1) : `${String(i + 1)}${String.fromCharCode(97 + j.stages.indexOf(key))}`;
 }
 
 const sentenceStart = (t: string): string => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;

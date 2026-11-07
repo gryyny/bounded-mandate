@@ -175,7 +175,8 @@ export interface LoadedIntent {
 
 export interface TokenSide {
   token: string;
-  decimals: number;
+  /** null when the contract's configuration does not state them: amounts are then shown as raw units. */
+  decimals: number | null;
   mandate: string;
   owner_intents: string;
   owner_wallet: string | null;
@@ -305,9 +306,10 @@ export interface Env {
 
 // ------------------------------------------------------------------ formatting
 
-/** Exact decimal rendering of an integer token amount; trailing fractional zeros dropped. */
-export function fmtUnits(amount: string, decimals: number): string {
+/** Exact decimal rendering of an integer token amount; trailing fractional zeros dropped. Unknown decimals: raw units. */
+export function fmtUnits(amount: string, decimals: number | null): string {
   if (!/^[0-9]+$/.test(amount)) return amount;
+  if (decimals === null) return `${amount} (units)`;
   const padded = amount.padStart(decimals + 1, "0");
   const whole = padded.slice(0, padded.length - decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const frac = padded.slice(padded.length - decimals).replace(/0+$/, "");
@@ -315,10 +317,50 @@ export function fmtUnits(amount: string, decimals: number): string {
 }
 
 /** Display form: at most `places` fractional digits, with "…" when digits were cut (never rounded up). */
-export function fmtShort(amount: string, decimals: number, places: number): string {
+export function fmtShort(amount: string, decimals: number | null, places: number): string {
   const full = fmtUnits(amount, decimals);
   const dot = full.indexOf(".");
   return dot === -1 || full.length - dot - 1 <= places ? full : `${full.slice(0, dot + 1 + places)}…`;
+}
+
+/** Dollars from the contract's value units (10^-12 USD at the grant's reference prices), rounded down to the cent. */
+export function fmtUsd(units: unknown): string {
+  const t = typeof units === "number" && Number.isSafeInteger(units) ? String(units) : typeof units === "string" ? units : "";
+  if (!/^[0-9]+$/.test(t)) return "not read";
+  const cents = BigInt(t) / 10000000000n;
+  return `$${(cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${(cents % 100n).toString().padStart(2, "0")}`;
+}
+
+/** A token amount with its symbol, at most 6 places (cut digits marked); the raw units stay available elsewhere. */
+export function fmtAsset(amount: unknown, asset: unknown, live: LiveState): string {
+  const a = asset === "usdc" || asset === "wnear" ? asset : null;
+  const dec = a === null ? undefined : live.tokens[a]?.decimals;
+  const raw = typeof amount === "string" ? amount : typeof amount === "number" ? String(amount) : "?";
+  return a === null || dec === undefined || dec === null ? `${raw} ${String(asset)} (units)` : `${fmtShort(raw, dec, 6)} ${a === "usdc" ? "USDC" : "wNEAR"}`;
+}
+
+/** A deadline as UTC time and the lifetime left at the block read. */
+export function deadlineText(deadlineNs: string | null, blockNs: string | null): string {
+  if (deadlineNs === null || !/^[0-9]+$/.test(deadlineNs)) return "not signed yet";
+  const at = new Date(Number(BigInt(deadlineNs) / 1000000n)).toISOString().replace("T", " ").replace(/\.[0-9]+Z$/, " UTC");
+  if (blockNs === null || !/^[0-9]+$/.test(blockNs)) return at;
+  const leftNs = BigInt(deadlineNs) - BigInt(blockNs);
+  return leftNs > 0n ? `${at} (${(leftNs / 1000000000n).toString()} s left at the block read)` : `${at} (passed at the block read)`;
+}
+
+/** What the owner can do next after a final action; display only. */
+export function nextStep(action: ActionKind, outcome: "success" | "failure", endText: string): string {
+  if (outcome === "failure") return "Nothing is retried automatically: read the chain state, then review the action again to retry it deliberately.";
+  if (action === "revoke") {
+    return endText.includes("removal confirmed")
+      ? "Next: orders signed under this grant now fail at the verifier. Read the chain state again, then recover each asset (step 7)."
+      : "Key removal is not confirmed, so signed orders may still execute. Read the chain state again; revoke again to retry the removal.";
+  }
+  if (action === "recover") return "Next: recover the other asset if it still has a balance, then withdraw from the owner's Intents account (step 8, outside recovery claims).";
+  if (action === "register") return "Next: withdraw this asset to the owner's NEAR account (step 8).";
+  return endText.startsWith("withdrawn")
+    ? "This asset is now in the owner's NEAR account."
+    : "The balance stays in the owner's Intents account; review the withdrawal again to retry deliberately.";
 }
 
 export function bpsText(bps: unknown): string {
@@ -459,7 +501,7 @@ export async function readLive(call: Call, profile: NetworkProfile, rpcUrl: stri
     const bounds = asObject(await view(token, "storage_balance_bounds", {}));
     state.tokens[asset] = {
       token,
-      decimals: typeof cfg?.decimals === "number" ? cfg.decimals : 0,
+      decimals: typeof cfg?.decimals === "number" && Number.isSafeInteger(cfg.decimals) && cfg.decimals >= 0 ? cfg.decimals : null,
       mandate: await mt(mandateId),
       owner_intents: await mt(owner),
       owner_wallet: typeof wallet === "string" ? wallet : null,
@@ -572,6 +614,7 @@ export function actionGate(kind: ActionKind, asset: AssetKey | null, live: LiveS
     else if (status === "revoked") notes.push("the grant is already revoked; the contract refuses another revocation");
   }
   if (kind === "recover" && status !== null && status !== "revoked") notes.push(`recovery requires a revoked grant (now ${status}); the contract refuses it otherwise`);
+  if (kind === "recover" && side?.mandate === "0") notes.push("the mandate holds none of this asset now; a recovery would move nothing");
   if (kind === "withdraw" && side !== undefined) {
     if (!/^(0|[1-9][0-9]*)$/.test(side.owner_intents)) reasons.push("the owner's Intents balance of this asset could not be read (unknown valuation is not zero)");
     else if (side.owner_intents === "0") reasons.push("the owner's Intents balance of this asset is 0");
@@ -678,7 +721,7 @@ export function endState(r: PendingRecord, live: LiveState, outcome: "success" |
     if (rec === undefined) return { settled: false, text: "recovery state not readable" };
     if (rec.in_flight === true) return { settled: false, text: "recovery in flight" };
     const delta = BigInt(asString(rec.recovered) ?? "0") - BigInt(b.recovered ?? "0");
-    return { settled: true, text: `recovery finished: ${fmtUnits(delta.toString(), side?.decimals ?? 0)}${unit} moved to the owner's Intents account; mandate balance now ${fmtUnits(side?.mandate ?? "?", side?.decimals ?? 0)}${unit}` };
+    return { settled: true, text: `recovery finished: ${fmtUnits(delta.toString(), side?.decimals ?? null)}${unit} moved to the owner's Intents account; mandate balance now ${fmtUnits(side?.mandate ?? "?", side?.decimals ?? null)}${unit}` };
   }
   if (side === undefined) return { settled: false, text: "token state not readable" };
   if (i.action === "withdraw") {
@@ -861,7 +904,7 @@ export function renderLive(doc: Doc, profile: NetworkProfile, live: LiveState): 
             ["Grant key", asString(g.public_key) ?? "none yet"],
             ["Key on the verifier now", live.key_registered === null ? "not read" : live.key_registered ? `registered on ${asString(c.verifier_id) ?? "?"}` : `absent on ${asString(c.verifier_id) ?? "?"}`],
             ["Derivation path", asString(g.path) ?? "?"],
-            ["Turnover used / outstanding", `${String(g.turnover_used)} / ${String(g.outstanding)} (reference value units)`],
+            ["Turnover used / outstanding", `${fmtUsd(g.turnover_used)} / ${fmtUsd(g.outstanding)} at the grant's reference prices (${String(g.turnover_used)} / ${String(g.outstanding)} value units)`],
             ["Loss breaker", g.breaker === null || g.breaker === undefined ? "not tripped" : `tripped: ${JSON.stringify(g.breaker)}`],
           ]),
         ]),
@@ -892,7 +935,16 @@ export function renderLive(doc: Doc, profile: NetworkProfile, live: LiveState): 
   const orderRows = h(doc, "tbody", "");
   for (const o of open) {
     orderRows.append(
-      h(doc, "tr", "", h(doc, "td", "", String(o.id)), h(doc, "td", "", `${String(o.sell_amount)} ${String(o.sell)} → ${asString(o.buy_amount) ?? "?"} ${String(o.buy)}`), h(doc, "td", "", String(asObject(o.state)?.state)), h(doc, "td", "num", String(o.reserved_value)), h(doc, "td", "", asString(o.deadline_ns) === null ? "not signed yet" : new Date(Number(BigInt(asString(o.deadline_ns) ?? "0") / 1000000n)).toISOString())),
+      h(
+        doc,
+        "tr",
+        "",
+        h(doc, "td", "", String(o.id)),
+        h(doc, "td", "", `${fmtAsset(o.sell_amount, o.sell, live)} → ${o.buy_amount === null || o.buy_amount === undefined ? "?" : fmtAsset(o.buy_amount, o.buy, live)}`, h(doc, "span", "sub", `units: ${String(o.sell_amount)} ${String(o.sell)} → ${asString(o.buy_amount) ?? "?"} ${String(o.buy)}`)),
+        h(doc, "td", "", String(asObject(o.state)?.state)),
+        h(doc, "td", "num", fmtUsd(o.reserved_value)),
+        h(doc, "td", "", deadlineText(asString(o.deadline_ns), live.block?.time_ns ?? null)),
+      ),
     );
   }
   card(
@@ -901,7 +953,7 @@ export function renderLive(doc: Doc, profile: NetworkProfile, live: LiveState): 
       doc,
       live.recovery.map((r) => {
         const asset = r.asset === "usdc" || r.asset === "wnear" ? r.asset : null;
-        const dec = asset === null ? 0 : (live.tokens[asset]?.decimals ?? 0);
+        const dec = asset === null ? null : (live.tokens[asset]?.decimals ?? null);
         return [String(r.asset), `${r.in_flight === true ? "in flight" : "idle"} · ${String(r.attempts)} attempt${r.attempts === 1 ? "" : "s"} · ${fmtUnits(asString(r.recovered) ?? "0", dec)} recovered to the owner`];
       }),
     ),
@@ -911,7 +963,10 @@ export function renderLive(doc: Doc, profile: NetworkProfile, live: LiveState): 
     h(doc, "p", "", `${String(open.length)} open (reserved against the caps) of ${String(live.orders.length)} recorded. Released orders keep no reservation.`),
     ...(open.length === 0
       ? []
-      : [h(doc, "div", "scroll", h(doc, "table", "", h(doc, "thead", "", h(doc, "tr", "", h(doc, "th", "", "Order"), h(doc, "th", "", "Trade (units)"), h(doc, "th", "", "State"), h(doc, "th", "", "Reserved"), h(doc, "th", "", "Deadline"))), orderRows))]),
+      : [h(doc, "p", "note", "A signed order here can be relayed by anyone before its deadline until the grant key's removal is confirmed, including one that was signed and held back (step 4). Revoking (step 5) stops it once the key removal is confirmed.")]),
+    ...(open.length === 0
+      ? []
+      : [h(doc, "div", "scroll", h(doc, "table", "", h(doc, "thead", "", h(doc, "tr", "", h(doc, "th", "", "Order"), h(doc, "th", "", "Trade"), h(doc, "th", "", "State"), h(doc, "th", "num", "Reserved"), h(doc, "th", "", "Deadline"))), orderRows))]),
   );
   return root;
 }
@@ -1163,11 +1218,13 @@ export function install(env: Env): void {
             : kind === "withdraw"
               ? "The owner's own action outside the mandate and outside every recovery claim: ft_withdraw from the owner's Intents account to its NEAR account."
               : "Registers the owner on the token contract so a withdrawal can be received. Only shown when needed.";
+      const step = kind === "revoke" ? "Step 5 · revoke" : kind === "recover" ? "Step 7 · recover" : kind === "register" ? "Step 8 · register, then withdraw" : "Step 8 · withdraw, outside recovery claims";
       list.append(
         h(
           doc,
           "article",
           `action${reasons.length > 0 ? " off" : ""}`,
+          h(doc, "p", "step-tag", step),
           h(doc, "h3", "", actionTitle(kind, asset)),
           h(doc, "p", "muted", desc),
           ...(reasons.length > 0 && gate.length === 0 ? [h(doc, "p", "why", `Disabled: ${extra.reasons.join("; ")}`)] : []),
@@ -1247,6 +1304,7 @@ export function install(env: Env): void {
         ["Receiver", intent.receiver_id],
         ["Method", a?.method ?? "?"],
         ["Arguments", canonicalJson(a?.args)],
+        ...(typeof asObject(a?.args)?.amount === "string" && intent.asset !== null ? ([["Amount", fmtAsset(asObject(a?.args)?.amount, intent.asset, live)]] as [string, string][]) : []),
         ["Gas", `${a?.gas ?? "?"} (${a === undefined ? "?" : (BigInt(a.gas) / 1000000000000n).toString()} TGas)`],
         ["Deposit", `${a?.deposit ?? "?"} yoctoNEAR`],
         ["Intent sha256", sha],
@@ -1461,7 +1519,7 @@ export function install(env: Env): void {
         st.live = live;
         ui.live.replaceChildren(renderLive(doc, p, live));
       }
-      say(`Final: ${actionTitle(r.intent.action, r.intent.asset)} — ${outcome}. ${end.text}`);
+      say(`Final: ${actionTitle(r.intent.action, r.intent.asset)} — ${outcome}. ${end.text}. ${nextStep(r.intent.action, outcome, end.text)}`);
       renderActivity();
       renderActions();
     };
@@ -1595,6 +1653,10 @@ export function install(env: Env): void {
 export const CONSOLE_FUNCTIONS: readonly ((...args: never[]) => unknown)[] = [
   fmtUnits,
   fmtShort,
+  fmtUsd,
+  fmtAsset,
+  deadlineText,
+  nextStep,
   bpsText,
   policyLines,
   grantStatusText,
