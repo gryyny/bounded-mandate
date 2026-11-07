@@ -257,7 +257,7 @@ const ABOUT = `<ul class="about">
 <li><strong>Which wallets are verified.</strong> The NEAR Connect path (wallet list, sandboxed adapter, signature request, cancel, hash import) is tested end to end in a local sandbox with the labelled SANDBOX TEST WALLET only. No real wallet provider has signed through this console yet: compatibility with the owner's actual wallet is an owner-assisted check, and nothing here claims it.</li>
 <li><strong>Wallet adapters' own storage.</strong> An adapter granted storage keeps its session data in this site's browser storage under its wallet id. That is the wallet's data, not a key held by this page's code.</li>
 <li><strong>The runner verifies.</strong> The handoff record (intent sha256, transaction hash, signer) is imported by the runner, which checks the chain, signer, key, receiver, every action and argument, the receipt tree and the end state. The console's own final-state display is a convenience, not that verification.</li>
-<li><strong>Never resubmitted.</strong> A cancelled signature or a rejected transaction leaves nothing pending. A reload during a pending action resumes polling only.</li>
+<li><strong>Never resubmitted.</strong> With the local test signer, a cancelled signature or a rejected transaction leaves nothing pending. A wallet's rejection or closed window stays pending until you forget it, because a wallet's error cannot prove that nothing was sent. A reload during a pending action resumes polling only.</li>
 </ul>`;
 
 /** Pure renderer; throws when the evidence fails schema validation. */

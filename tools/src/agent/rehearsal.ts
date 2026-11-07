@@ -56,7 +56,11 @@ export const RehearsalInput = z
     planned_inventory: z.object({ source: z.string().min(1), units: PerAssetUnits }).strict(),
     /** The grant the owner plans to make; only when no grant exists on chain (observations.grant is null). */
     planned_grant: PlannedGrant.nullable().optional(),
-    /** sha256 of the manifest the budget, planned inventory and planned grant came from (and the state was observed for). */
+    /**
+     * sha256 of the manifest given to the rehearsal, which an observed state file must have been read for. Whether
+     * the sale budget, planned inventory and planned grant came from it or from the state file is in each one's own
+     * source field (sale_budget_source, planned_inventory.source, planned_grant.source).
+     */
     manifest_sha256: Sha256.nullable().optional(),
   })
   .strict();

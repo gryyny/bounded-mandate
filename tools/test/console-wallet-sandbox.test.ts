@@ -349,7 +349,7 @@ describe("no resubmission and no control without the owner's own, unframed walle
       await p.route("https://console.invalid/", (r) => r.fulfill({ contentType: "text/html", body: renderConsoleHtml(consoleEvidence(), { profiles: [mainnetProfile()] }) }));
       await p.route(`${pinned.manifest.executor}*`, (r) => r.fulfill({ contentType: "text/javascript", body: 'console.log("TAMPERED-ADAPTER-RAN"); window.selector.ready({ signIn: async () => [{ accountId: "owner.near" }], getAccounts: async () => [{ accountId: "owner.near" }] });' }));
       await p.goto("https://console.invalid/");
-      expect(await connectWallet(p, "hot-wallet")).toMatch(/^Not connected: wallet adapter https:\/\/raw\.githubusercontent\.com\/hot-dao\/near-selector\/70726e10d0658ff085dc0e4a31bb49b8f3cec48d\/repository\/hotwallet\.js does not match its pinned sha256; it was not run/);
+      expect(await connectWallet(p, "hot-wallet")).toBe(`Not connected: wallet adapter ${pinned.manifest.executor} does not match its pinned sha256; it was not run`);
       expect(ran).toEqual([]);
       await ctx.close();
       // Sandbox page: a debug wallet planted in localStorage and an adapter planted in NEAR Connect's IndexedDB cache.
