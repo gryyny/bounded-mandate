@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkPlanned, totals, type Planned } from "../src/live/budget.js";
 import { Ledger, canonical } from "../src/live/ledger.js";
-import { runLive } from "../src/live/main.js";
+import { revocationWindow, runLive } from "../src/live/main.js";
 import { LiveManifest, sequenceProblems, type OwnerKey, type Step } from "../src/live/manifest.js";
 import { gasPurchasePrice, ownerKeyChanges, signingFloat, worstFee } from "../src/live/preflight.js";
 import { ExternalHandoff, ExternalIntent, intentSha256, transactionProblems } from "../src/live/external.js";
@@ -515,7 +515,7 @@ describe("live-agent manifest template", () => {
   });
 
   it("states the proposed ~60% USDC inventory, so the live agent is called", () => {
-    expect((agent.notes as string[]).join(" ")).toMatch(/PROPOSED inventory \(not approved\): 5 USDC \+ 0\.90 wNEAR, about 60% USDC/);
+    expect((agent.notes as string[]).join(" ")).toMatch(/PROPOSED inventory \(not approved\): 5 USDC \+ wNEAR units derived on setup day as \(5 x USDC price x 2\/3\) \/ NEAR price, about 60% USDC/);
   });
 });
 
@@ -646,5 +646,26 @@ describe("owner key declarations and changes", () => {
     await refuse({ expected_owner_keys: [full("o", "1"), full("o", "1")] }, /lists \S+ twice/);
     await refuse({ keys: ext, expected_owner_keys: [full("o", "1")] }, /must list keys\.owner_external/);
     await refuse({ keys: ext, expected_nonces: { owner: "1", agent: "1", filler: "1" } }, /expected_nonces\.owner_external is required when keys\.owner_external names a key distinct from keys\.owner/);
+  });
+});
+
+describe("revocation window at the order's deadline", () => {
+  // The verifier rejects an intent only when its deadline is strictly before the block time
+  // (near/intents 16d04f6 engine/mod.rs L66), so a read exactly at the deadline is not yet expired.
+  const deadline = 1_800_000_000_000_000_000n;
+  const windowAt = (chainNs: bigint): Record<string, unknown> | null => {
+    const ledger = Ledger.create(join(tmp(), "ledger"), "0".repeat(64));
+    const withheld = { order_id: "7", signing_key: "ed25519:test", deadline_ns: deadline.toString(), mandate_nonce: "n", bundle: null, bundle_sha256: null, filler_nonce: null, counter: null, executable: true };
+    ledger.append("step-done", { step: 3, kind: "withhold", withheld, verification: { sign_requested_at_ns: null, signed_at_ns: null } });
+    return revocationWindow(ledger, { phase: "relay pre-check", at: new Date(0).toISOString(), chain_ns: chainNs.toString(), remaining_ms: null });
+  };
+
+  it("is not expired at exact equality, as the verifier still accepts the order", () => {
+    expect(windowAt(deadline)).toMatchObject({ remaining_after_confirmed_removal_ns: "0", expired_when_read: false });
+  });
+
+  it("is expired one nanosecond after the deadline, and not one nanosecond before", () => {
+    expect(windowAt(deadline + 1n)).toMatchObject({ remaining_after_confirmed_removal_ns: "-1", expired_when_read: true });
+    expect(windowAt(deadline - 1n)).toMatchObject({ remaining_after_confirmed_removal_ns: "1", expired_when_read: false });
   });
 });

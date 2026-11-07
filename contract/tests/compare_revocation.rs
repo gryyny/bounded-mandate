@@ -54,11 +54,12 @@ struct Relay {
     label: String,
     executed: bool,
     error: String,
+    filler_nonce_used: bool,
 }
 
 impl Relay {
     fn json(&self) -> Value {
-        json!({"order": self.label, "executed": self.executed, "verifier_error": self.error})
+        json!({"order": self.label, "executed": self.executed, "verifier_error": self.error, "filler_nonce_used": self.filler_nonce_used})
     }
 }
 
@@ -107,8 +108,16 @@ async fn sign_order(
 
 /// Relays the order with the filler's counter-intent from an unrelated account. "Executed" is the
 /// treasury's USDC balance moving by exactly the order's amount, and must agree with the outcome.
+/// The filler's counter-intent nonce must be committed exactly when the bundle executed: a rejected
+/// bundle, including one rejected for an already used order nonce, commits neither nonce.
 async fn relay(base: &Base, t: &Treasury, o: &Order, random: u8) -> Result<Relay> {
     let before = base.balances(t.account.id()).await?.0;
+    // The same derivation `fill` uses for the counter-intent; an executed relay confirms it.
+    let filler_nonce = intents::versioned_nonce(
+        base.verifier.current_salt().await?,
+        i64::try_from(o.deadline_ns).context("deadline")?,
+        [random; 15],
+    );
     let (out, _) = fill(
         &base.verifier,
         &base.relayer,
@@ -126,9 +135,19 @@ async fn relay(base: &Base, t: &Treasury, o: &Order, random: u8) -> Result<Relay
         o.label,
         out.is_success()
     );
+    let filler_nonce_used = base
+        .verifier
+        .is_nonce_used(base.filler.id(), &filler_nonce)
+        .await?;
+    ensure!(
+        filler_nonce_used == executed,
+        "{}: filler nonce used={filler_nonce_used} but executed={executed}",
+        o.label
+    );
     Ok(Relay {
         label: o.label.to_owned(),
         executed,
+        filler_nonce_used,
         error: if executed {
             String::new()
         } else {
@@ -249,6 +268,10 @@ async fn run() -> Result<Value> {
     let cancel_relays = relay_all(&base, &cancel, &cancel_orders, 120).await?;
     expect_error(&cancel_relays[0], nonce_err)?;
     expect_error(&cancel_relays[1], nonce_err)?;
+    ensure!(
+        !cancel_relays[0].filler_nonce_used && !cancel_relays[1].filler_nonce_used,
+        "cancel: a bundle rejected for a used order nonce committed the filler's nonce"
+    );
     ensure!(
         cancel_relays[2].executed,
         "cancel: the order the owner did not record still executes"

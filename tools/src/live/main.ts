@@ -244,7 +244,7 @@ class RelaySkipped extends Error {
 }
 
 /** One timing sample of a deadline-sensitive phase. chain_ns is the final block's timestamp; null when not read. */
-interface Probe {
+export interface Probe {
   phase: string;
   at: string;
   chain_ns: string | null;
@@ -855,7 +855,7 @@ function deadlineTimeline(ledger: Ledger, extra: Probe[], window: Record<string,
  * revocation the pre-check can come well after the owner's transaction, which loosens the bound). The order's
  * timestamps come from its view at the withhold step.
  */
-function revocationWindow(ledger: Ledger, confirmed: Probe): Record<string, unknown> | null {
+export function revocationWindow(ledger: Ledger, confirmed: Probe): Record<string, unknown> | null {
   const w = latestWithheld(ledger);
   const done = ledger.ofKind("step-done").filter((e) => e.data.kind === "withhold").at(-1);
   if (w === null || confirmed.chain_ns === null) return null;
@@ -876,7 +876,8 @@ function revocationWindow(ledger: Ledger, confirmed: Probe): Record<string, unkn
     signed_to_deadline_ms: signed === null ? null : ms(deadline - signed),
     remaining_after_confirmed_removal_ns: remainingNs.toString(),
     remaining_after_confirmed_removal_ms: ms(remainingNs),
-    expired_when_read: remainingNs <= 0n,
+    // The verifier rejects only once the deadline is strictly before the block time (engine/mod.rs L66 at 16d04f6).
+    expired_when_read: remainingNs < 0n,
     note: "remaining_after_confirmed_removal is how long the withheld order would still have been executable for an owner who stopped authorizing and waited, from the same moment; a lower bound, since removal was final before the read. sign_request_to_signed_ms runs from the block of the MPC sign request to the block of the contract's signature callback (MPC signing plus the yield/resume round trip).",
   };
 }

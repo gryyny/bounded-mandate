@@ -9,36 +9,49 @@
 mod common;
 
 use common::evidence;
+use common::sandbox::authority_live;
 use common::world::{NEAR, Side, USDC, World, WorldOpts, demo_policy, order_state};
 use serde_json::{Value, json};
 
+/// One relay of a signed order and what the verifier did with it.
+struct Relayed {
+    executed: bool,
+    /// The verifier's failure text; empty when the bundle executed.
+    error: String,
+    /// The order's deadline minus the block time read right after the relay: a lower bound on the
+    /// lifetime the order still had when the verifier handled it.
+    deadline_margin_ns: i128,
+}
+
 #[derive(Default)]
 struct Ledger {
-    /// (label, order id, epoch, relayed_after_confirmed_removal, executed)
-    relays: Vec<(String, u64, u64, bool, bool)>,
+    relays: Vec<Value>,
+    executions_after_removal: usize,
     notes: Vec<String>,
 }
 
 impl Ledger {
-    fn record(&mut self, label: &str, order: &Value, after_removal: bool, executed: bool) {
-        self.relays.push((
-            label.to_owned(),
-            order["id"].as_str().unwrap_or("0").parse().unwrap_or(0),
-            order["epoch"].as_u64().unwrap_or(0),
-            after_removal,
-            executed,
-        ));
-    }
-
-    fn executions_after_removal(&self) -> usize {
-        self.relays.iter().filter(|r| r.3 && r.4).count()
+    fn record(&mut self, label: &str, order: &Value, after_removal: bool, r: &Relayed) {
+        if after_removal && r.executed {
+            self.executions_after_removal += 1;
+        }
+        self.relays.push(json!({
+            "label": label,
+            "order_id": order["id"].as_str().unwrap_or("0").parse::<u64>().unwrap_or(0),
+            "epoch": order["epoch"].as_u64().unwrap_or(0),
+            "after_confirmed_removal": after_removal,
+            "executed": r.executed,
+            "verifier_error": r.error,
+            "deadline_margin_ns_at_least": r.deadline_margin_ns.to_string(),
+        }));
     }
 
     fn json(&self) -> Value {
         json!({
-            "relays": self.relays.iter().map(|r| json!({"label": r.0, "order_id": r.1, "epoch": r.2, "after_confirmed_removal": r.3, "executed": r.4})).collect::<Vec<_>>(),
-            "executions_after_confirmed_removal": self.executions_after_removal(),
+            "relays": self.relays,
+            "executions_after_confirmed_removal": self.executions_after_removal,
             "notes": self.notes,
+            "rejection_rule": "after confirmed removal, a relay counts as rejected for revocation only with the verifier's missing-key error for this mandate, while the order was unexpired (the verifier checks the deadline before the key)",
         })
     }
 }
@@ -53,9 +66,10 @@ async fn signed_order(w: &World, sell: Side, amount: u128) -> anyhow::Result<(Va
 }
 
 /// Relays and checks the result honestly against verifier balance changes.
-async fn relay_and_measure(w: &World, mp: &Value, salt: u8) -> anyhow::Result<bool> {
+async fn relay_and_measure(w: &World, mp: &Value, salt: u8) -> anyhow::Result<Relayed> {
     let before = w.balances().await?;
     let (out, decoded) = w.relay(mp, salt).await?;
+    let read_at = w.b.now_ns().await?;
     let after = w.balances().await?;
     let executed = out.is_success();
     if executed {
@@ -67,7 +81,36 @@ async fn relay_and_measure(w: &World, mp: &Value, salt: u8) -> anyhow::Result<bo
     } else {
         anyhow::ensure!(before == after, "failed relay moved balances");
     }
-    Ok(executed)
+    Ok(Relayed {
+        executed,
+        error: if executed {
+            String::new()
+        } else {
+            out.failure_text()
+        },
+        deadline_margin_ns: i128::from(decoded.deadline_ns) - i128::from(read_at),
+    })
+}
+
+/// A withheld order relayed after confirmed removal: it must fail for the removed key of this
+/// mandate, which the verifier reports only for an unexpired order, and still be unexpired by the
+/// block time read after the relay.
+async fn relay_after_removal(w: &World, mp: &Value, salt: u8) -> anyhow::Result<Relayed> {
+    let r = relay_and_measure(w, mp, salt).await?;
+    if !r.executed {
+        let missing_key = format!("doesn't exist for account '{}'", w.mandate.id());
+        anyhow::ensure!(
+            r.error.contains(&missing_key),
+            "the relay failed for another reason than the removed key: {}",
+            r.error
+        );
+        anyhow::ensure!(
+            r.deadline_margin_ns >= 0,
+            "the order had expired ({} ns) when the relay was read",
+            r.deadline_margin_ns
+        );
+    }
+    Ok(r)
 }
 
 async fn assert_only_key(w: &World, expected: Option<&str>) -> anyhow::Result<()> {
@@ -103,18 +146,23 @@ async fn t1_withheld_order_fails_after_removal_and_regrant() -> anyhow::Result<(
 
     // Executed before removal, recorded honestly and settled.
     let (x, mp_x) = signed_order(&w, Side::Wnear, 10 * NEAR).await?;
-    let ok = relay_and_measure(&w, &mp_x, 1).await?;
-    l.record("before-removal", &x, false, ok);
+    let r = relay_and_measure(&w, &mp_x, 1).await?;
+    l.record("before-removal", &x, false, &r);
     assert!(
-        ok,
+        r.executed,
         "a valid signed order must execute while the key is registered"
     );
     let out = w.settle(&w.b.relayer, 0).await;
     assert!(out.is_success(), "{}", out.failure_text());
     assert_eq!(order_state(&w.order(0).await?), "released:settled");
 
-    // Withheld.
+    // Withheld: authentic and executable before revocation.
     let (wo, mp_w) = signed_order(&w, Side::Usdc, 100 * USDC).await?;
+    let (live, why) = authority_live(&w.b.verifier, &mp_w).await?;
+    assert!(
+        live,
+        "simulate_intents must accept the withheld order before revocation: {why}"
+    );
     let out = w.revoke(None).await;
     assert!(out.is_success(), "revoke: {}", out.failure_text());
     let g = w.grant_view().await?;
@@ -123,8 +171,8 @@ async fn t1_withheld_order_fails_after_removal_and_regrant() -> anyhow::Result<(
     assert_only_key(&w, None).await?;
     let wid: u64 = wo["id"].as_str().unwrap().parse()?;
     assert_eq!(order_state(&w.order(wid).await?), "released:key_removed");
-    let ok = relay_and_measure(&w, &mp_w, 2).await?;
-    l.record("withheld-after-revoke", &wo, true, ok);
+    let r = relay_after_removal(&w, &mp_w, 2).await?;
+    l.record("withheld-after-revoke", &wo, true, &r);
     assert!(!w.nonce_used(&wo).await?);
 
     // Regrant: new path and key; old order still fails; old key never returns.
@@ -135,14 +183,14 @@ async fn t1_withheld_order_fails_after_removal_and_regrant() -> anyhow::Result<(
     assert_ne!(pk1, pk2);
     assert!(!w.has_grant_key(&pk1).await?);
     assert_only_key(&w, Some(&pk2)).await?;
-    let ok = relay_and_measure(&w, &mp_w, 3).await?;
-    l.record("withheld-after-regrant", &wo, true, ok);
+    let r = relay_after_removal(&w, &mp_w, 3).await?;
+    l.record("withheld-after-regrant", &wo, true, &r);
     // Re-signing the old payload under the new grant is impossible: the old message is bound to
     // the old key; NEAR and Intents still work for new orders.
     let (y, mp_y) = signed_order(&w, Side::Wnear, 5 * NEAR).await?;
-    let ok = relay_and_measure(&w, &mp_y, 4).await?;
-    l.record("new-grant-order", &y, false, ok);
-    assert!(ok);
+    let r = relay_and_measure(&w, &mp_y, 4).await?;
+    l.record("new-grant-order", &y, false, &r);
+    assert!(r.executed);
     assert_ne!(mp_y["public_key"], mp_w["public_key"]);
 
     // Third cycle: revoke epoch 2 with a withheld order, regrant epoch 3, both old orders fail.
@@ -154,12 +202,12 @@ async fn t1_withheld_order_fails_after_removal_and_regrant() -> anyhow::Result<(
         ("epoch1-after-epoch3", &wo, &mp_w, 5u8),
         ("epoch2-after-epoch3", &z, &mp_z, 6),
     ] {
-        let ok = relay_and_measure(&w, mp, s).await?;
-        l.record(label, o, true, ok);
+        let r = relay_after_removal(&w, mp, s).await?;
+        l.record(label, o, true, &r);
     }
     assert_only_key(&w, g3["public_key"].as_str()).await?;
 
-    let after = l.executions_after_removal();
+    let after = l.executions_after_removal;
     evidence::write("T1", "withheld-regrant", after == 0, "sandbox", l.json());
     assert_eq!(
         after, 0,
@@ -208,16 +256,16 @@ async fn t1_revoke_while_signing_then_signature_delivered() -> anyhow::Result<()
         decoded.signature_valid(),
         "disclosed signature verifies over the recorded payload"
     );
-    let ok = relay_and_measure(&w, &mp, 7).await?;
-    l.record("signature-delivered-after-revoke", &o, true, ok);
+    let r = relay_after_removal(&w, &mp, 7).await?;
+    l.record("signature-delivered-after-revoke", &o, true, &r);
     assert!(!w.has_grant_key(&pk).await?);
     assert_only_key(&w, None).await?;
     // Also after a regrant.
     w.mpc_mode("immediate").await?;
     w.grant_ok(demo_policy()).await?;
-    let ok = relay_and_measure(&w, &mp, 8).await?;
-    l.record("signature-delivered-after-regrant", &o, true, ok);
-    let after = l.executions_after_removal();
+    let r = relay_after_removal(&w, &mp, 8).await?;
+    l.record("signature-delivered-after-regrant", &o, true, &r);
+    let after = l.executions_after_removal;
     evidence::write("T1", "pending-sign", after == 0, "sandbox", l.json());
     assert_eq!(after, 0);
     Ok(())
@@ -363,10 +411,10 @@ async fn t1_failed_removal_and_retry() -> anyhow::Result<()> {
     assert!(!p.is_success(), "no new authorization while revoking");
 
     // Already-signed orders may still execute while Revoking; this one does, and is recorded.
-    let ok = relay_and_measure(&w, &mp_a, 9).await?;
-    l.record("revoking-before-confirmed-removal", &a, false, ok);
+    let r = relay_and_measure(&w, &mp_a, 9).await?;
+    l.record("revoking-before-confirmed-removal", &a, false, &r);
     assert!(
-        ok,
+        r.executed,
         "signed order with a registered key executes (Revoking is not Revoked)"
     );
     let s = w.settle(&w.b.relayer, 0).await;
@@ -417,13 +465,13 @@ async fn t1_failed_removal_and_retry() -> anyhow::Result<()> {
     assert!(!w.has_grant_key(&pk).await?);
     let bid: u64 = b["id"].as_str().unwrap().parse()?;
     assert_eq!(order_state(&w.order(bid).await?), "released:key_removed");
-    let ok = relay_and_measure(&w, &mp_b, 10).await?;
-    l.record("withheld-after-retry", &b, true, ok);
+    let r = relay_after_removal(&w, &mp_b, 10).await?;
+    l.record("withheld-after-retry", &b, true, &r);
     assert_only_key(&w, None).await?;
     let again = w.revoke(None).await;
     assert!(!again.is_success(), "revoke after revoked must fail");
 
-    let after = l.executions_after_removal();
+    let after = l.executions_after_removal;
     evidence::write(
         "T1",
         "failed-removal-retry",
