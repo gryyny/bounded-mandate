@@ -171,8 +171,8 @@ const section = (num: string, tag: string, id: string, title: string, body: stri
   `<section class="folio" id="${id}" aria-labelledby="${id}-h"><div class="num" aria-hidden="true">${num}<small>${tag}</small></div><div class="body"><h2 id="${id}-h">${title}</h2>${body}</div></section>`;
 
 const SCRIPTED_ATTACK = /\((injected-request|scripted-direct)\)/;
-const isModelOutput = (a: Assertion): boolean =>
-  typeof a.observed === "object" && a.observed !== null && "mode" in a.observed && a.observed.mode === "recorded-model";
+const RecordedProposal = z.object({ mode: z.literal("recorded-model"), decision: z.object({ adapter_verdict: z.object({ kind: z.literal("proposal") }) }) });
+const isRecordedProposal = (a: Assertion): boolean => a.id === "model-proposal-on-chain" && RecordedProposal.safeParse(a.observed).success;
 
 /** Execution labels that apply to the whole run, each derived from the evidence. */
 function runLabels(ev: Evidence): string[] {
@@ -186,7 +186,7 @@ function runLabels(ev: Evidence): string[] {
 
 function headerChips(ev: Evidence, binding: DemoBinding, live: LiveView): string {
   const extra = [
-    ...(ev.assertions.some(isModelOutput) ? ["recorded genuine model output"] : []),
+    ...(ev.assertions.some(isRecordedProposal) ? ["recorded genuine model output"] : []),
     ...(ev.assertions.some((a) => SCRIPTED_ATTACK.test(a.description)) ? ["scripted attacks"] : []),
   ];
   return [
@@ -252,7 +252,7 @@ function demonstrationSection(ev: Evidence): string {
   const steps = storySteps(ev);
   const base = runLabels(ev);
   const intro = `<p class="source">Source: out/evidence/demo.json · ${escapeHtml(ev.command)} · ${String(ev.receipts.length)} transactions, ${String(ev.assertions.length)} story checks. Story checks never mark an acceptance gate.</p>
-<p>${ev.mode === "mainnet" ? "Steps labelled <em>mainnet</em> carry NEAR mainnet transaction hashes." : "<strong>No mainnet receipts in this evidence.</strong> Sandbox steps ran our contract and the pinned verifier WASM locally with labelled test doubles; the model step replays a recorded genuine model response."}</p>`;
+<p>${ev.mode === "mainnet" ? "Steps labelled <em>mainnet</em> carry NEAR mainnet transaction hashes." : "<strong>No mainnet receipts in this evidence.</strong> Sandbox steps ran our contract and the pinned verifier WASM locally with labelled test doubles."}</p>`;
   if (steps === null) {
     // Older evidence without step offsets: chronological transactions, then the story checks.
     return section("§1", "demo", "demo", "The demonstration",
@@ -261,17 +261,20 @@ function demonstrationSection(ev: Evidence): string {
   }
   const items = steps
     .map((s, i) => {
+      const isFirstProposal = s.checks.some((a) => a.id === "model-proposal-on-chain");
+      const title = isFirstProposal ? "Bounded agent proposal → propose_order" : s.title;
       const labels = [
-        ...(s.receipts.some((r) => stepMode(r, ev) === "recorded-model") || s.checks.some(isModelOutput) ? ["recorded genuine model output"] : []),
+        ...(s.receipts.some((r) => stepMode(r, ev) === "recorded-model") || s.checks.some(isRecordedProposal) ? ["recorded genuine model output"] : []),
+        ...(s.checks.some((a) => a.id === "injection-recording") ? ["recorded prompt-injection response"] : []),
         ...(s.checks.some((a) => SCRIPTED_ATTACK.test(a.description)) ? ["scripted attacks"] : []),
-        ...(s.receipts.some((r) => /scripted/.test(r.label)) ? ["scripted proposal"] : []),
+        ...(s.receipts.some((r) => /scripted/.test(r.label) || (r.detail as { proposal_source?: unknown } | null)?.proposal_source === "scripted") ? ["scripted proposal"] : []),
         ...(/^Recovery/i.test(s.title) ? ["ordinary recovery (not the owner-key rescue)"] : []),
         ...(/withdrawal/i.test(s.title) ? ["owner action, outside recovery claims"] : []),
         ...(s.checks.some((a) => a.id === "console-review" && ConsoleReview.safeParse(a.observed).data?.rendered !== undefined) ? [CONSOLE_BROWSER_LABEL] : []),
         ...(s.receipts.some((r) => (r.detail as { via?: unknown } | null)?.via === OWNER_CONTROLS_LABEL) ? [OWNER_CONTROLS_LABEL] : []),
       ];
       const failed = s.receipts.some((r) => r.outcome === "failure" && !/after revocation/.test(r.label)) || s.checks.some((a) => !a.passed);
-      return `<li class="${failed ? "failure" : "success"}" style="--i:${String(i)}"><div class="step-head"><strong>${escapeHtml(s.title)}</strong>${modeBadge(ev.mode)}${[...labels, ...base].map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("")}</div>${stepBody(s, ev)}</li>`;
+      return `<li class="${failed ? "failure" : "success"}" style="--i:${String(i)}"><div class="step-head"><strong>${escapeHtml(title)}</strong>${modeBadge(ev.mode)}${[...labels, ...base].map((l) => chip(l.startsWith("recorded") ? "recorded-model" : "label", l)).join("")}</div>${stepBody(s, ev)}</li>`;
     })
     .join("\n");
   return section("§1", "demo", "demo", "The demonstration", `${intro}<ol class="timeline">${items}</ol>`);
@@ -283,12 +286,12 @@ function modesKey(ev: Evidence, live: LiveView): string {
     ev.mode === "sandbox"
       ? "Sandbox execution: a local NEAR sandbox runs our contract and the pinned Intents verifier WASM, with labelled test doubles for MPC, oracle and tokens."
       : `Demo evidence recorded in mode ${ev.mode}.`;
-  const model = ev.assertions.some(isModelOutput)
-    ? [`<li>${chip("recorded-model", "recorded model output")}<span>The trade proposal replays a recorded genuine model response. No model is called to build this page.</span></li>`]
+  const model = ev.assertions.some(isRecordedProposal)
+    ? [`<li>${chip("recorded-model", "recorded model output")}<span>The first proposal was replayed from a recorded genuine model response.</span></li>`]
     : [];
-  // The demo replays recordings; it records model_mode "recorded-model" and makes no provider call.
+  // The offline demo makes no provider call even when a recording is unavailable.
   const provider =
-    ev.environment.model_mode === "recorded-model" ? [`<li>${chip("pending", "provider calls: none")}<span>No genuine model-provider call was made in this run; the recorded interaction is replayed.</span></li>`] : [];
+    ev.environment.model_mode === "recorded-model" ? [`<li>${chip("pending", "provider calls: none")}<span>No model-provider call was made in this run.</span></li>`] : [];
   const mainnet =
     live.kind === "mainnet"
       ? `<li>${modeBadge("mainnet")}<span>Mainnet receipts: transactions of an approved <code>make live</code> run, in their own section below.</span></li>`
@@ -388,8 +391,9 @@ function attackLogSection(ev: Evidence, acc: Acceptance | null, binding: DemoBin
     return parts.length === 0 ? `<span class="muted">source not located in this evidence</span>` : parts.join("<br>");
   };
   const row = (r: (typeof rows)[number]): string => {
-    const held = r.passed && r.contained !== false;
-    return `<tr id="attack-${escapeHtml(r.id.replace(/^attack-/, ""))}"><td>${word(held ? "success" : "failure", held ? "refused" : r.contained === false ? "state changed" : "not at its expected layer")} ${escapeHtml(r.description)}<br>${origin(r.origin)}${r.model_output === null ? "" : `<details><summary>Injected text</summary><pre>${escapeHtml(r.model_output)}</pre></details>`}</td>
+    const held = r.passed && r.contained === true;
+    const outcome = held ? "refused" : r.contained === false ? "state changed" : r.passed ? "containment unverified" : "not at its expected layer";
+    return `<tr id="attack-${escapeHtml(r.id.replace(/^attack-/, ""))}"><td>${word(held ? "success" : "failure", outcome)} ${escapeHtml(r.description)}<br>${origin(r.origin)}${r.model_output === null ? "" : `<details><summary>Injected text</summary><pre>${escapeHtml(r.model_output)}</pre></details>`}</td>
 <td class="reason">${escapeHtml(r.reason ?? "not recorded")}</td><td>${sourceCell(r)}</td></tr>`;
   };
   const layers = [...new Set(rows.map((r) => r.layer))];
@@ -397,7 +401,7 @@ function attackLogSection(ev: Evidence, acc: Acceptance | null, binding: DemoBin
     .map((layer) => {
       const of = rows.filter((r) => r.layer === layer);
       const wheres = [...new Set(of.map((r) => r.where))].join("; ");
-      return `<h3>${escapeHtml(layer.charAt(0).toUpperCase() + layer.slice(1))}: ${String(of.filter((r) => r.passed).length)} of ${String(of.length)} refused <span class="muted">(${escapeHtml(wheres)})</span></h3>
+      return `<h3>${escapeHtml(layer.charAt(0).toUpperCase() + layer.slice(1))}: ${String(of.filter((r) => r.passed && r.contained === true).length)} of ${String(of.length)} refused <span class="muted">(${escapeHtml(wheres)})</span></h3>
 <div class="scroll"><table class="attack-log"><caption>${escapeHtml(layer)} in this ${escapeHtml(ev.mode)} run</caption><thead><tr><th scope="col">Request</th><th scope="col">What it returned</th><th scope="col">Source evidence</th></tr></thead><tbody>${of.map(row).join("")}</tbody></table></div>`;
     })
     .join("");
@@ -417,7 +421,7 @@ function attackLogSection(ev: Evidence, acc: Acceptance | null, binding: DemoBin
   const counts = layerCounts(rows);
   return section("§A", "attacks", "attacks", title,
     `<p class="source">Source: the attack-* story checks of out/evidence/demo.json. Each layer is the boundary the attack suite classified from the observed result; each source line was located at demo time by searching this checkout for the text the layer returned. Origins: synthetic injected requests and scripted direct calls are written by us, never model output. ${escapeHtml(reportLine)}</p>
-<p><strong>${String(rows.filter((r) => r.passed).length)} of ${String(rows.length)} refused</strong>: ${counts.map(([l, n]) => `${escapeHtml(l)} ${String(n)}`).join(" · ")}</p>
+<p><strong>${String(counts.reduce((sum, [, n]) => sum + n, 0))} of ${String(rows.length)} refused</strong>: ${counts.map(([l, n]) => `${escapeHtml(l)} ${String(n)}`).join(" · ")}</p>
 ${body}${injectionBlock}`);
 }
 

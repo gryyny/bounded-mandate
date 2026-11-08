@@ -176,7 +176,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     review,
   );
 
-  await rec.step("Bounded agent proposal (recorded genuine model output) -> propose_order");
+  await rec.step("Bounded agent proposal -> propose_order");
   const recorded = tryLoadRecording("normal");
   let firstProposal: Proposal;
   let decision: AgentDecision | null = null;
@@ -184,6 +184,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     const snapshot = await chainSnapshot(world, BENIGN_NOTES);
     try {
       decision = await decide(new RecordedProvider(recorded.recording), snapshot);
+      unknowns.push("A recorded model response was replayed. The claude-cli harness may add context that the recording cannot show.");
     } catch (error) {
       unknowns.push(`recorded model replay refused: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -443,12 +444,11 @@ function render(evidence: Evidence, outDir: string): string {
 
 async function main(): Promise<number> {
   const coldStart = Date.now();
-  console.log("bounded-mandate demo (sandbox; test doubles for MPC, oracle and tokens; recorded model output)");
+  console.log("bounded-mandate demo (sandbox; test doubles for MPC, oracle and tokens; no model-provider calls)");
   const net = await LocalNetwork.start();
   const unknowns: string[] = [
     "Sandbox execution only: MPC signer, oracle and tokens are labelled test doubles; the verifier is the pinned mainnet WASM.",
     "No mainnet execution in this run; network latency on mainnet is not represented by sandbox timing.",
-    "The model step replays a recorded interaction; the claude-cli harness may add context that the recording cannot show.",
     "The console review and the revocation run in headless Chromium with owner controls via the local sandbox test signer (not a wallet); no external wallet is exercised.",
     "Concession bounds, randomized interleavings and breaker behaviour are covered by the Rust gate tests, not by this story.",
   ];

@@ -308,7 +308,7 @@ export function attackRows(ev: Evidence): AttackRow[] {
 /** Attacks refused per enforcement layer, in order of first appearance. */
 export const layerCounts = (rows: readonly AttackRow[]): [string, number][] => {
   const counts = new Map<string, number>();
-  for (const r of rows) if (r.passed) counts.set(r.layer, (counts.get(r.layer) ?? 0) + 1);
+  for (const r of rows) if (r.passed && r.contained === true) counts.set(r.layer, (counts.get(r.layer) ?? 0) + 1);
   return [...counts.entries()];
 };
 
@@ -461,20 +461,20 @@ export function revocationStory(ev: Evidence): Stage[] {
       if (rows.length === 0) b.missing.push("attack-* assertions");
       for (const r of rows) b.check(r.id);
       const injected = ev.assertions.some((a) => a.id === "injection-recording") ? b.check("injection-recording") : null;
-      const refused = rows.filter((r) => r.passed);
       const counts = layerCounts(rows);
+      const refused = counts.reduce((sum, [, n]) => sum + n, 0);
       const notContained = rows.filter((r) => r.contained === false).length;
       if (rows.length > 0 && rows.some((r) => r.contained === null)) b.inconclusive.push("this evidence does not record whether each attack changed state");
       return {
-        headline: rows.length === 0 ? null : `${String(refused.length)} of ${String(rows.length)} refused · state unchanged${notContained > 0 ? ` except ${String(notContained)}` : ""}`,
+        headline: rows.length === 0 ? null : `${String(refused)} of ${String(rows.length)} refused · state unchanged${notContained > 0 ? ` except ${String(notContained)}` : ""}`,
         facts: [...counts.map(([layer, n]): [string, string] => [sentenceStart(layer), `${String(n)} refused`]), ...(injected === null ? [] : [["Injected prompt", "a recorded genuine model response to it left the adapter only as a strict proposal or a decline"] as [string, string]])],
         labels: ["scripted attacks", ...(injected === null ? [] : ["recorded genuine model output"])],
         caption:
           rows.length === 0
             ? null
-            : `${String(refused.length)} of ${String(rows.length)} scripted hostile requests refused, nothing changed: ${counts.map(([l, n]) => `${l} ${String(n)}`).join(", ")}.`,
-        short: rows.length === 0 ? null : `${String(refused.length)} of ${String(rows.length)} scripted hostile requests refused, no state changed${injected === null ? "" : "; an injected prompt could not express a withdrawal"}`,
-        failure: `Hostile requests: in this run ${String(rows.length - refused.length)} of ${String(rows.length)} were not refused at their expected layer with no state change.`,
+            : `${String(refused)} of ${String(rows.length)} scripted hostile requests refused, nothing changed: ${counts.map(([l, n]) => `${l} ${String(n)}`).join(", ")}.`,
+        short: rows.length === 0 ? null : `${String(refused)} of ${String(rows.length)} scripted hostile requests refused, no state changed${injected === null ? "" : "; an injected prompt could not express a withdrawal"}`,
+        failure: `Hostile requests: in this run ${String(rows.length - refused)} of ${String(rows.length)} were not refused at their expected layer with no state change.`,
       };
     }),
     stage("withheld", "Signed order withheld", (b) => {

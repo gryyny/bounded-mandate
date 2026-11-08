@@ -103,7 +103,7 @@ const PENDING_TITLE = "Mainnet run: pending approval — no mainnet transaction 
 
 export function mainnetBody(view: LiveView): string {
   if (view.kind === "absent") {
-    return `<div class="pending-panel" role="status"><p class="pending-title">${PENDING_TITLE}</p><p>Mainnet execution needs separately approved accounts and budget. Nothing on this page is a mainnet receipt: the story above is sandbox execution, and the trade proposal is recorded model output. An approved run would appear here from <code>${LIVE_MAINNET_PATH}</code>, with explorer links and read-only commands.</p></div>`;
+    return `<div class="pending-panel" role="status"><p class="pending-title">${PENDING_TITLE}</p><p>Mainnet execution needs separately approved accounts and budget. An approved run would appear here from <code>${LIVE_MAINNET_PATH}</code>, with explorer links and read-only commands.</p></div>`;
   }
   if (view.kind === "rejected") {
     return `<div class="pending-panel" role="status"><p class="pending-title">Mainnet run: not shown — <code>${LIVE_MAINNET_PATH}</code> is not mainnet evidence</p><p>Not presented as mainnet because ${escapeHtml(view.reasons.join("; "))}. No mainnet receipt is shown on this page.</p></div>`;

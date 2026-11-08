@@ -1,7 +1,7 @@
 // Both video cuts, from SYNTHETIC story evidence (see video-story-specimen.ts); no frames are rendered here.
 import { describe, expect, it } from "vitest";
 import { bindDemo } from "../src/evidence/binding.js";
-import { revocationStory } from "../src/page/story.js";
+import { attackRows, layerCounts, revocationStory } from "../src/page/story.js";
 import { type Evidence } from "../src/types.js";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -149,6 +149,18 @@ describe("short video cut", () => {
     expect(captions(true).join("\n")).not.toContain("no mainnet transaction executed");
   });
 
+  it("keeps every enforcement layer in the short slide and its caption", () => {
+    const ev = storyEvidence();
+    const attack = shortScenes(ev, bindDemo(ev, null), false).find((sc) => sc.title.startsWith("3 ·"));
+    const counts = layerCounts(attackRows(ev));
+    expect(counts).toHaveLength(5);
+    for (const [layer, count] of counts) {
+      expect(attack?.body).toContain(`<dt>${layer.charAt(0).toUpperCase()}${layer.slice(1)}</dt><dd>${String(count)} refused</dd>`);
+      expect(attack?.captions.join(" ")).toContain(`${layer} ${String(count)}`);
+    }
+    expect(attack?.body).toContain("<dt>Injected prompt</dt>");
+  });
+
   it("fits the 45-90 s target", () => {
     const total = captions().reduce((t, c) => t + shortPace(c), 0);
     expect(total).toBeGreaterThanOrEqual(SHORT_RANGE_S[0]);
@@ -273,7 +285,7 @@ describe("short video cut", () => {
     const moved = { ...ev, assertions: ev.assertions.map((a) => (a.id === "attack-direct-over-cap" ? { ...a, passed: false, observed: { ...(a.observed as object), observed: "not-stopped", contained: false } } : a)) };
     const notStopped = walk(moved).find((sc) => sc.title.includes("not stopped"));
     expect(notStopped?.title).toBe("3d · Attack log: not stopped, 0 of 1 refused");
-    expect(notStopped?.captions.join(" ")).toContain("were not refused at their expected layer");
+    expect(notStopped?.captions.join(" ")).toContain("was confirmed for 0 of 1 requests");
     expect(notStopped?.body).toContain("NOT HELD");
   });
 

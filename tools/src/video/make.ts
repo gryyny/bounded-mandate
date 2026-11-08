@@ -210,21 +210,22 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const attackScenes = layers.map((layer, i): Scene => {
     const of = rows.filter((r) => r.layer === layer);
     const where = [...new Set(of.map((r) => r.where))].join("; ");
+    const confirmed = of.filter((r) => r.passed && r.contained === true).length;
     return {
       kind: "demo",
       labels: ["Scripted attacks"],
-      title: `3${String.fromCharCode(97 + i)} · Attack log: ${layer}, ${String(of.filter((r) => r.passed).length)} of ${String(of.length)} refused`,
+      title: `3${String.fromCharCode(97 + i)} · Attack log: ${layer}, ${String(confirmed)} of ${String(of.length)} refused`,
       // The chain state is unchanged across the attacks, so the log takes the strip's space.
       body: `<p class="note">${esc(where)}</p><table class="log">${of
         .map(
           (r) =>
-            `<tr><td class="${r.passed && r.contained !== false ? "ok" : "bad"}">${r.passed && r.contained !== false ? "refused" : "NOT HELD"}</td><td>${esc(r.description)}</td><td><code>${esc((r.reason ?? "").slice(0, 70))}</code></td><td><code>${esc(r.source === null ? (r.tx_hash === null ? "no transaction" : `tx ${shortHash(r.tx_hash)}`) : `${r.source.file}:${String(r.source.line)}`)}</code></td></tr>`,
+            `<tr><td class="${r.passed && r.contained === true ? "ok" : "bad"}">${r.passed && r.contained === true ? "refused" : r.passed && r.contained === null ? "unverified" : "NOT HELD"}</td><td>${esc(r.description)}</td><td><code>${esc((r.reason ?? "").slice(0, 70))}</code></td><td><code>${esc(r.source === null ? (r.tx_hash === null ? "no transaction" : `tx ${shortHash(r.tx_hash)}`) : `${r.source.file}:${String(r.source.line)}`)}</code></td></tr>`,
         )
         .join("")}</table>`,
       captions: [
-        of.every((r) => r.passed && r.contained !== false)
+        confirmed === of.length
           ? `${sentenceCase(layer)}: ${String(of.length)} hostile ${of.length === 1 ? "request" : "requests"} refused, each with no state change.`
-          : `${sentenceCase(layer)}: ${String(of.filter((r) => !(r.passed && r.contained !== false)).length)} of ${String(of.length)} requests were not refused at their expected layer with no state change.`,
+          : `${sentenceCase(layer)}: refusal at the expected layer with no state change was confirmed for ${String(confirmed)} of ${String(of.length)} requests.`,
       ],
     };
   });
@@ -279,13 +280,18 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
             ]) +
             txs(/propose_order \((order 1|first order)\)/) +
             checks(model),
-          captions: [narrate("trade", "No recorded model proposal was available, so the first order used a scripted proposal. It is not model output.")],
+          captions: [
+            "The first proposal was scripted.",
+            ...(held("trade") ? [] : [narrate("trade", "")]),
+          ],
           strip: stateAfter("Bounded agent proposal"),
         }
       : {
       kind: "demo",
       labels: ["Recorded genuine model output"],
-      title: `2a · Recorded genuine model output, ${modelName} (replayed)`,
+      title: A.get("model-proposal-on-chain")?.passed === true
+        ? `2a · Recorded genuine model output, ${modelName} (replayed)`
+        : "2a · Recorded proposal: on-chain check did not hold",
       body: kv([
         ["Model", modelName],
         ["Proposal", `sell ${usdc(proposal.sell_amount)}, max concession ${String(proposal.max_concession_bps)} bps`],
@@ -436,8 +442,11 @@ const stepBody = (steps: readonly JourneyStep[], i: number): string => {
   const result = j.result ?? "";
   // Long outcome lines shrink so the facts below stay on the slide.
   const size = result.length > 150 ? " small" : result.length > 80 ? " medium" : "";
-  const facts = j.stages.flatMap((s) => s.facts).slice(0, size === " small" ? 3 : 4);
-  return `${rail(steps, i)}<p class="status-line"><span class="pill ${STATUS_CLASS[j.outcome]}">${esc(statusWord(j))}</span></p><p class="headline${size}">${esc(result)}</p>${kv(facts)}<p class="bound">Evidence: ${bound.join(" · ")}</p>`;
+  const facts = j.stages.flatMap((s) => s.facts);
+  const details = j.key === "attacks"
+    ? `<dl class="attack-facts">${facts.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>`
+    : kv(facts.slice(0, size === " small" ? 3 : 4));
+  return `${rail(steps, i)}<p class="status-line"><span class="pill ${STATUS_CLASS[j.outcome]}">${esc(statusWord(j))}</span></p><p class="headline${size}">${esc(result)}</p>${details}<p class="bound">Evidence: ${bound.join(" · ")}</p>`;
 };
 
 /**
@@ -527,6 +536,10 @@ ol.rail li.off { border-color: #e6b450; border-top-style: dashed; }
 .status-line { margin: 0 0 10px; } .status-line .pill { font-size: 22px; padding: 6px 12px; }
 .objective { font-size: 26px; color: #c9d6e3; margin: 0 0 10px; }
 .headline { font-size: 56px; line-height: 1.12; font-weight: 600; margin: 0 0 18px; } .headline.medium { font-size: 42px; } .headline.small { font-size: 34px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin-top: 10px; }
+.attack-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px; margin: 0; }
+.attack-facts > div { background: #151a20; padding: 8px 14px; }
+.attack-facts dt { font: 600 22px/1.2 -apple-system, sans-serif; color: #a39d8f; }
+.attack-facts dd { font: 22px/1.3 "SF Mono", Menlo, monospace; margin: 3px 0 0; }
 .strip { position: absolute; left: 48px; right: 48px; bottom: 166px; height: 150px; display: grid; grid-template-columns: 1.3fr .8fr .8fr .6fr 1.2fr 1.2fr 1.2fr; gap: 0;
   border: 2px solid #3d4552; background: #151a20; font: 600 18px/1.3 -apple-system, "Helvetica Neue", sans-serif; }
 .strip > div { padding: 12px 14px; border-right: 1px solid #3d4552; overflow: hidden; } .strip > div:last-child { border-right: 0; }

@@ -192,7 +192,7 @@ describe("evidence page: presentation order and step labels", () => {
     },
     receipts: [receipt("agent propose_order (order 1)", {}, { tx_hash: "TX1" })],
     assertions: [
-      check("model", "MODEL", "SYNTHETIC model proposal", { mode: "recorded-model" }),
+      check("model-proposal-on-chain", "MODEL", "SYNTHETIC model proposal", { mode: "recorded-model", decision: { adapter_verdict: { kind: "proposal" } } }),
       check("a1", "BOUNDARY", "SYNTHETIC attack -> stopped by contract-role (scripted-direct)"),
       check("a2", "BOUNDARY", "SYNTHETIC attack -> stopped by adapter-schema (injected-request)"),
       check("rec", "T4", "SYNTHETIC recovered"),
@@ -888,14 +888,23 @@ describe("evidence page: the owner's journey on the first screen", () => {
     const ev = storyEvidence();
     const declined = Evidence.parse({
       ...ev,
+      receipts: ev.receipts.map((r) => (r.label === "agent propose_order (first order)" ? { ...r, detail: { proposal_source: "scripted" } } : r)),
       assertions: ev.assertions.map((a) =>
-        a.id === "model-proposal-on-chain" ? { ...a, passed: false, observed: { ...(a.observed as object), decision: { ...((a.observed as { decision: object }).decision), adapter_verdict: { kind: "decline", reason: "SYNTHETIC decline" } } } } : a,
+        a.id === "model-proposal-on-chain" ? { ...a, passed: false, observed: { ...(a.observed as object), decision: { model: STORY.model, decision_text: JSON.stringify({ action: "decline", reason: "SYNTHETIC decline" }), adapter_verdict: { kind: "decline", reason: "SYNTHETIC decline" } } } } : a,
       ),
     });
-    const trade = card(renderHtml(declined, { acceptance: null, live: null }), "trade");
+    const html = renderHtml(declined, { acceptance: null, live: null });
+    const trade = card(html, "trade");
     expect(trade).toContain("scripted proposal");
+    expect(trade).toContain("did not hold");
     expect(trade).not.toContain("recorded genuine model output");
-    expect(trade).not.toContain("synthetic-model-1");
+    expect(trade).not.toContain(STORY.model);
+    const proposal = html.match(/<li class="failure"[^>]*><div class="step-head"><strong>Bounded agent proposal[^<]+<\/strong>.*?<\/div>/)?.[0];
+    expect(proposal).toContain("scripted proposal");
+    expect(proposal).not.toContain("recorded genuine model output");
+    expect(html).not.toContain('<span class="mode recorded-model">recorded model output</span>');
+    expect(html).not.toMatch(/the trade proposal is recorded model output|the model step replays a recorded genuine model response/i);
+    expect(html).toContain("recorded prompt-injection response");
   });
 
   it("states each step's recorded outcome with readable amounts and its labels", () => {
