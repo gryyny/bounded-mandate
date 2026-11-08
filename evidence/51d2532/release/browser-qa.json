@@ -1,0 +1,126 @@
+{
+  "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+  "replay": {
+    "status": "PASS",
+    "replay_steps": [
+      {
+        "width": 1440,
+        "key": "mandate",
+        "target": "#stage-limits"
+      },
+      {
+        "width": 1440,
+        "key": "trade",
+        "target": "#stage-trade"
+      },
+      {
+        "width": 1440,
+        "key": "attacks",
+        "target": "#stage-attacks"
+      },
+      {
+        "width": 1440,
+        "key": "withheld",
+        "target": "#stage-withheld"
+      },
+      {
+        "width": 1440,
+        "key": "revoked",
+        "target": "#stage-revoked"
+      },
+      {
+        "width": 1440,
+        "key": "rejected",
+        "target": "#stage-rejected"
+      },
+      {
+        "width": 1440,
+        "key": "recovered",
+        "target": "#stage-recovered"
+      },
+      {
+        "width": 1440,
+        "key": "withdrawn",
+        "target": "#stage-withdrawn"
+      },
+      {
+        "width": 390,
+        "key": "mandate",
+        "target": "#stage-limits"
+      },
+      {
+        "width": 390,
+        "key": "trade",
+        "target": "#stage-trade"
+      },
+      {
+        "width": 390,
+        "key": "attacks",
+        "target": "#stage-attacks"
+      },
+      {
+        "width": 390,
+        "key": "withheld",
+        "target": "#stage-withheld"
+      },
+      {
+        "width": 390,
+        "key": "revoked",
+        "target": "#stage-revoked"
+      },
+      {
+        "width": 390,
+        "key": "rejected",
+        "target": "#stage-rejected"
+      },
+      {
+        "width": 390,
+        "key": "recovered",
+        "target": "#stage-recovered"
+      },
+      {
+        "width": 390,
+        "key": "withdrawn",
+        "target": "#stage-withdrawn"
+      }
+    ],
+    "legitimate_trades": 15,
+    "hostile_cases": 39,
+    "compare_rows": 5,
+    "remote_requests": [],
+    "page_errors": [],
+    "csp_violations": []
+  },
+  "site": {
+    "status": "PASS",
+    "routes": [
+      "/bounded-mandate/",
+      "/bounded-mandate/console/"
+    ],
+    "attack_rows": 39,
+    "enforcement_layers": 5,
+    "mobile": {
+      "viewport": 390,
+      "document": 390
+    },
+    "csp_violations": 0,
+    "external_requests": [],
+    "page_errors": [],
+    "videos": {
+      "short": {
+        "duration_s": 85.033333,
+        "width": 1920,
+        "height": 1080,
+        "current_time_s": 0.1701,
+        "error": null
+      },
+      "walkthrough": {
+        "duration_s": 217.1,
+        "width": 1920,
+        "height": 1080,
+        "current_time_s": 0.1623,
+        "error": null
+      }
+    }
+  }
+}

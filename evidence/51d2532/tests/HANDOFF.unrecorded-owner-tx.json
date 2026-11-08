@@ -1,0 +1,61 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "HANDOFF",
+  "case": "unrecorded-owner-tx",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261108T151902716Z-aade4380554e",
+  "source": {
+    "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794152515,
+  "data": {
+    "checks": [
+      {
+        "name": "during-import",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "while-awaiting-then-resume",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "stray-then-runner-owner-step",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "extra-owner-key-stray",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "owner-key-added",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "stray-after-last-step",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "deployment_binary": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "signing": "SANDBOX LOCAL SIGNING ADAPTER (test double)",
+    "tokens": "mock-ft test double"
+  }
+}

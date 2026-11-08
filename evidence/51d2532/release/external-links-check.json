@@ -1,0 +1,286 @@
+{
+  "checked_on": "2026-11-08",
+  "scope": "URL-set differences only for product README vs 47c8e8c and meta publication package vs current committed HEAD. Historical release report untouched. Safe GET only. No Veto application/state routes. Two factual reads already verified this session are indexed with their recorded hashes.",
+  "product_baseline": "47c8e8c371030b0cd89a78308a02411b9c73f06c",
+  "meta_baseline": "0bd1f31a1d7f803c4ad0e0731da0686832b2689b",
+  "entries": [
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/executions",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Official Agent API hosted route dispatch boundary.",
+      "http_status": 200,
+      "final_url": "https://docs.agentsonintents.com/integration/agent-api/executions",
+      "outcome": "verified HTTP",
+      "body_sha256": "9770bf04fd6ad0f906097c3e3e9ecc98acf571ed25692f1ea8c7ec6560494187",
+      "body_bytes": 621110,
+      "document_title": "Executions - NEAR Intents",
+      "dispatch_commitment_present": true
+    },
+    {
+      "url": "https://docs.roles.gnosisguild.org/general/signing",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Zodiac scopes on-chain creation of stored Safe signature approvals, including CoW and Permit2.",
+      "http_status": 200,
+      "final_url": "https://docs.roles.gnosisguild.org/general/signing",
+      "outcome": "verified HTTP",
+      "body_sha256": "fd3ab037017f41dc20f520d7e60a9d37ada0e8564f91d1edab0516e7cfb685e1",
+      "body_bytes": 98383
+    },
+    {
+      "url": "https://docs.zodiac.eco/developers/roles",
+      "scope": [
+        "product README"
+      ],
+      "citation": "Zodiac Roles documentation; check redirect and current canonical location.",
+      "http_status": 200,
+      "final_url": "https://docs.zodiac.eco/developers/roles",
+      "outcome": "verified HTTP",
+      "body_sha256": "f1258377d7daef061e546f388f82c4a8ed6328955b7263f294776f0815200a92",
+      "body_bytes": 122958,
+      "document_title": "Roles Modifier \u2014 Zodiac Docs"
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto/blob/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/contract/src/lib.rs#L685-L698",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Contract freeze requires the owner, sets frozen, and cancels only overrides in OverridePending.",
+      "line_anchor": {
+        "start": 685,
+        "end": 698,
+        "file_lines": 1296
+      },
+      "line_excerpt_sha256": "4c945ca90380d57219894bf335c097f02387ec79c4a9995aac579f2dd6206546",
+      "verified_source": "0xdopewilly/veto@a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/contract/src/lib.rs",
+      "http_status": 200,
+      "final_url": "https://github.com/0xdopewilly/veto/blob/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/contract/src/lib.rs",
+      "outcome": "verified HTTP",
+      "body_sha256": "e053a303f84b19200ed5cfda8724c6c178655425b4f2e9d82e69687fe33e8745",
+      "body_bytes": 1091929
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto/commit/a5af3da7685cd3c0ccce3553fbed3f6fb3b1256b",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Public recording revision of the November 3 benchmark; exact historical prompts reconstructed and 100/100 recorded signatures checked.",
+      "verified_commit": "a5af3da7685cd3c0ccce3553fbed3f6fb3b1256b",
+      "http_status": 200,
+      "final_url": "https://github.com/0xdopewilly/veto/commit/a5af3da7685cd3c0ccce3553fbed3f6fb3b1256b",
+      "outcome": "verified HTTP",
+      "body_sha256": "3da175ebedcfabdded67b75cde679d42406e488bc4ad4c5c1936f85b01d39d83",
+      "body_bytes": 283422
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto/tree/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73",
+      "scope": [
+        "product README"
+      ],
+      "citation": "Pinned current public source and README describing testnet shared sandbox, vaults and optional Agent API path.",
+      "verified_source": "0xdopewilly/veto@a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/",
+      "http_status": 200,
+      "final_url": "https://github.com/0xdopewilly/veto/tree/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73",
+      "outcome": "verified HTTP",
+      "body_sha256": "b99789871e3848b80021ae0a6f88cd626fd5f23783c4d194b24ef6ad983f4ef5",
+      "body_bytes": 329518
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto/tree/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/bench",
+      "scope": [
+        "product README",
+        "meta publication package"
+      ],
+      "citation": "Pinned benchmark generator, harness, verifier and result files, with independent offline cryptographic and prompt checks.",
+      "verified_source": "0xdopewilly/veto@a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/bench",
+      "http_status": 200,
+      "final_url": "https://github.com/0xdopewilly/veto/tree/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/bench",
+      "outcome": "verified HTTP",
+      "body_sha256": "8d2450f770c5d1288ab74a1d61fe47dc808f3c60fbb08379686b064b01ce2baa",
+      "body_bytes": 175163
+    },
+    {
+      "url": "https://github.com/NEAR-Intents-Agent-API/examples/blob/8e397fccde9e5542b6e92e0fccec662553af1ce6/07-native-accounts/README.md#L86-L117",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Optional EVM and Solana sign-intent routes return signed payloads, accepted until their own deadline; a freeze stops new signing.",
+      "line_anchor": {
+        "start": 86,
+        "end": 117,
+        "file_lines": 171
+      },
+      "line_excerpt_sha256": "38bd106b35b5579ac47e4218dc037296db20b949a82184e0574d0476b868c6e4",
+      "verified_source": "NEAR-Intents-Agent-API/examples@8e397fccde9e5542b6e92e0fccec662553af1ce6/07-native-accounts/README.md",
+      "http_status": 200,
+      "final_url": "https://github.com/NEAR-Intents-Agent-API/examples/blob/8e397fccde9e5542b6e92e0fccec662553af1ce6/07-native-accounts/README.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "72a7a6eedb414b2516cda9438f876de41400cd663c93187a2a96fff0d1848151",
+      "body_bytes": 261617
+    },
+    {
+      "url": "https://github.com/gryyny/bounded-mandate/tree/47c8e8c371030b0cd89a78308a02411b9c73f06c/evidence/2373d39",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Certified 2373d39 evidence directory at the committed 47c8e8c evidence archive.",
+      "outcome": "verified private via authenticated GitHub API",
+      "http_public_pending": true,
+      "git_object_type": "tree"
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L454-L474",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Publisher mainnet evidence table and receipt references.",
+      "line_anchor": {
+        "start": 454,
+        "end": 474,
+        "file_lines": 580
+      },
+      "line_excerpt_sha256": "25a1e3eedfefc0ab590feaa0d8aa63f27a91213bdbc326d1de8cc457ab4f24d6",
+      "verified_source": "iskander-kudashev-13/agent-treasury@46116b1c88fc5d5068698dc73de348e62f428136/README.md",
+      "http_status": 200,
+      "final_url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "8a822d1356487b3d33685e84a0f502999228c8fdcfc5d8ef1e1a26aaf3675b21",
+      "body_bytes": 471280
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md#L64-L98",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Publisher limitations: Hyperliquid trading controls run off-chain; full stop requires API-wallet removal.",
+      "line_anchor": {
+        "start": 64,
+        "end": 98,
+        "file_lines": 580
+      },
+      "line_excerpt_sha256": "9e0703ef1f7a6bb78885d5e0a55a77a74b605cf03374831c8aa0be2ecc50d0b1",
+      "verified_source": "iskander-kudashev-13/agent-treasury@46116b1c88fc5d5068698dc73de348e62f428136/README.md",
+      "http_status": 200,
+      "final_url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "6c7da703a0114ca58d92d748db682a59faf827f0f26119db09ab14f745d55713",
+      "body_bytes": 471280
+    },
+    {
+      "url": "https://github.com/metafrogmeme-droid/claw-guard-near/blob/ff5fdcb79741a6dc800f5e043d211497ad0ddf49/docs/PROOF_MAINNET.md",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Publisher mainnet deployment, code hash, lock and read-only previews. This run sent no propose_order.",
+      "verified_source": "metafrogmeme-droid/claw-guard-near@ff5fdcb79741a6dc800f5e043d211497ad0ddf49/docs/PROOF_MAINNET.md",
+      "http_status": 200,
+      "final_url": "https://github.com/metafrogmeme-droid/claw-guard-near/blob/ff5fdcb79741a6dc800f5e043d211497ad0ddf49/docs/PROOF_MAINNET.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "7edc334c5748f4220b03ef76e17bf2f3be4d35c702120da24e4cc4017e12c354",
+      "body_bytes": 214445
+    },
+    {
+      "url": "https://github.com/nearai/near-hackathon-prompt-examples/blob/main/tracks/01-defi.md",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "DeFi track official example; trading, Intents, Chain Signatures and cross-chain settlement theme.",
+      "verified_source": "nearai/near-hackathon-prompt-examples@main/tracks/01-defi.md",
+      "http_status": 200,
+      "final_url": "https://github.com/nearai/near-hackathon-prompt-examples/blob/main/tracks/01-defi.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "cb8927d0ff6cac316c44d6d578d277d00b3d081cf00128d4d421632b7fa3b6a3",
+      "body_bytes": 186142
+    },
+    {
+      "url": "https://github.com/nearai/near-hackathon-prompt-examples/blob/main/tracks/06-security.md",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Security track official example; spending limits, policy engines, agent security and function-call keys.",
+      "verified_source": "nearai/near-hackathon-prompt-examples@main/tracks/06-security.md",
+      "http_status": 200,
+      "final_url": "https://github.com/nearai/near-hackathon-prompt-examples/blob/main/tracks/06-security.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "2b6304d10275cde35c1a1751b50d9c3a1dcff0133b02411f43e28332c1e72797",
+      "body_bytes": 188926
+    },
+    {
+      "url": "https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md#L61-L97",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "On-chain policy and signed 1Click quote checks. NEAR testnet/Base Sepolia Chain Signatures and no mainnet Intents swap per public documentation.",
+      "line_anchor": {
+        "start": 61,
+        "end": 97,
+        "file_lines": 145
+      },
+      "line_excerpt_sha256": "7afecc5fa1694b5f38a9d23c0764451ba66a87fd08668a12b4d7d38e9c6f3013",
+      "verified_source": "soze-ki/Near-LEASH@b122410aac152d8a38aa36ebe064baf42c91fc10/README.md",
+      "http_status": 200,
+      "final_url": "https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md",
+      "outcome": "verified HTTP",
+      "body_sha256": "e3587d56ed3919ff1cb666ab488f7a77aee72d94f57c64b78760717c03e462fa",
+      "body_bytes": 239173
+    },
+    {
+      "url": "https://help.safe.global/articles/3961440620-set-up-and-use-spending-limits",
+      "scope": [
+        "meta publication package"
+      ],
+      "citation": "Safe allowance changes take effect when their transaction executes.",
+      "http_status": 200,
+      "final_url": "https://help.safe.global/articles/3961440620-set-up-and-use-spending-limits",
+      "outcome": "verified HTTP",
+      "body_sha256": "fdd9c8ea2c880034850b541d3c7011163f5c86141c3512d94575eada63833240",
+      "body_bytes": 54760
+    },
+    {
+      "url": "https://nearhackathon.com/HACKATHON.md",
+      "scope": [
+        "meta publication factual source"
+      ],
+      "outcome": "verified HTTP earlier in this session",
+      "http_status": 200,
+      "body_bytes": 22199,
+      "body_sha256": "903794f4b656b456eaee087941517d024a33633641d167b90c3f060d381d9aed",
+      "citation": "Organizer rules. SHA-256 matches the prior check. Q-010 caveat, Q-011 optional integrations, Q-012 reproducible local demo with video and optional hosting."
+    },
+    {
+      "url": "https://veto-beta.vercel.app/api/demo",
+      "scope": [
+        "meta publication factual source"
+      ],
+      "outcome": "verified HTTP earlier in this session",
+      "http_status": 200,
+      "body_bytes": 3397,
+      "body_sha256": "c9f544f11d80fe2c78a2a57203f276f91905ff5d7c86f728302e634b78710804",
+      "citation": "Source-inspected read-only metadata; reported enabled testnet shared sandbox, six scenario cards and Qwen configuration. No polling/app or transaction endpoints accessed."
+    },
+    {
+      "url": "https://veto-beta.vercel.app/bench/results.json",
+      "scope": [
+        "product README",
+        "meta publication package"
+      ],
+      "citation": "Static public benchmark only. Verified byte-identical to a5b1f87 app artifact and recorded Qwen 50/50 attacks and 8/50 ordinary blocked.",
+      "http_status": 200,
+      "final_url": "https://veto-beta.vercel.app/bench/results.json",
+      "outcome": "verified HTTP",
+      "body_sha256": "883120ce83d0fee65b5c57d28e2b678fb8b9c52d18a761980f1f85bfd8f63033",
+      "body_bytes": 2709
+    }
+  ],
+  "summary": {
+    "unique_added_urls": 17,
+    "public_http_200": 18,
+    "private_auth_verified": 1,
+    "pinned_source_line_anchors": 5,
+    "unconfirmed": 0
+  },
+  "carried_forward": "Unchanged references retain the 2373d39 same-day external check at evidence/2373d39/release/external-links-check.json. This file audits additions and rechecked rule/competitor reads."
+}

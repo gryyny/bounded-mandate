@@ -1,0 +1,429 @@
+{
+  "schema": "bounded-mandate/video/2",
+  "generated_at": "2026-11-08T15:46:14.388Z",
+  "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+  "dirty": false,
+  "demo_revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+  "demo_dirty": false,
+  "acceptance": {
+    "run_id": "20261108T151902716Z-aade4380554e",
+    "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+    "certified": true,
+    "complete": true
+  },
+  "certification": {
+    "certified_for_this_demo": true,
+    "reasons": [],
+    "inputs": {
+      "demo": {
+        "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+        "dirty": false,
+        "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+        "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+        "fixtures": {
+          "deploy/bounded_mandate-163ccfa-reproducible.wasm": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+          "model/injection.json": "4695a317476d74b6bef1ea04f67b7cc411a51b18b0261c427a9290d487561b4c",
+          "model/normal.json": "8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094",
+          "sputnik/sputnikdao2-2.3.1.provenance.json": "6f34318f2f678821a60a10ac44221799d802f95aea330f9ed1b3d4aba2100a7d",
+          "sputnik/sputnikdao2-2.3.1.wasm": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+          "vectors/nep413.json": "9608d19d0f6544d7c8ed7ab6f084161dc65faa538ab3beed8fb42dca89ed1e70",
+          "vectors/oracle.json": "245c251319d2861eb70bd32bda466d941e87cf19dc425bacdf1a890b53f14218",
+          "verifier/defuse-0.4.5.wasm": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547",
+          "wallets/near-connect.json": "187b32d729deae3b8ef5c5a3b3dd59720bbaf9d0d23510984b4629222e56aece"
+        },
+        "wasm_sha256": {
+          "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+          "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+          "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+          "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+        }
+      },
+      "acceptance": {
+        "run_id": "20261108T151902716Z-aade4380554e",
+        "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+        "dirty": false,
+        "certified": true,
+        "complete": true,
+        "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+        "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+        "fixtures": {
+          "deploy/bounded_mandate-163ccfa-reproducible.wasm": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+          "model/injection.json": "4695a317476d74b6bef1ea04f67b7cc411a51b18b0261c427a9290d487561b4c",
+          "model/normal.json": "8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094",
+          "sputnik/sputnikdao2-2.3.1.provenance.json": "6f34318f2f678821a60a10ac44221799d802f95aea330f9ed1b3d4aba2100a7d",
+          "sputnik/sputnikdao2-2.3.1.wasm": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+          "vectors/nep413.json": "9608d19d0f6544d7c8ed7ab6f084161dc65faa538ab3beed8fb42dca89ed1e70",
+          "vectors/oracle.json": "245c251319d2861eb70bd32bda466d941e87cf19dc425bacdf1a890b53f14218",
+          "verifier/defuse-0.4.5.wasm": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547",
+          "wallets/near-connect.json": "187b32d729deae3b8ef5c5a3b3dd59720bbaf9d0d23510984b4629222e56aece"
+        },
+        "wasm_sha256": {
+          "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+          "bounded_mandate_fault": "f6b33658d1c03bbe791d227fb09770d0fc231ff1b284b9157a1d0e8eae8106a8",
+          "claw_guard_adapted": "92504db0a732b8e5570d7d86a5373c3289bef39ff5a1f7b80d301d3966a6681c",
+          "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+          "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+          "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+        }
+      },
+      "latest_run_id": "20261108T151902716Z-aade4380554e"
+    }
+  },
+  "mainnet_receipts_shown": false,
+  "sources": {
+    "demo": {
+      "path": "out/evidence/demo.json",
+      "sha256": "96ab4ce733f8b8435acee2ecaeeb818e6992b6570fe7d6a54f655feac90186af"
+    },
+    "acceptance": {
+      "path": "out/evidence/acceptance.json",
+      "sha256": "382f76dbc6173d50d765e7c06f1de8986440fe5c5f6ee57bc9ed4268dcdfd924"
+    },
+    "page": {
+      "path": "out/page/index.html",
+      "sha256": "a7caa0c1a573b8cbd8ed1423464d062a29748ca995a6b466bf8fec070e249ff4"
+    },
+    "log": {
+      "path": "out/video/demo.log",
+      "sha256": "6e23516689806393934e6c6831a7cb0cebd29f2aed2cf4e920074787ec6f9fdc"
+    },
+    "model": {
+      "path": "fixtures/model/normal.json",
+      "sha256": "8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094"
+    },
+    "consoleReview": {
+      "path": "out/console/screens/demo-console-review.png",
+      "sha256": "25db155fb8cd4752386170cf138cb66c90b72ef5f6cef8b0be3bac67361b7383"
+    },
+    "revokePreview": {
+      "path": "out/console/screens/demo-revoke-preview.png",
+      "sha256": "44ade397f6e5afb13d8a18ac3853308c67ee0ffb0027d4309e7255fedfe5dcfb"
+    },
+    "T3.concession.json": {
+      "path": "out/evidence/tests/T3.concession.json",
+      "sha256": "e93a70c426c4f3041a79e599a01e4b43e6fda5b22869588c98686a9ded309ea0"
+    },
+    "COMPARE.revocation-alternatives.json": {
+      "path": "out/evidence/tests/COMPARE.revocation-alternatives.json",
+      "sha256": "3dc3d0c5cf04679f57264ab562aae470abab61db2b0ef208a26e2c635d5793ae"
+    }
+  },
+  "demo_timing_ms": {
+    "setup": 16195,
+    "story": 20243,
+    "browser_start": 431
+  },
+  "tools": {
+    "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers"
+  },
+  "cuts": {
+    "short": {
+      "mp4": {
+        "path": "out/video/bounded-mandate-short.mp4",
+        "sha256": "481528b0af5ffad265c15bfb72616032c208d8696853fc04ea4dd56aa250c0e9",
+        "bytes": 2082818,
+        "duration_s": 85.033333
+      },
+      "srt": {
+        "path": "out/video/captions-short.srt",
+        "sha256": "71ab6a7189a78baf3db9e171f036cbaf96ca0a55e60fbd5b1ac8ef1343a4f049"
+      },
+      "frames": [
+        {
+          "file": "out/video/frames-short/001.png",
+          "seconds": 5,
+          "kind": "summary",
+          "title": "Give an AI agent trading power. Keep the power to stop it.",
+          "caption": "Give an AI agent trading power. Keep the power to stop it."
+        },
+        {
+          "file": "out/video/frames-short/002.png",
+          "seconds": 6.133333333333334,
+          "kind": "summary",
+          "title": "Give an AI agent trading power. Keep the power to stop it.",
+          "caption": "One local sandbox run with labelled test doubles and a replayed model recording, in eight steps."
+        },
+        {
+          "file": "out/video/frames-short/003.png",
+          "seconds": 6.8,
+          "kind": "demo",
+          "title": "1 · Read the mandate and its limits",
+          "caption": "The owner grants fixed limits on $1,899.80: each order at most 20% ($379.96), price concession at most 0.5%."
+        },
+        {
+          "file": "out/video/frames-short/004.png",
+          "seconds": 7.133333333333334,
+          "kind": "demo",
+          "title": "1 · Read the mandate and its limits",
+          "caption": "The owner console reads it back from the sandbox: grant active, key registered on the verifier, limits as granted."
+        },
+        {
+          "file": "out/video/frames-short/005.png",
+          "seconds": 7.5,
+          "kind": "demo",
+          "title": "2 · The agent makes a permitted trade",
+          "caption": "A recorded claude-haiku-5-5 proposal, replayed, sells 49.90 USDC for 16.5468 wNEAR, filled exactly as signed. USDC share: 52.63% to 50.01%, target 50%."
+        },
+        {
+          "file": "out/video/frames-short/006.png",
+          "seconds": 7.5,
+          "kind": "demo",
+          "title": "3 · Hostile requests are refused",
+          "caption": "39 of 39 scripted hostile requests refused, nothing changed: local validation 10, contract method check 14, policy validation 4, agent key permission 10, verifier 1."
+        },
+        {
+          "file": "out/video/frames-short/007.png",
+          "seconds": 7.5,
+          "kind": "demo",
+          "title": "4 · Spot the withheld signed order",
+          "caption": "A second, scripted order, 20 wNEAR for 59.83 USDC, is signed by the grant key and withheld. The verifier would still accept it."
+        },
+        {
+          "file": "out/video/frames-short/008.png",
+          "seconds": 7.5,
+          "kind": "demo",
+          "title": "5 · Revoke with the owner controls",
+          "caption": "After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed."
+        },
+        {
+          "file": "out/video/frames-short/009.png",
+          "seconds": 7.5,
+          "kind": "demo",
+          "title": "6 · The same order is rejected",
+          "caption": "Another account relays the withheld order 55 s before its deadline. The verifier rejects it: the signing key no longer exists."
+        },
+        {
+          "file": "out/video/frames-short/010.png",
+          "seconds": 7.5,
+          "kind": "demo",
+          "title": "7 · Recover without agent, oracle or MPC",
+          "caption": "With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR into its Intents account."
+        },
+        {
+          "file": "out/video/frames-short/011.png",
+          "seconds": 7.466666666666667,
+          "kind": "demo",
+          "title": "8 · Withdraw to the owner's NEAR account",
+          "caption": "Separately, outside recovery, the owner withdraws 950.10 USDC and 316.5468 wNEAR to its NEAR account, registering storage only where needed."
+        },
+        {
+          "file": "out/video/frames-short/012.png",
+          "seconds": 7.5,
+          "kind": "summary",
+          "title": "Check it yourself",
+          "caption": "Revocation is not instant; the claim starts at confirmed key removal. Mainnet run pending approval; no mainnet transaction executed. Reproduce: make demo, make test."
+        }
+      ]
+    },
+    "walkthrough": {
+      "mp4": {
+        "path": "out/video/bounded-mandate-demo.mp4",
+        "sha256": "1c1bb9166792782b25ad3c6de65091b623c8ee1fd5c7d9a9a275de8fb9e3e3ea",
+        "bytes": 6442904,
+        "duration_s": 217.1
+      },
+      "srt": {
+        "path": "out/video/captions.srt",
+        "sha256": "ad240f6c43e29314dd58cb5b3162059e8c55c224111ad284583cdb4fc252b16d"
+      },
+      "frames": [
+        {
+          "file": "out/video/frames/001.png",
+          "seconds": 6.1,
+          "kind": "summary",
+          "title": "Give an AI agent trading power. Keep the power to stop it.",
+          "caption": "Give an AI agent trading power. Keep the power to stop it."
+        },
+        {
+          "file": "out/video/frames/002.png",
+          "seconds": 9,
+          "kind": "summary",
+          "title": "Give an AI agent trading power. Keep the power to stop it.",
+          "caption": "Claim: the contract builds and signs every trade; after confirmed key removal, withheld orders fail and the owner recovers without agent, oracle or signer."
+        },
+        {
+          "file": "out/video/frames/003.png",
+          "seconds": 9,
+          "kind": "summary",
+          "title": "Give an AI agent trading power. Keep the power to stop it.",
+          "caption": "Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM."
+        },
+        {
+          "file": "out/video/frames/004.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "1a · Grant and limits",
+          "caption": "The owner grants the mandate. Initial reference value: $1,899.80. Limits are fixed for the grant; the agent cannot change them."
+        },
+        {
+          "file": "out/video/frames/005.png",
+          "seconds": 8.8,
+          "kind": "demo",
+          "title": "1b · Mandate reviewed in the console",
+          "caption": "The owner console reads it back from the sandbox: grant active, key registered on the verifier, limits as granted."
+        },
+        {
+          "file": "out/video/frames/006.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "2a · Recorded genuine model output, claude-haiku-5-5 (replayed)",
+          "caption": "Recorded genuine model output, claude-haiku-5-5, replayed with no provider call: sell 49.90 USDC for wNEAR, at most 50 bps concession. The contract signs it."
+        },
+        {
+          "file": "out/video/frames/007.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "2b · Trade on the real verifier WASM",
+          "caption": "Our filler fills it on the pinned mainnet verifier WASM, running in the sandbox: the mandate pays 49.90 USDC and receives 16.5468 wNEAR, exactly as signed."
+        },
+        {
+          "file": "out/video/frames/008.png",
+          "seconds": 6,
+          "kind": "demo",
+          "title": "3a · Attack log: local validation, 10 of 10 refused",
+          "caption": "Local validation: 10 hostile requests refused, each with no state change."
+        },
+        {
+          "file": "out/video/frames/009.png",
+          "seconds": 6.1,
+          "kind": "demo",
+          "title": "3b · Attack log: contract method check, 14 of 14 refused",
+          "caption": "Contract method check: 14 hostile requests refused, each with no state change."
+        },
+        {
+          "file": "out/video/frames/010.png",
+          "seconds": 6,
+          "kind": "demo",
+          "title": "3c · Attack log: policy validation, 4 of 4 refused",
+          "caption": "Policy validation: 4 hostile requests refused, each with no state change."
+        },
+        {
+          "file": "out/video/frames/011.png",
+          "seconds": 6.1,
+          "kind": "demo",
+          "title": "3d · Attack log: agent key permission, 10 of 10 refused",
+          "caption": "Agent key permission: 10 hostile requests refused, each with no state change."
+        },
+        {
+          "file": "out/video/frames/012.png",
+          "seconds": 6,
+          "kind": "demo",
+          "title": "3e · Attack log: verifier, 1 of 1 refused",
+          "caption": "Verifier: 1 hostile request refused, each with no state change."
+        },
+        {
+          "file": "out/video/frames/013.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "4 · A second signed order is withheld",
+          "caption": "A scripted second order (order id 1) is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle."
+        },
+        {
+          "file": "out/video/frames/014.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "5 · Owner revokes in the console; key removal confirmed",
+          "caption": "After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed."
+        },
+        {
+          "file": "out/video/frames/015.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "6 · The withheld order is relayed and rejected",
+          "caption": "Another account relays the withheld order 55 s before its deadline. The verifier rejects it: the key no longer exists."
+        },
+        {
+          "file": "out/video/frames/016.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "7 · Ordinary recovery with agent, oracle and MPC unavailable",
+          "caption": "With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR into its Intents account through ordinary recovery."
+        },
+        {
+          "file": "out/video/frames/017.png",
+          "seconds": 9,
+          "kind": "demo",
+          "title": "8 · Owner withdrawal to its NEAR account",
+          "caption": "Separately, outside recovery, the owner withdraws 950.10 USDC and 316.5468 wNEAR to its NEAR account, registering storage only where needed."
+        },
+        {
+          "file": "out/video/frames/018.png",
+          "seconds": 6,
+          "kind": "summary",
+          "title": "Acceptance gates per case: 35 of 35 passed",
+          "caption": "35 of 35 required cases passed, certified for this demo."
+        },
+        {
+          "file": "out/video/frames/019.png",
+          "seconds": 6.5,
+          "kind": "summary",
+          "title": "Acceptance gates per case: 35 of 35 passed",
+          "caption": "The emergency owner-key rescue is reported separately; it never counts as ordinary recovery."
+        },
+        {
+          "file": "out/video/frames/020.png",
+          "seconds": 6.9,
+          "kind": "summary",
+          "title": "Useful trades and matched revocation controls",
+          "caption": "15 of 15 selected legitimate sandbox trades executed and settled, with 0 authorization refusals."
+        },
+        {
+          "file": "out/video/frames/021.png",
+          "seconds": 8.8,
+          "kind": "summary",
+          "title": "Useful trades and matched revocation controls",
+          "caption": "Complete-list nonce cancellation works with the signer. Confirmed removal covers outstanding orders even when the owner lacks their nonces."
+        },
+        {
+          "file": "out/video/frames/022.png",
+          "seconds": 6,
+          "kind": "summary",
+          "title": "Useful trades and matched revocation controls",
+          "caption": "Keep the old key retired when trading resumes."
+        },
+        {
+          "file": "out/video/frames/023.png",
+          "seconds": 8.8,
+          "kind": "summary",
+          "title": "T5 · our re-implementation of the Claw Guard design",
+          "caption": "T5 runs the same threats against our own re-implementation of the pinned Claw Guard design, not the deployed product:"
+        },
+        {
+          "file": "out/video/frames/024.png",
+          "seconds": 6,
+          "kind": "summary",
+          "title": "T5 · our re-implementation of the Claw Guard design",
+          "caption": "3 of 11 cases executed as successful attacks."
+        },
+        {
+          "file": "out/video/frames/025.png",
+          "seconds": 9,
+          "kind": "summary",
+          "title": "Limits",
+          "caption": "Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; the model step is a replay."
+        },
+        {
+          "file": "out/video/frames/026.png",
+          "seconds": 6,
+          "kind": "summary",
+          "title": "Limits",
+          "caption": "No guarantee of profit or a maximum loss."
+        },
+        {
+          "file": "out/video/frames/027.png",
+          "seconds": 9,
+          "kind": "summary",
+          "title": "Limits",
+          "caption": "Revocation is not instant: signed orders can still execute while it is pending. The claim covers orders after confirmed key removal."
+        },
+        {
+          "file": "out/video/frames/028.png",
+          "seconds": 9,
+          "kind": "summary",
+          "title": "Provenance",
+          "caption": "Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM."
+        }
+      ]
+    }
+  }
+}

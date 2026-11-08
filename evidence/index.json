@@ -2,12 +2,20 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/51d2532",
+      "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+      "status": "certified",
+      "rules": "35 required cases in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
+      "run": "evidence/51d2532/run.json",
+      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1500 s cold, 197 Rust and 600 TypeScript tests passed, acceptance run 20261108T151902716Z-aade4380554e. make demo exit 0 in 60 s, 59/59 story checks (setup 16.2 s, story 20.2 s, browser start 0.4 s). make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42494181012: make test exit 0 in 2036 s, acceptance run 20261108T152353864Z-d1aac03b2207, make demo exit 0 in 72 s, 59/59 (setup 14.3 s, story 20.9 s, browser start 0.2 s). T1 matched two complete simulated bundles to four unexpired removed-key rejections. 15/15 selected legitimate trades settled and 39/39 hostile requests were refused. The comparison includes five paths. Both MP4s (85.0 s and 217.1 s) bind to the same demo log and played in the locally assembled site. All 40 frame layouts, eight pinned wallet adapters, link, license, disclosure and secret checks passed. Exact MP4s and the log are local under out/video-51d2532. Sandbox only."
+    },
+    {
       "path": "evidence/2373d39",
       "revision": "2373d399c275dbd35a3caa467dcfde800266631b",
-      "status": "certified",
+      "status": "superseded",
       "rules": "35 required cases in one clean acceptance run. Both cuts, the page and the console bind to the certified sandbox demo.",
       "run": "evidence/2373d39/run.json",
-      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1488 s cold, 197 Rust and 597 TypeScript tests passed, acceptance run 20261108T093844482Z-effddf52e788. make demo exit 0 in 64 s, 59/59 story checks (setup 19.3 s, story 19.8 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42468021637: make test exit 0 in 1974 s, acceptance run 20261108T094358865Z-ab1727e4f779, make demo exit 0 in 68 s, 59/59 (setup 13.9 s, story 20.2 s, browser start 0.2 s). The short (85.0 s) and walkthrough (195.4 s) came from the same demo and log. All 39 refusals across five layers match the attack gate. Both MP4s played in Chrome and are local under out/video-2373d39. The site, manifest, captions, 37 frame layouts, license inventory and README references were checked. Eight pinned wallet adapters answered with matching hashes and no CSP violation. See release/ and console/wallet-adapter-check.json. Sandbox only."
+      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1488 s cold, 197 Rust and 597 TypeScript tests passed, acceptance run 20261108T093844482Z-effddf52e788. make demo exit 0 in 64 s, 59/59 story checks (setup 19.3 s, story 19.8 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42468021637: make test exit 0 in 1974 s, acceptance run 20261108T094358865Z-ab1727e4f779, make demo exit 0 in 68 s, 59/59 (setup 13.9 s, story 20.2 s, browser start 0.2 s). The short (85.0 s) and walkthrough (195.4 s) came from the same demo and log. All 39 refusals across five layers match the attack gate. Both MP4s played in Chrome and are local under out/video-2373d39. The site, manifest, captions, 37 frame layouts, license inventory and README references were checked. Eight pinned wallet adapters answered with matching hashes and no CSP violation. See release/ and console/wallet-adapter-check.json. Sandbox only. Superseded by 51d2532. This T1 acceptance test checked the mandate leg and re-signed the filler leg per relay. The demo used a single complete bundle."
     },
     {
       "path": "evidence/72bf8c7",

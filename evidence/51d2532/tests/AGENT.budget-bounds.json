@@ -1,0 +1,68 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "AGENT",
+  "case": "budget-bounds",
+  "passed": true,
+  "mode": "unit",
+  "run_id": "20261108T151902716Z-aade4380554e",
+  "source": {
+    "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {},
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794152353,
+  "data": {
+    "checks": [
+      {
+        "name": "per-order-boundary",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "cumulative-boundary",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "partial-within-tighter-cap",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "rejected-not-clipped",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "integer-units",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "budgets-in-prompt-bytes",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "remaining-from-caps",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "replay-and-pre-signing-recheck",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "recorded-fixtures-unchanged",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "note": "TypeScript unit test of the agent objective guard and prompt; no VM, chain or model"
+  }
+}
