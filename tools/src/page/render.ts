@@ -1,6 +1,5 @@
-// Renders the static evidence page. Order: the lead line, one sentence and the owner's eight-step journey with each
-// step's recorded outcome (first screen), the claim and the run's allocation outcome, the nine detailed stages bound to
-// the demo evidence, three ways to check it, the attack log, mainnet receipts (or the pending panel), the
+// Renders the static evidence page. The lead line opens onto the owner's eight-step evidence replay, with the
+// full journey, reproduction paths, measured defenses and alternatives, mainnet receipts (or the pending panel), the
 // opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
 // acceptance gates per case, the T5 baseline, the Agent API comparison, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
 // certified AND bound to this demo (src/evidence/binding.ts): same clean revision, spec, fixtures and WASMs.
@@ -14,6 +13,7 @@ import { REQUIRED_CASES } from "../evidence/required.js";
 import { Acceptance, type BaselineCase, type CaseResult } from "../evidence/schema.js";
 import { type Assertion, Evidence, EvidenceMode, Policy, type Receipt } from "../types.js";
 import { caseFilesBody, loadReportFiles, type ReportFile } from "./casefiles.js";
+import { benchmarkBody, revocationAlternativesBody, sandboxResults } from "./results.js";
 import { caseModeBadge, chip, escapeHtml, modeBadge, word } from "./html.js";
 import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
@@ -49,8 +49,8 @@ export interface RenderExtras {
    */
   live?: unknown;
   /**
-   * Gate report files of the acceptance run (out/evidence/tests); the regrant and disclosure cases are embedded
-   * from them. `renderPage` loads them when this is omitted; `renderHtml` then shows none.
+   * Gate report files of the acceptance run (out/evidence/tests), used for case evidence and result summaries.
+   * `renderPage` loads them when this is omitted; `renderHtml` then shows none.
    */
   reports?: readonly ReportFile[];
   /** @deprecated Ignored: gate status comes only from acceptance.json. */
@@ -341,6 +341,21 @@ ${row("Distance from 50 / 50", offBalance)}
 
 const JOURNEY_STATE: Record<Stage["outcome"], string> = { held: "held", "not-held": "failure", inconclusive: "inconclusive", missing: "missing" };
 
+/** Each replay panel uses the same recorded facts and balances as its detailed evidence. */
+function replayStage(s: Stage): string {
+  const facts = s.outcome === "held"
+    ? s.facts.map(([label, value]) => {
+        const display = /nonce$| key$| hash$|^Bundle sha256$|^Transaction$/i.test(label) ? shortHash(value) : value.replace(/ \(\d+ ns\)$/, "");
+        return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(display)}</dd>`;
+      }).join("")
+    : "";
+  return `<div class="replay-stage">
+<p><strong>${escapeHtml(s.title)}</strong> · <a href="#stage-${s.key}">evidence and receipts</a></p>
+${facts === "" ? "" : `<dl class="stage-facts">${facts}</dl>`}
+<p class="stage-state">${s.state === null ? "No recorded state snapshot for this stage." : `<span>Recorded state after</span> ${escapeHtml(stateLine(s.state))}`}</p>
+</div>`;
+}
+
 /** One step of the first-screen journey: its recorded outcome in words, never a success word for a step that did not hold. */
 function journeyCard(j: JourneyStep): string {
   const status =
@@ -355,13 +370,15 @@ function journeyCard(j: JourneyStep): string {
   const first = j.stages[0];
   return `<li class="jstep ${j.key} ${JOURNEY_STATE[j.outcome]}" id="journey-${j.key}"><p class="jhead"><span class="jn" aria-hidden="true">${String(j.n)}</span><span class="jtitle">${escapeHtml(j.outcome === "held" ? j.title : j.neutral)}</span></p>
 <p class="jresult">${escapeHtml(j.result ?? "not in this evidence")}</p>
-<p class="jmeta">${status}${labels}${first === undefined ? "" : `<a href="#stage-${first.key}" aria-label="Step ${String(j.n)} detail">detail</a>`}</p></li>`;
+<p class="jmeta">${status}${labels}${first === undefined ? "" : `<a href="#stage-${first.key}" aria-label="Step ${String(j.n)} detail">detail</a>`}</p>
+${first === undefined ? "" : `<details class="replay" name="owner-replay"><summary aria-label="Replay step ${String(j.n)}: ${escapeHtml(j.neutral)}">Replay step ${String(j.n)}</summary>${j.stages.map(replayStage).join("")}</details>`}</li>`;
 }
 
 /** The first screen's journey: the owner's eight steps, each with this run's recorded outcome. */
 function journeyBlock(ev: Evidence, stages: readonly Stage[]): string {
   const steps = ownerJourney(ev, stages);
-  return `<ol class="journey" aria-label="The owner's journey in eight steps, as recorded in this run">${steps.map(journeyCard).join("\n")}</ol>
+  return `<div class="replay-guide"><div><h2>Replay the owner’s actions</h2><p>Open any step to see the recorded balances, authority and evidence. This is a replay of one ${escapeHtml(ev.mode)} run.</p></div><nav aria-label="More ways to check the run"><a href="#paths">Reproduce locally</a><a href="#revocation-alternatives">Compare ways to stop orders</a></nav></div>
+<ol class="journey" aria-label="The owner's journey in eight steps, as recorded in this run">${steps.map(journeyCard).join("\n")}</ol>
 <p class="journey-note">One ${escapeHtml(ev.mode)} run (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}). Every outcome above is a recorded story check, not an acceptance gate. Amounts are rounded down for reading; exact units are in the detail below. Revocation is not instant: orders may execute while it is pending; the claim is about orders after confirmed key removal.</p>`;
 }
 
@@ -437,9 +454,9 @@ function pathsSection(live: LiveView): string {
       ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
       : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a> · <a href="#verify">read-only checks you can run from this page</a></p>`;
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
-<li><p class="do">Watch the short video</p><p class="see">See: the eight journey steps above captioned with this run's numbers, in under 90 seconds.</p><p>${video}</p></li>
+<li><p class="do">Watch the short video</p><p class="see">See the eight journey steps captioned with this run's numbers.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
-<li><p class="do">Run <code>make demo</code>, then <code>make test</code></p><p class="see">See: this page regenerated from a fresh local sandbox run, needing no funds or model key; then every acceptance gate re-run and bound to the revision (<code>make test</code> took 1470 s cold in a macOS arm64 fresh clone at 0e915a2).</p></li>
+<li><p class="do">Run locally</p><p class="see"><strong>Quick sandbox demo.</strong> Run <code>make demo</code> and open <code>out/page/index.html</code>. The story runs locally without funds or a model key.</p><p class="see"><strong>Full certification.</strong> On a clean revision run <code>make test &amp;&amp; make demo</code>, then open the page. If you ran the demo first, use <code>make test &amp;&amp; make page</code> to refresh its page from the saved demo and completed gates without running the story again. Certification requires matching revision, spec, fixtures and WASMs.</p></li>
 </ol>${plannedLine()}</section>`;
 }
 
@@ -646,6 +663,7 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
   const { ev, acc, binding, policy, legacy, live } = parseInputs(evidence, extras);
   const script = clientScript();
   const views = gateViews(acc, binding);
+  const results = sandboxResults(acc, binding, extras.reports ?? []);
   const passedCount = views.filter((v) => v.status === "passed").length;
   const anyFailed = views.some((v) => v.status === "failed");
   return `<!doctype html>
@@ -677,7 +695,9 @@ ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was m
 </header>
 ${storySection(ev)}
 ${pathsSection(live)}
+${section("§B", "sandbox", "benchmark", "Legitimate trades and hostile requests", benchmarkBody(results))}
 ${attackLogSection(ev, acc, binding)}
+${section("§A2", "sandbox", "revocation-alternatives", "What happens to orders after the owner acts?", revocationAlternativesBody(results))}
 ${section("§M", "mainnet", "mainnet", "Mainnet receipts", mainnetBody(live))}
 ${section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", verifySection(ev, verifyData(ev, live)))}
 ${casesSection(acc, binding, extras.reports ?? [])}

@@ -432,7 +432,9 @@ describe("evidence page: revocation story", () => {
     expect(html).not.toContain("VIDEO_URL_PENDING");
     expect(html).toContain(`${PLANNED_LABEL}</span> <code>${PLANNED_URLS.video}</code>`);
     expect(html).not.toContain(`href="${PLANNED_URLS.video}`);
-    expect(html).toContain("<code>make demo</code>, then <code>make test</code>");
+    expect(html).toContain("Quick sandbox demo.");
+    expect(html).toContain("<code>make test &amp;&amp; make demo</code>");
+    expect(html).toContain("<code>make test &amp;&amp; make page</code>");
   });
 });
 
@@ -601,9 +603,15 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
       relay_block_time_ns: (STORY.deadlineNs - 1_000_000_000n).toString(),
       verifier_receipt: { id: "SYNTHETICreceipt", block_hash: "SYNTHETICblock", block_time_ns: (STORY.deadlineNs + 500_000_000n).toString() },
     }));
+    const atDeadline = withObserved(storyEvidence(), "withheld-rejected", (o) => ({
+      ...o,
+      relay_block_time_ns: (STORY.deadlineNs - 1_000_000_000n).toString(),
+      verifier_receipt: { id: "SYNTHETICreceipt", block_hash: "SYNTHETICblock", block_time_ns: STORY.deadlineNs.toString() },
+    }));
     const cases: [Evidence, string][] = [
       [malformed, "the verifier error does not name the removed grant key"],
       [expiredAtBlock, "the withheld order was relayed 0.5 s after its deadline"],
+      [atDeadline, "the recorded relay time equals the order deadline. This demonstration requires a positive margin before the deadline"],
     ];
     for (const [ev, reason] of cases) {
       const failed = { ...ev, assertions: ev.assertions.map((a) => (a.id === "withheld-rejected" ? { ...a, passed: false } : a)) };
@@ -671,6 +679,38 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
   const t1 = { relays: [{ label: "SYNTHETIC-before", order_id: 0, epoch: 1, after_confirmed_removal: false, executed: true }, { label: "SYNTHETIC-after", order_id: 1, epoch: 1, after_confirmed_removal: true, executed: false }, { label: "SYNTHETIC-regrant", order_id: 1, epoch: 1, after_confirmed_removal: true, executed: false }], executions_after_confirmed_removal: 0 };
   const t2b = { mechanism: "SYNTHETIC mechanism text", steps: [{ order: 0, phase: "SYNTHETIC disclosed", accounted: true }, { order: 0, phase: "independent relay", executed: true }, { order: 1, phase: "relay after confirmed removal", executed: false, state: "released:key_removed" }] };
   const reports = [report("T1.withheld-regrant", t1), report("T2b.disclosed-relay", t2b), report("T2b.callback-failed-after-disclosure", t2b)];
+
+  it("separates legitimate completions, hostile requests and the revocation comparison, using only bound reports", () => {
+    const legitimate = { origin: "scripted", attempted: 2, completed: 2, authorization_refused: 0, execution_failed: 0, settlement_failed: 0, setup_failed: 0 };
+    const results = [{ passed: true, contained: true, origin: "injected-request" }, { passed: true, contained: true, origin: "scripted-direct" }];
+    const stopped = [{ executed: false }, { executed: false }, { executed: false }];
+    const executed = stopped.map(() => ({ executed: true }));
+    const scenario = (strategy: string, signatures: number, relays: typeof stopped, resume: object) => ({ strategy, account_key_signatures_for_the_action: signatures, withheld_relays_after_action: relays, unrecorded_order_stopped_before_its_deadline: !relays[2]?.executed, resume });
+    const alternatives = { withheld_orders: "SYNTHETIC three orders", strategies: [
+      scenario("cancel complete nonce list", 3, stopped, { same_key_new_order: { executed: true } }),
+      scenario("remove key, same key re-added", 0, executed, { while_removed: stopped }),
+    ] };
+    const hashes = { wasm_sha256: { bounded_mandate: WASM.bounded_mandate } };
+    const gateReports = [report("T3.concession", { legitimate }, hashes), report("BOUNDARY.attacks", { suite: { results } }, hashes), report("COMPARE.revocation-alternatives", alternatives, hashes)];
+    const html = renderHtml(storyEvidence(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", reports: gateReports });
+    expect(html.match(/<p class="result-number">2 \/ 2<\/p>/g)).toHaveLength(2);
+    expect(html).toContain("0 authorization refusals");
+    expect(html).toContain("<th scope=\"row\">cancel complete nonce list</th><td>3</td><td>0 / 3</td>");
+    expect(html).toContain("0 / 3 executed while the key was absent.");
+    expect(html).toContain("3 / 3 after re-add");
+    expect(html).toContain("A complete nonce list and an available signer can cancel every listed order.");
+    const invalidReports = [
+      report("T3.concession", { legitimate }, { ...hashes, run_id: "run-STALE" }),
+      report("BOUNDARY.attacks", { suite: { results } }, { wasm_sha256: { bounded_mandate: "8".repeat(64) } }),
+      ...gateReports.slice(2), ...gateReports.slice(2),
+    ];
+    const unavailable = renderHtml(storyEvidence(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", reports: invalidReports });
+    expect(unavailable).not.toContain('class="result-number"');
+    expect(unavailable).toContain("No certified revocation comparison is attached to this replay.");
+    const stale = renderHtml(storyEvidence(), { acceptance: acceptance(), latestRunId: "run-STALE", reports: gateReports });
+    expect(stale).not.toContain('class="result-number"');
+    expect(stale).toContain("No certified revocation comparison is attached to this replay.");
+  });
 
   it("summarizes each regrant and disclosure case from its own report, embedded verbatim with its sha256", () => {
     const h = renderHtml(specimen(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: null, reports });
@@ -882,6 +922,16 @@ describe("evidence page: the owner's journey on the first screen", () => {
     expect(at('id="journey-withdrawn"')).toBeLessThan(at('id="story"'));
     expect([...html.matchAll(/<span class="jn" aria-hidden="true">([0-9])<\/span>/g)].map((m) => m[1])).toEqual(["1", "2", "3", "4", "5", "6", "7", "8"]);
     expect([...html.matchAll(/aria-label="(Step [0-9] detail)">detail<\/a>/g)].map((m) => m[1])).toEqual(KEYS.map((_, i) => `Step ${String(i + 1)} detail`));
+  });
+
+  it("opens recorded state and evidence from the eight replay steps without adding a script", () => {
+    const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    expect(html.match(/<details class="replay" name="owner-replay">/g)).toHaveLength(8);
+    expect(html.match(/<script>/g)).toHaveLength(1);
+    expect(card(html, "withheld")).toContain('href="#stage-withheld">evidence and receipts</a>');
+    expect(card(html, "withheld")).toContain("<dt>Deadline</dt>");
+    expect(card(html, "revoked")).toContain("<span>Recorded state after</span> grant revoked · key removed");
+    expect(card(html, "recovered")).toContain("owner Intents 1,987.66 USDC + 104.0000 wNEAR");
   });
 
   it("labels the trade a scripted proposal when the replayed model declined", () => {

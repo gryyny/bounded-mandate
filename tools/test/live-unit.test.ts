@@ -5,7 +5,9 @@ import { createHash } from "node:crypto";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { baseEncode } from "near-api-js";
 import { afterEach, describe, expect, it } from "vitest";
+import { nep413Prehash, signNep413 } from "../src/filler/nep413.js";
 import { checkPlanned, totals, type Planned } from "../src/live/budget.js";
 import { Ledger, canonical } from "../src/live/ledger.js";
 import { revocationWindow, runLive } from "../src/live/main.js";
@@ -261,12 +263,23 @@ describe("mainnet manifest template", () => {
 });
 
 describe("withheld bundle simulation", () => {
-  it("counts as executable only without an error or an invariant violation", () => {
-    expect(simulationProblem({ ok: true, value: { intents_executed: [], invariant_violated: null } })).toBeNull();
-    expect(simulationProblem({ ok: true, value: { intents_executed: [] } })).toBeNull();
-    expect(simulationProblem({ ok: true, value: { invariant_violated: { unmatched_deltas: { "nep141:usdc": "-1" } } } })).toMatch(/invariant violation/);
-    expect(simulationProblem({ ok: true, value: null })).toMatch(/no simulation output/);
-    expect(simulationProblem({ ok: false, error: "deadline has expired" })).toMatch(/refused/);
+  const fields = ["mandate", "filler"].map((account, index) => ({ message: JSON.stringify({ signer_id: `${account}.sandbox` }), nonce: Buffer.alloc(32, index), recipient: "intents.sandbox" }));
+  const bundle = fields.map((f) => signNep413(sandboxKey("test simulation"), f));
+  const executions = fields.map((f) => ({ intent_hash: baseEncode(nep413Prehash(f)), nonce: f.nonce.toString("base64") }));
+
+  it("counts as executable only when both exact intents simulate and the invariant holds", () => {
+    expect(simulationProblem({ ok: true, value: { intents_executed: executions } }, bundle)).toBeNull();
+    expect(simulationProblem({ ok: true, value: { intents_executed: executions, invariant_violated: null } }, bundle)).toBeNull();
+    expect(simulationProblem({ ok: true, value: { intents_executed: executions, invariant_violated: { unmatched_deltas: { "nep141:usdc": "-1" } } } }, bundle)).toMatch(/invariant violation/);
+    expect(simulationProblem({ ok: true, value: null }, bundle)).toMatch(/no simulation output/);
+    expect(simulationProblem({ ok: false, error: "deadline has expired" }, bundle)).toMatch(/refused/);
+  });
+
+  it("rejects missing, incomplete or substituted executions", () => {
+    expect(simulationProblem({ ok: true, value: {} }, bundle)).toMatch(/both trade intents/);
+    expect(simulationProblem({ ok: true, value: { intents_executed: executions.slice(0, 1) } }, bundle)).toMatch(/both trade intents/);
+    expect(simulationProblem({ ok: true, value: { intents_executed: executions } }, bundle.slice(0, 1))).toMatch(/both trade intents/);
+    expect(simulationProblem({ ok: true, value: { intents_executed: [...executions].reverse() } }, bundle)).toMatch(/different bundle/);
   });
 });
 

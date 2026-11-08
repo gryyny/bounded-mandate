@@ -761,7 +761,7 @@ async function withhold(rt: Runtime, i: number, step: Extract<Step, { kind: "wit
     withheld = { ...base, bundle: null, bundle_sha256: null, filler_nonce: null, counter: null, executable: false };
     problem = `filler cannot cover the withheld order: ${prepared.shortfall}`;
   } else {
-    problem = simulationProblem(await rt.verifier.simulate(prepared.bundle));
+    problem = simulationProblem(await rt.verifier.simulate(prepared.bundle), prepared.bundle);
     withheld = { ...base, bundle: prepared.bundle, bundle_sha256: sha256Of(prepared.bundle), filler_nonce: prepared.own.payload.nonce, counter: prepared.counter, executable: problem === null };
   }
   const timing = await probe(rt, "withheld bundle prepared and simulated", BigInt(order.deadline_ns), true);

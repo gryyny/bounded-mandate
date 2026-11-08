@@ -1,8 +1,8 @@
-# Public targets: test, demo, live. Everything else is an implementation detail.
+# Public targets: test, demo, page, live. Everything else is an implementation detail.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := test
-.PHONY: test demo live
+.PHONY: test demo page live
 
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
@@ -46,6 +46,9 @@ demo:
 	$(BROWSER)
 	$(call build_wasm)
 	$(TSX) src/demo/main.ts
+
+page:
+	$(TSX) src/page/main.ts
 
 live:
 	@if [ "$${MANDATE_LIVE:-}" != "1" ]; then echo "live: set MANDATE_LIVE=1 and MANDATE_LIVE_MANIFEST=<approved manifest>; the flag is not spending approval" >&2; exit 2; fi

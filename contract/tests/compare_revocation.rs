@@ -8,6 +8,7 @@
 //!
 //! - wait: stop issuing and let the orders expire;
 //! - cancel recorded nonces: the account key signs an empty intent per recorded nonce;
+//! - cancel every nonce: the same action with the complete list available;
 //! - remove the key, then resume with a fresh key (the mandate's revoke and regrant);
 //! - remove the key, then re-add the same key (a fixed-path regrant).
 //!
@@ -219,6 +220,38 @@ fn executed_value(relays: &[Relay]) -> u128 {
     relays.iter().filter(|r| r.executed).count() as u128 * SELL_USDC
 }
 
+async fn cancel_nonces(base: &Base, t: &Treasury, orders: &[&Order]) -> Result<usize> {
+    let cancellations = orders
+        .iter()
+        .map(|o| {
+            t.key.sign_message(
+                base.verifier.id().as_str(),
+                o.nonce,
+                intents::empty_intents_message(t.account.id().as_str(), o.deadline_ns),
+            )
+        })
+        .collect();
+    let out = base
+        .verifier
+        .execute_intents(&base.relayer, cancellations)
+        .await;
+    ensure!(
+        out.is_success(),
+        "cancellation intents failed: {}",
+        out.failure_text()
+    );
+    for o in orders {
+        ensure!(
+            base.verifier
+                .is_nonce_used(t.account.id(), &o.nonce)
+                .await?,
+            "{}: nonce not committed by the cancellation",
+            o.label
+        );
+    }
+    Ok(orders.len())
+}
+
 async fn run() -> Result<Value> {
     let base = Base::new(0, 10 * BUY_WNEAR * 2).await?;
     let nonce_err = "nonce was already used";
@@ -235,36 +268,8 @@ async fn run() -> Result<Value> {
     // 2. Cancel recorded nonces: one signature by the account key per recorded order.
     let cancel = treasury(&base, "t-cancel", 42).await?;
     let cancel_orders = withheld(&base, &cancel, 20).await?;
-    let cancellations: Vec<Value> = cancel_orders
-        .iter()
-        .filter(|o| o.recorded)
-        .map(|o| {
-            cancel.key.sign_message(
-                base.verifier.id().as_str(),
-                o.nonce,
-                intents::empty_intents_message(cancel.account.id().as_str(), o.deadline_ns),
-            )
-        })
-        .collect();
-    let cancel_signatures = cancellations.len();
-    let out = base
-        .verifier
-        .execute_intents(&base.relayer, cancellations)
-        .await;
-    ensure!(
-        out.is_success(),
-        "cancellation intents failed: {}",
-        out.failure_text()
-    );
-    for o in cancel_orders.iter().filter(|o| o.recorded) {
-        ensure!(
-            base.verifier
-                .is_nonce_used(cancel.account.id(), &o.nonce)
-                .await?,
-            "{}: nonce not committed by the cancellation",
-            o.label
-        );
-    }
+    let recorded: Vec<_> = cancel_orders.iter().filter(|o| o.recorded).collect();
+    let cancel_signatures = cancel_nonces(&base, &cancel, &recorded).await?;
     let cancel_relays = relay_all(&base, &cancel, &cancel_orders, 120).await?;
     expect_error(&cancel_relays[0], nonce_err)?;
     expect_error(&cancel_relays[1], nonce_err)?;
@@ -282,6 +287,30 @@ async fn run() -> Result<Value> {
     ensure!(
         cancel_resume_relay.executed,
         "cancel: trading resumes with the same key"
+    );
+
+    // Complete-list control: the fixture also supplies the owner with O3's nonce.
+    let complete = treasury(&base, "t-cancel-complete", 45).await?;
+    let complete_orders = withheld(&base, &complete, 50).await?;
+    let known: Vec<_> = complete_orders.iter().collect();
+    let complete_signatures = cancel_nonces(&base, &complete, &known).await?;
+    let complete_relays = relay_all(&base, &complete, &complete_orders, 160).await?;
+    for r in &complete_relays {
+        expect_error(r, nonce_err)?;
+    }
+    let complete_resume = sign_order(
+        &base,
+        &complete,
+        &complete.key,
+        "O4 (after resume)",
+        true,
+        55,
+    )
+    .await?;
+    let complete_resume_relay = relay(&base, &complete, &complete_resume, 165).await?;
+    ensure!(
+        complete_resume_relay.executed,
+        "complete cancellation: trading resumes with the same key"
     );
 
     // 3. Remove the key, resume with a fresh key (the mandate's revoke and regrant).
@@ -360,7 +389,9 @@ async fn run() -> Result<Value> {
             scenario("wait for expiry", "stop issuing new orders", 0, &wait_relays,
                 json!({"requires": "nothing", "protection_starts": "at each order's own deadline, recorded or not", "unrecorded_order_after_its_deadline": late_relay.json()}))?,
             scenario("cancel recorded nonces", "sign and submit one empty intent per recorded nonce", cancel_signatures, &cancel_relays,
-                json!({"requires": "the account's signer available for every cancellation; the full list of outstanding nonces", "same_key_new_order": cancel_resume_relay.json()}))?,
+                json!({"requires": "the account's signer available for every cancellation; complete coverage requires a full list of outstanding nonces", "same_key_new_order": cancel_resume_relay.json()}))?,
+            scenario("cancel complete nonce list", "sign and submit one empty intent per nonce, including O3 (supplied separately from the ledger)", complete_signatures, &complete_relays,
+                json!({"requires": "the account's signer available for every cancellation; the full list of outstanding nonces", "same_key_new_order": complete_resume_relay.json()}))?,
             scenario("remove key, fresh key", "remove_public_key on the verifier, a direct call by the account: no signature by the account key (in the mandate the owner signs revoke and the contract makes this call; covered by T1, not here)", 0, &fresh_relays,
                 json!({"requires": "a new key (the mandate derives one on path mandate/v1/<epoch>)", "fresh_key_new_order": fresh_resume_relay.json(), "old_order_after_fresh_key": fresh_old_again.json()}))?,
             scenario("remove key, same key re-added", "remove_public_key, then add_public_key with the same key", 0, &same_relays,
@@ -375,7 +406,7 @@ async fn run() -> Result<Value> {
     }))
 }
 
-/// gate: COMPARE — wait, cancel recorded nonces, remove the key (fresh or same key afterwards).
+/// gate: COMPARE — wait, cancel known nonces, remove the key (fresh or same key afterwards).
 #[tokio::test]
 async fn compare_revocation_alternatives() -> Result<()> {
     match run().await {

@@ -4,8 +4,9 @@
 // the owner. Not part of make test, make demo or CI.
 //
 // Usage (from the repository root):
-//   make demo 2>&1 | tee out/video/demo.log        # the demo log must come from the run that wrote demo.json
-//   make test                                       # optional: out/evidence/acceptance.json (gate results)
+//   make test                                      # required for certified gate results; optional for a demo-only cut
+//   mkdir -p out/video
+//   set -o pipefail; make demo 2>&1 | tee out/video/demo.log  # must be the run that wrote demo.json
 //   cd tools && npx --no-install tsx src/video/make.ts [--log ../out/video/demo.log]
 //
 // Inputs: out/evidence/demo.json, out/evidence/acceptance.json (optional), out/page/index.html, the demo log,
@@ -25,12 +26,14 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
-import { REPO_ROOT, treeState } from "../evidence/report.js";
+import { REPO_ROOT, reportsDir, treeState } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
 import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
 import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
+import { loadReportFiles } from "../page/casefiles.js";
 import { GATE_LABEL, HEADLINE, SUBTITLE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
+import { sandboxResults } from "../page/results.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, modelReason, ownerJourney, priceText, readable, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type JourneyStep, type StageKey } from "../page/story.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, ConsoleRevoke, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, demoSteps, type Screenshot, type StepState } from "../evidence/journey.js";
 import { Evidence } from "../types.js";
@@ -104,7 +107,7 @@ function certification(binding: DemoBinding): { chip: string; sentence: string }
     : { chip: "Not certified for this demo", sentence: `Not certified for this demo: ${binding.reasons.join("; ")}. No gate counts as passed.` };
 }
 
-export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string): Scene[] {
+export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string, results?: ReturnType<typeof sandboxResults>): Scene[] {
   const A = new Map(ev.assertions.map((a) => [a.id, a]));
   const obs = (id: string): unknown => {
     const a = A.get(id);
@@ -374,6 +377,7 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
       body: `${binding.certified ? "" : `<p class="note">Amber: passed in the acceptance run, but not certified for this demo.</p>`}<div class="split"><table class="cases">${caseRows.slice(0, splitCases).join("")}</table><table class="cases">${caseRows.slice(splitCases).join("")}</table></div><p class="note">Emergency owner-key rescue, reported separately and never counted toward T4: ${esc(rescue === undefined ? "not reported" : rescue.status)}.</p>`,
       captions: [binding.certified ? `${String(counted)} of ${String(totalCases)} required cases passed, certified for this demo.` : `${String(counted)} of ${String(totalCases)} required cases passed, but this run is not certified for this demo.`, "The emergency owner-key rescue is reported separately; it never counts as ordinary recovery."],
     },
+    ...(results?.trades == null || results.alternatives == null ? [] : [proofScene(results.trades.data, results.alternatives.data)]),
     {
       kind: "summary",
       title: "T5 · our re-implementation of the Claw Guard design",
@@ -415,6 +419,25 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const hidden = ev.receipts.filter((_, i) => !shown.has(i)).map((r) => r.label);
   if (hidden.length > 0) throw new Error(`receipts not shown in any scene: ${hidden.join(", ")}`);
   return out;
+}
+
+function proofScene(trades: NonNullable<ReturnType<typeof sandboxResults>["trades"]>["data"], alternatives: NonNullable<ReturnType<typeof sandboxResults>["alternatives"]>["data"]): Scene {
+  const executed = (relays: readonly { executed: boolean }[]) => `${String(relays.filter((r) => r.executed).length)}/${String(relays.length)}`;
+  const rows: [string, string][] = alternatives.strategies.map((s) => [s.strategy,
+    `${s.resume.while_removed === undefined ? "" : `${executed(s.resume.while_removed)} while absent → `}${executed(s.withheld_relays_after_action)} executed · ${String(s.account_key_signatures_for_the_action)} order-key signatures`,
+  ]);
+  return {
+    kind: "summary",
+    title: "Useful trades and matched revocation controls",
+    body: kv([
+      ["Legitimate scripted trades", `${String(trades.completed)}/${String(trades.attempted)} settled · ${String(trades.authorization_refused)} authorization refusals`],
+      ...rows,
+    ]) + '<p class="note">Selected cases on the pinned verifier. Nonce cancellation needs the list and an available signer. Removal covers the key after confirmation.</p>',
+    captions: [
+      `${String(trades.completed)} of ${String(trades.attempted)} selected legitimate sandbox trades executed and settled, with ${String(trades.authorization_refused)} authorization refusals.`,
+      "Complete-list nonce cancellation works with the signer. Confirmed removal covers outstanding orders even when the owner lacks their nonces. Keep the old key retired when trading resumes.",
+    ],
+  };
 }
 
 const sentenceCase = (t: string): string => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
@@ -714,6 +737,8 @@ async function main(): Promise<void> {
   const ev = Evidence.parse(JSON.parse(readFileSync(files.demo, "utf8")));
   const acc = loadAcceptance(REPO_ROOT);
   const binding = bindDemo(ev, acc, latestRunId(REPO_ROOT));
+  const reportDir = reportsDir(REPO_ROOT);
+  const results = sandboxResults(acc, binding, loadReportFiles(reportDir));
   const { steps, setupMs, storyMs } = parseLog(readFileSync(files.log, "utf8"), ev);
   const modelFixture = readFileSync(files.model);
   if (sha256(modelFixture) !== ev.source.fixtures["model/normal.json"]) throw new Error("fixtures/model/normal.json differs from the hash recorded in demo.json");
@@ -727,7 +752,7 @@ async function main(): Promise<void> {
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
     const cuts: Cut[] = [
       { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown), pace: shortPace, range: SHORT_RANGE_S },
-      { name: "walkthrough", mp4: join(OUT, "bounded-mandate-demo.mp4"), srt: join(OUT, "captions.srt"), framesDir: join(OUT, "frames"), scenes: walkthroughScenes(ev, acc, binding, steps, shots, modelName), pace: walkthroughPace, range: null },
+      { name: "walkthrough", mp4: join(OUT, "bounded-mandate-demo.mp4"), srt: join(OUT, "captions.srt"), framesDir: join(OUT, "frames"), scenes: walkthroughScenes(ev, acc, binding, steps, shots, modelName, results), pace: walkthroughPace, range: null },
     ];
     for (const cut of cuts) outputs[cut.name] = encode(cut, await renderFrames(slide, cut, binding));
   } finally {
@@ -748,6 +773,7 @@ async function main(): Promise<void> {
     sources: {
       ...Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),
       ...Object.fromEntries(Object.entries(consoleShots(ev).files).map(([k, f]) => [k, f])),
+      ...(results.trades === null || results.alternatives === null ? {} : Object.fromEntries([results.trades.report, results.alternatives.report].map((report) => [report.file, { path: rel(join(reportDir, report.file)), sha256: sha256(report.text) }]))),
     },
     demo_timing_ms: { setup: setupMs, story: storyMs, browser_start: ev.environment.browser_start_ms === undefined ? null : Number(ev.environment.browser_start_ms) },
     tools: { ffmpeg: execFileSync(process.env.FFMPEG ?? "ffmpeg", ["-version"], { encoding: "utf8" }).split("\n")[0] ?? "unknown" },

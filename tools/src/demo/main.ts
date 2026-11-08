@@ -280,7 +280,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   if (withheld?.state.state !== "signed" || withheldSigned === null) throw new Error(`withheld order not signed: ${JSON.stringify(withheld?.state)}`);
   const prepared = await filler.prepare(withheldSigned);
   if ("shortfall" in prepared) throw new Error(prepared.shortfall);
-  const simProblem = simulationProblem(await verifier.simulate(prepared.bundle));
+  const simProblem = simulationProblem(await verifier.simulate(prepared.bundle), prepared.bundle);
   const withheldBundleSha256 = bundleSha256(prepared.bundle);
   rec.check("withheld-executable", "T1", "withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)", simProblem === null, {
     simulation: simProblem ?? "accepted",

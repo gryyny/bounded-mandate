@@ -30,14 +30,19 @@ Between the revoke request and confirmed removal, orders already signed may stil
 
 ## Try it
 
+**Replay without setup.** Open the [committed evidence page](evidence/2373d39/page/index.html) in a browser to inspect a certified sandbox run.
+
+**Run the quick demo.** See a valid trade fill, hostile requests refused, the same unexpired signed order refused after revocation, and the owner recover and withdraw both assets.
+
 ```sh
-git clone https://github.com/gryyny/bounded-mandate.git && cd bounded-mandate   # private until the lead publishes it
-make demo    # the unfunded sandbox story; 64 s warm at 2373d39
-open out/page/index.html out/console/index.html   # evidence page and owner console (xdg-open on Linux)
-make test    # every acceptance gate; 1488 s cold in a macOS arm64 fresh clone at 2373d39
+git clone https://github.com/gryyny/bounded-mandate.git && cd bounded-mandate
+make demo
+open out/page/index.html out/console/index.html  # use xdg-open on Linux
 ```
 
-After setup ([platform needs](#platform-needs)), `make demo` tells the story in about a minute; the first run also downloads and builds. The product clone is self-contained and needs no funds or model key. Without installing anything, open the committed evidence page, [evidence/2373d39/page/index.html](evidence/2373d39/page/index.html). Expected output and what each command proves are under [For reviewers](#for-reviewers).
+The repository is private pending publication approval. The product clone is self-contained and needs no funds or model key. `make demo` took about a minute with a warm build at the certified revision. First runs also download and build dependencies. [Platform needs](#platform-needs)
+
+**Certify the full implementation.** On a clean clone run `make test && make demo`. Open the generated page to see the acceptance result bound to the demo revision, spec, fixture and WASM hashes. If you already ran `make demo`, run `make test && make page` to refresh the saved demo page from the completed gates without executing the story again. [Expected outputs and timings](#commands-and-timings)
 
 ## Why NEAR
 
@@ -113,19 +118,20 @@ Over-cap, injected-withdrawal and owner-recovery cases are blocked by both desig
 When an owner stops trusting an agent, signed orders may still be outstanding. The mandate's answer is to remove the grant's key from `intents.near`. Simpler answers exist, and the verifier supports them: stop issuing and let orders expire, or cancel each order's nonce by signing an empty intent with the same key ([near/intents at 16d04f6](https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/intents/mod.rs#L30-L37)). [contract/tests/compare_revocation.rs](contract/tests/compare_revocation.rs) runs them side by side on the pinned verifier WASM.
 
 - **Same setup for each strategy:** an account holding the same deposits, and three unexpired withheld orders of 1 USDC each, relayed by an unrelated account.
-- **The owner-side list deliberately omits the third order.** This models an owner, or an owner's tool, whose list of outstanding nonces is incomplete. The mandate itself records every order on chain before it requests a signature, so a leaked signature or a failed callback leaves no order missing from the contract. The case tests how much the alternatives depend on a complete list; it does not expose a gap in the mandate. In the table, "unrecorded" means missing from that external owner-side list.
+- **The owner-side ledger deliberately omits the third order.** One cancellation case uses only the ledger. The complete-list control also supplies the missing nonce. The mandate itself records each order on chain before requesting a signature, so a leaked signature or failed callback leaves the order in contract accounting. In the table, "unrecorded" means missing from the external ledger.
 - **The account's key is a labelled test key**, standing in for the MPC-derived key.
 
 | Owner's response | Signatures by the account key | Withheld orders that still execute before their deadlines | Unrecorded order stopped before its deadline | To resume trading |
 | --- | ---: | ---: | --- | --- |
-| Stop issuing, wait for expiry | 0 | 3 of 3; each stops only at its own deadline | no (only at its deadline, as an expired one shows) | nothing |
+| Stop issuing, wait for expiry | 0 | 3 of 3 | no, until its deadline passes | nothing |
 | Cancel recorded nonces (empty signed intents) | 2, one per recorded order | 1 of 3 (the unrecorded one) | no | same key |
+| Cancel a complete nonce list (including the missing nonce) | 3, one per order | 0 of 3 | yes | same key |
 | **Remove the key, resume with a fresh key (the mandate)** | **0 by the account key; the owner still signs `revoke`** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
 | Remove the key, re-add the same key | 0 by the account key | 0 of 3 while removed, 3 of 3 after the re-add | yes while removed, no after the re-add | same key, which revives every unexpired order |
 
 What this shows, and what it does not:
 
-- **Cancelling nonces needs the account's signer and a complete list.** With both, cancellation stops every listed order. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither: no signature from the grant's MPC key, while the owner still authorizes the revocation. Here a plain account calls `remove_public_key` itself; in the mandate the owner signs `revoke` and the contract makes that call and confirms it in a callback, which T1 tests.
+- **Cancelling every order needs the account's signer and a complete list.** With both, cancellation stops every listed order. The verifier batches the signed empty intents in one transaction. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither the nonce list nor a signature from the grant's MPC key. The owner authorizes `revoke` and the contract removes the key and confirms removal in a callback, which T1 tests.
 - **Effective cancellation is venue-specific.** The cancellation tested here names each order's nonce, so it needs the list. Some venues can invalidate earlier signatures without one: on Seaport, for example, the offerer increments its counter on chain, which invalidates every order it signed before, including ones it did not track ([Seaport documentation](https://github.com/ProjectOpenSea/seaport/blob/7f966fe7bd75932beb0366f6485aa720512b1259/docs/SeaportDocumentation.md)). This experiment covers the pinned Intents verifier only.
 - **Waiting protects only once each order's deadline passes.** Removal protects once it is confirmed. The gap between the two is what revocation adds over waiting, and only the mainnet run gives a meaningful value. The runner records it as `revocation_window`: the lifetime left after confirmed removal (a lower bound), the time from the MPC sign request to the signature, and the time from signing to the deadline. With the demo's 60 s and the proposed mainnet 120 s order lifetimes, the gap may be small. What the experiment validates is the mandate's choice of revocation mechanism, not a capability unique to it. Other products could also remove and rotate keys, and expiry or nonce cancellation can coexist with trading limits. The mandate's value is the complete, tested combination:
   - limits checked before every signature;
@@ -146,7 +152,11 @@ What this repository demonstrates together, in the sandbox gates certified for r
 
 None of it has run on mainnet yet.
 
-**The official NEAR Intents Agent API** [2, 9] is the closest product, and it is much broader. One owner-signed policy covers actions, assets, per-asset limits, a USD budget, destinations, a timelock, a schedule, owner approval and a freeze, for swaps, transfers and withdrawals to many chains. It is a hosted service in an attested Intel TDX VM with a signed transparency log for every execution; its source is not public yet, so the running images can be checked but not rebuilt. A partner backend acts with a grant token, a bearer credential the owner signs for. Its routes differ in what the backend gets back, so they are compared separately:
+**Veto** documents user-owned vaults with multiple agents, an Agent API integration and an interactive hosted sandbox at revision `a5b1f87`. Its published payment-screen benchmark records 50 of 50 synthetic attacks vetoed and 8 of 50 ordinary requests blocked. That benchmark measures a different payment workflow and threat set. The detailed table below draws on a source inspection at the earlier `a784344` pin. [Pinned Veto README](https://github.com/0xdopewilly/veto/tree/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73), [Veto benchmark methods](https://github.com/0xdopewilly/veto/tree/a5b1f87ab88dbb6c71c8b0b8ace39789f8140d73/bench), [Veto benchmark results](https://veto-beta.vercel.app/bench/results.json)
+
+**Safe with Zodiac Roles** offers mature onchain delegation with scoped targets, functions, parameters and allowances. That addresses authority over calls made through the modifier. Previously issued off-chain orders depend on the venue’s own validation and invalidation rules. Our matched experiment compares those choices on NEAR Intents. [Zodiac Roles Modifier](https://docs.zodiac.eco/developers/roles)
+
+**The official NEAR Intents Agent API** [2, 9] is the closest settlement integration, and it is much broader. One owner-signed policy covers actions, assets, per-asset limits, a USD budget, destinations, a timelock, a schedule, owner approval and a freeze, for swaps, transfers and withdrawals to many chains. It is a hosted service in an attested Intel TDX VM with a signed transparency log for every execution; its source is not public yet, so the running images can be checked but not rebuilt. A partner backend acts with a grant token, a bearer credential the owner signs for. Its routes differ in what the backend gets back, so they are compared separately:
 
 - **Hosted actions** (`POST /v1/agents/{agent_id}/swap`, `transfer`, `withdraw`, `shield`, `unshield`): the API and the agent's wallet execute the action; the backend receives a status, not a signed order. Revoking a grant or changing the policy refuses every action that has not reached its dispatch commitment, and a freeze refuses every action; actions past the dispatch commitment cannot be recalled. There is no signed Intents order for the backend to hold back, and the documentation does not describe these routes as returning a signature [2].
 - **Native signing routes** (off until the owner switches each on in the policy's `native` block): the API signs with the agent's own NEAR, EVM or Solana key and returns the signature to the backend once, without broadcasting it: NEP-413 messages for listed relying parties, EVM and Solana messages and transactions, EVM typed data. The policy's destinations, budget, timelock, schedule and approval do not apply to them. A NEP-413 signature already issued stays valid for its relying party until that party expires the nonce. The NEAR key can never sign for or call `intents.near` [2, 9].
@@ -203,6 +213,7 @@ Everything below is detail for checking the claims: commands and timings, platfo
 | --- | --- | --- | --- |
 | `make test` | A line starting `CERTIFIED: run`, followed by the run id and `out/evidence/acceptance.json`. A tree with uncommitted changes ends `COMPLETE BUT UNCERTIFIED (dirty tree)` instead. | macOS arm64 fresh clone: 1488 s with a cold build. GitHub Actions ubuntu-24.04, [run 42468021637](https://github.com/gryyny/bounded-mandate/actions/runs/42468021637): 1974 s. | All 35 required cases of the 16 gates passed in one run of a clean tree, bound to the revision and the spec, fixture and WASM hashes ([Required gates](#required-gates)). |
 | `make demo` | `setup … ms \| story … ms \| 59/59 assertions passed \| browser start … ms (not in setup or story)` | macOS arm64: 64 s warm (setup 19.3 s, demonstration 19.8 s, browser start 0.4 s; the rest is `npm ci` and the cached WASM build). Linux CI: 68 s (setup 13.9 s, demonstration 20.2 s). | The nine-stage revocation story on a local sandbox ([What the demo runs](#what-the-demo-runs)). The 59 assertions are story checks, not acceptance results. |
+| `make page` | A line starting `rendered` with the path to `out/page/index.html`. | Reads the saved `out/evidence/demo.json` and the latest local acceptance files. | Refreshes the evidence page after acceptance without running the sandbox again. The page explains any certification mismatch. |
 | Open `out/page/index.html` and `out/console/index.html` | Both open from disk. The page makes no network request before you press its verification button; the console makes none before a button press, except to resume an action already pending in that browser. | Not timed. | The evidence page binds the demo to the acceptance run and shows gates as certified only after `make test` passed on the same clean revision, otherwise "not certified for this demo". The console is the static owner console with no backend: a read-only view, and exact previews of the owner's revoke, recover and withdrawal, signed outside the page. |
 
 `make test` records a run id, clears earlier results and ends with `tools/src/checks/acceptance.ts`. That step writes `out/evidence/acceptance.json` and fails unless every required case of every gate passed in this run, bound to the revision and the spec, fixture and WASM hashes. A run from a tree with uncommitted changes is never certified. Demo checks are story checks, not acceptance results.

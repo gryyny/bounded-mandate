@@ -10,12 +10,21 @@
 mod common;
 
 use common::evidence;
-use common::intents::DecodedOrder;
+use common::sandbox::TxOutcome;
 use common::valuation::{Px, concession_bps, concession_within, value_units};
 use common::world::{NEAR, Side, USDC, World, WorldOpts, demo_policy, order_state, u};
 use serde_json::{Value, json};
 
 const MAX_BPS: u128 = 50;
+const POLICY_REFUSALS: &[&str] = &[
+    "grant is not active",
+    "loss breaker tripped",
+    "concession above policy maximum",
+    "too many open orders",
+    "per-order cap exceeded",
+    "outstanding cap exceeded",
+    "turnover cap exceeded",
+];
 
 /// (price, conf, age_sec) for one feed.
 type Feed = (i64, u64, i64);
@@ -37,34 +46,61 @@ struct Fill {
     fees: (u128, u128),
 }
 
-/// Proposes at max concession, relays immediately, measures from balance deltas.
+fn unsigned_trade_outcome(state: &Value) -> &'static str {
+    // The same rejected state also covers missing oracle, salt and balance data.
+    if state["state"] == "rejected"
+        && state["reason"].as_str().is_some_and(|reason| {
+            POLICY_REFUSALS.contains(&reason) || reason == "insufficient balance"
+        })
+    {
+        "authorization_refused"
+    } else {
+        "setup_failed"
+    }
+}
+
+/// Proposes, relays immediately, and measures from balance deltas.
 async fn trade(
     w: &World,
     sell: Side,
     amount: u128,
+    concession: u16,
     label: &str,
     log: &mut Vec<Value>,
 ) -> anyhow::Result<Option<Fill>> {
-    let out = w.propose(sell, amount, 50).await;
+    let out = w.propose(sell, amount, concession).await;
     let Ok(id) = out.json::<String>() else {
-        log.push(json!({"case": label, "proposed": false, "error": out.failure_text()}));
+        let error = out.failure_text();
+        let refused = matches!(&out, TxOutcome::Executed(_))
+            && POLICY_REFUSALS.iter().any(|reason| error.contains(reason));
+        log.push(json!({
+            "case": label, "proposed": false, "error": error,
+            "outcome": if refused { "authorization_refused" } else { "setup_failed" },
+        }));
         return Ok(None);
     };
     let id: u64 = id.parse()?;
-    let o = w.order(id).await?;
     let Some(mp) = w.signed_payload(&out, id).await? else {
-        log.push(json!({"case": label, "order": id, "state": order_state(&o), "signed": false}));
+        let o = w.order(id).await?;
+        log.push(json!({
+            "case": label, "order": id, "state": order_state(&o), "reason": o["state"]["reason"], "signed": false,
+            "outcome": unsigned_trade_outcome(&o["state"]),
+        }));
         return Ok(None);
     };
+    let o = w.order(id).await?;
     let fees_before = w.b.balances(w.b.fee_collector.id()).await?;
     let before = w.balances().await?;
-    let (r, _) = w.relay(&mp, (id % 250) as u8 + 1).await?;
-    let after = w.balances().await?;
-    let fees_after = w.b.balances(w.b.fee_collector.id()).await?;
+    let (r, dec) = w.relay(&mp, (id % 250) as u8 + 1).await?;
     if !r.is_success() {
-        log.push(json!({"case": label, "order": id, "executed": false, "error": r.failure_text()}));
+        log.push(json!({
+            "case": label, "order": id, "executed": false, "error": r.failure_text(),
+            "outcome": "execution_failed",
+        }));
         return Ok(None);
     }
+    let after = w.balances().await?;
+    let fees_after = w.b.balances(w.b.fee_collector.id()).await?;
     let (sold, bought) = match sell {
         Side::Usdc => (before.0 - after.0, after.1 - before.1),
         Side::Wnear => (before.1 - after.1, after.0 - before.0),
@@ -76,25 +112,40 @@ async fn trade(
         Side::Wnear => (24, wp, 6, up),
     };
     let within = concession_within(sold, sd, sp, bought, bd, bp, MAX_BPS);
+    let within_requested = concession_within(sold, sd, sp, bought, bd, bp, u128::from(concession));
     let bps = concession_bps(sold, sd, sp, bought, bd, bp);
-    // Cross-check the signed amounts against the verifier deltas: the mandate pays/receives exactly.
-    let dec = DecodedOrder::from_multipayload(&mp);
+    let (usdc, wnear) = w.b.token_ids();
+    let (sell_id, buy_id) = match sell {
+        Side::Usdc => (usdc, wnear),
+        Side::Wnear => (wnear, usdc),
+    };
     assert_eq!(dec.signer_id, w.mandate.id().as_str());
+    assert_eq!(
+        sold, amount,
+        "{label}: verifier debited the proposed amount"
+    );
+    assert_eq!(dec.delta(&sell_id), -i128::try_from(sold)?);
+    assert_eq!(dec.delta(&buy_id), i128::try_from(bought)?);
+    assert_eq!(bought, u(&o["buy_amount"]), "{label}: recorded buy amount");
     let st = w.settle(&w.b.relayer, id).await;
-    assert!(st.is_success(), "{}", st.failure_text());
+    let state = order_state(&w.order(id).await?);
+    let settled = st.is_success() && state == "released:settled";
     let fees = (fees_after.0 - fees_before.0, fees_after.1 - fees_before.1);
     log.push(json!({
         "case": label, "order": id, "sell": sell.as_str(), "sold": sold.to_string(), "bought": bought.to_string(),
-        "reference": reference, "concession_bps_approx": (bps * 1e6).round() / 1e6, "within_50bps": within,
+        "reference": reference, "requested_concession_bps": concession,
+        "concession_bps_approx": (bps * 1e6).round() / 1e6,
+        "within_50bps": within, "within_requested_concession": within_requested,
         "fees_collected_usdc_units": fees.0.to_string(), "fees_collected_wnear_yocto": fees.1.to_string(),
-        "state_after_settle": order_state(&w.order(id).await?),
+        "state_after_settle": state, "settlement_error": (!settled).then(|| st.failure_text()),
+        "outcome": if settled { "completed" } else { "settlement_failed" },
     }));
     Ok(Some(Fill {
         order: id,
         sell,
         sold,
         bought,
-        within,
+        within: within && within_requested,
         bps,
         fees,
     }))
@@ -113,29 +164,52 @@ async fn t3_concession_bound_on_every_fill() -> anyhow::Result<()> {
     w.grant_ok(demo_policy()).await?;
     let mut log = Vec::new();
     let mut fills = Vec::new();
-    let cases: Vec<(Side, u128, &str)> = vec![
-        (Side::Usdc, 1, "1 USDC unit"),
-        (Side::Wnear, 1, "1 yocto wNEAR"),
-        (Side::Wnear, 999_999, "sub-micro wNEAR"),
-        (Side::Usdc, 999_999, "0.999999 USDC"),
-        (Side::Usdc, 1_000_001, "1.000001 USDC"),
-        (Side::Wnear, NEAR - 1, "1 wNEAR - 1 yocto"),
-        (Side::Wnear, NEAR + 1, "1 wNEAR + 1 yocto"),
-        (Side::Usdc, 123_456_789, "123.456789 USDC"),
+    let cases = [
+        (Side::Usdc, 1, 50, "1 USDC unit"),
+        (Side::Wnear, 1, 50, "1 yocto wNEAR"),
+        (Side::Wnear, 999_999, 50, "sub-micro wNEAR"),
+        (Side::Usdc, 999_999, 50, "0.999999 USDC"),
+        (Side::Usdc, 1_000_001, 50, "1.000001 USDC"),
+        (Side::Wnear, NEAR - 1, 50, "1 wNEAR - 1 yocto"),
+        (Side::Wnear, NEAR + 1, 50, "1 wNEAR + 1 yocto"),
+        (Side::Usdc, 123_456_789, 50, "123.456789 USDC"),
         (
             Side::Wnear,
             7 * NEAR + 333_333_333_333_333_333_333,
+            50,
             "7.33 wNEAR",
         ),
-        (Side::Usdc, 3_700 * USDC, "near per-order cap (USDC)"),
-        (Side::Wnear, 1_150 * NEAR, "near per-order cap (wNEAR)"),
+        (Side::Usdc, 3_700 * USDC, 50, "near per-order cap (USDC)"),
+        (Side::Wnear, 1_150 * NEAR, 50, "near per-order cap (wNEAR)"),
+        (Side::Usdc, 10 * USDC, 10, "10 USDC rebalance"),
+        (Side::Wnear, NEAR, 25, "1 wNEAR trim"),
+        (Side::Usdc, 25 * USDC, 0, "25 USDC, zero concession"),
+        (Side::Wnear, 3 * NEAR, 1, "3 wNEAR, 1 bps concession"),
     ];
-    for (side, amount, label) in cases {
+    let attempted = cases.len();
+    for (side, amount, concession, label) in cases {
         w.set_prices_now(99_987_654, 314_159_265).await?;
-        if let Some(f) = trade(&w, side, amount, label, &mut log).await? {
-            fills.push(f);
+        match trade(&w, side, amount, concession, label, &mut log).await {
+            Ok(Some(fill)) => fills.push(fill),
+            Ok(None) => (),
+            Err(error) => log.push(json!({
+                "case": label, "error": error.to_string(), "outcome": "setup_failed",
+            })),
         }
     }
+    let count = |outcome: &str| {
+        log.iter()
+            .filter(|entry| entry["outcome"] == outcome)
+            .count()
+    };
+    let completed = count("completed");
+    let legitimate = json!({
+        "origin": "scripted", "attempted": attempted, "completed": completed,
+        "authorization_refused": count("authorization_refused"),
+        "execution_failed": count("execution_failed"),
+        "settlement_failed": count("settlement_failed"),
+        "setup_failed": count("setup_failed"),
+    });
 
     // Price shock between authorization and fill: the concession is measured against the
     // authorization reference; the mark-to-market move is reported separately.
@@ -182,7 +256,7 @@ async fn t3_concession_bound_on_every_fill() -> anyhow::Result<()> {
         .map(|f| f.order)
         .collect();
     let max_bps = fills.iter().map(|f| f.bps).fold(f64::MIN, f64::max);
-    let passed = violations.is_empty() && fills.len() >= 12;
+    let passed = violations.is_empty() && completed == attempted && fills.len() == attempted + 1;
     evidence::write(
         "T3",
         "concession",
@@ -190,6 +264,7 @@ async fn t3_concession_bound_on_every_fill() -> anyhow::Result<()> {
         "sandbox",
         json!({
             "fills": fills.len(),
+            "legitimate": legitimate,
             "max_concession_bps_approx": (max_bps * 1e6).round() / 1e6,
             "assertion": "exact rational: value(bought) * 10000 >= value(sold) * 9950 at the recorded authorization reference",
             "violations": violations,
@@ -198,8 +273,15 @@ async fn t3_concession_bound_on_every_fill() -> anyhow::Result<()> {
             "sides": fills.iter().map(|f| json!({"order": f.order, "sell": f.sell.as_str(), "sold": f.sold.to_string(), "bought": f.bought.to_string()})).collect::<Vec<_>>(),
         }),
     );
-    assert!(violations.is_empty(), "fills over 50 bps: {violations:?}");
-    assert!(fills.len() >= 12, "too few fills executed: {}", fills.len());
+    assert!(
+        violations.is_empty(),
+        "fills over their concession bound: {violations:?}"
+    );
+    assert_eq!(
+        completed, attempted,
+        "legitimate trade outcomes: {legitimate}"
+    );
+    assert_eq!(fills.len(), attempted + 1, "expected one extra shock fill");
     Ok(())
 }
 
@@ -356,16 +438,24 @@ async fn t3_feed_and_timing_adversity() -> anyhow::Result<()> {
     w.set_prices_now(100_000_000, 300_000_000).await?;
     w.oracle_ctl("set_fail", json!({"fail": true})).await?;
     let out = w.propose(Side::Usdc, 10 * USDC, 0).await;
-    let fail_signed = match out
+    let (fail_signed, state) = match out
         .json::<String>()
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
     {
-        Some(id) => w.signed_payload(&out, id).await?.is_some(),
-        None => false,
+        Some(id) => (
+            w.signed_payload(&out, id).await?.is_some(),
+            w.order(id).await?["state"].clone(),
+        ),
+        None => (false, Value::Null),
     };
-    log.push(json!({"case": "oracle failing", "signed": fail_signed}));
-    if fail_signed {
+    let outcome = unsigned_trade_outcome(&state);
+    log.push(json!({"case": "oracle failing", "signed": fail_signed, "state": state, "outcome": outcome}));
+    let oracle_unavailable = state["state"] == "rejected"
+        && state["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.ends_with(": price unavailable"));
+    if fail_signed || !oracle_unavailable || outcome != "setup_failed" {
         failures.push("oracle failing");
     }
     w.oracle_ctl("set_fail", json!({"fail": false})).await?;
@@ -447,12 +537,14 @@ async fn t3_breaker_trip_report() -> anyhow::Result<()> {
             } else {
                 1_000 * NEAR
             },
+            50,
             "churn",
             &mut fill_log,
         )
         .await?
         {
             assert!(f.within);
+            assert_eq!(fill_log.last().unwrap()["outcome"], "completed");
             fees.0 += f.fees.0;
             fees.1 += f.fees.1;
         }

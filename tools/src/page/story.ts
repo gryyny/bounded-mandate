@@ -565,11 +565,11 @@ export function revocationStory(ev: Evidence): Stage[] {
       const broadcastNs = rej?.order_deadline_ns == null ? null : BigInt(rej.order_deadline_ns) - BigInt(rej.relay_block_time_ns);
       const secondsLeft = leftNs === null ? null : Number(leftNs / 1_000_000_000n);
       if (rej !== null && leftNs === null) b.inconclusive.push("the withheld order's deadline is not recorded");
-      // A relay at or after the deadline fails for expiry whatever the key state, so it cannot show revocation's effect.
+      // The verifier expires orders strictly after the deadline. This demo requires a positive margin before it.
       if (leftNs !== null && leftNs <= 0n) {
         b.inconclusive.push(
           leftNs === 0n
-            ? "the withheld order was relayed at its deadline, so its rejection does not show the effect of revocation"
+            ? "the recorded relay time equals the order deadline. This demonstration requires a positive margin before the deadline"
             : `the withheld order was relayed ${units((-leftNs).toString(), 9, 1)} s after its deadline, so its rejection does not show the effect of revocation`,
         );
       }

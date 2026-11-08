@@ -190,6 +190,15 @@ impl Verifier {
         .await
     }
 
+    pub async fn simulate_intents(&self, signed: &[Value]) -> Result<Value> {
+        Ok(self
+            .contract
+            .view("simulate_intents")
+            .args_json(json!({"signed": signed}))
+            .await?
+            .json()?)
+    }
+
     /// Verifier DAO actions used to create honest failure conditions.
     pub async fn dao(&self, dao: &Account, method: &str, args: Value) -> TxOutcome {
         call(dao, self.id(), method, args, ONE_YOCTO, MAX_GAS).await
@@ -285,9 +294,28 @@ pub async fn fill(
     order_payload: &Value,
     random: [u8; 15],
 ) -> Result<(TxOutcome, DecodedOrder)> {
+    let prepared = prepare_fill(verifier, filler, key, order_payload, random).await?;
+    let out = verifier.execute_intents(relayer, prepared.signed).await;
+    Ok((out, prepared.order))
+}
+
+pub struct PreparedFill {
+    pub signed: Vec<Value>,
+    pub order: DecodedOrder,
+    pub filler_nonce: [u8; 32],
+}
+
+/// Prepare once so the bundle tested in simulation can be relayed unchanged.
+pub async fn prepare_fill(
+    verifier: &Verifier,
+    filler: &Account,
+    key: &FillerKey,
+    order_payload: &Value,
+    random: [u8; 15],
+) -> Result<PreparedFill> {
     let order = DecodedOrder::from_multipayload(order_payload);
     let salt = verifier.current_salt().await?;
-    let nonce = intents::versioned_nonce(
+    let filler_nonce = intents::versioned_nonce(
         salt,
         i64::try_from(order.deadline_ns).context("deadline")?,
         random,
@@ -297,12 +325,13 @@ pub async fn fill(
         verifier.id().as_str(),
         &order,
         FEE_PIPS,
-        nonce,
+        filler_nonce,
     );
-    let out = verifier
-        .execute_intents(relayer, vec![order_payload.clone(), counter])
-        .await;
-    Ok((out, order))
+    Ok(PreparedFill {
+        signed: vec![order_payload.clone(), counter],
+        order,
+        filler_nonce,
+    })
 }
 
 /// Deploys a labelled mock NEP-141 token owned (mint authority) by `minter`.

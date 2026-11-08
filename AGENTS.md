@@ -27,6 +27,7 @@ Read [README.md](README.md) and [SPEC.md](SPEC.md) first. This repository is sel
 
 - `make test`: integrity, Rust fmt/clippy/build/tests (unit, property, sandbox), TypeScript lint/typecheck/build/tests, gate inventory.
 - `make demo`: complete unfunded scenario and generated static page.
+- `make page`: regenerate the evidence page from the saved demo and latest acceptance files.
 - `MANDATE_LIVE=1 make live`: opt-in against a separately approved manifest. The flag is not spending approval.
 - Evidence records the source revision, dirty state, spec and fixture hashes, environment, command, mode and result. Label sandbox execution, recorded model output and mainnet receipts distinctly.
 

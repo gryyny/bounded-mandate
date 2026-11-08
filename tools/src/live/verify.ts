@@ -1,8 +1,11 @@
 // Operation-specific terminal verification. Each check reads chain state after the transaction and
 // compares it with what that exact operation must have produced. Top-level success is never enough.
+import { baseEncode } from "near-api-js";
+import { z } from "zod";
+import { nep413Prehash } from "../filler/nep413.js";
 import type { Outcome } from "../near/client.js";
 import { OPEN_ORDER_STATES, TokenClient, type MandateClient, type VerifierClient } from "../near/contracts.js";
-import type { Asset, GrantView, OrderView } from "../types.js";
+import type { Asset, GrantView, OrderView, SignedNep413 } from "../types.js";
 
 export interface Verification {
   passed: boolean;
@@ -39,15 +42,24 @@ class Problems {
 
 export type Balances = Record<Asset, bigint>;
 
+const SimulatedIntents = z.array(z.object({ intent_hash: z.string(), nonce: z.string() })).length(2);
+
 /**
- * Why a `simulate_intents` result does not show an executable bundle, or null when it does. The verifier
- * can simulate an unbalanced bundle successfully and report it in `invariant_violated`.
+ * A withheld trade needs both exact signed payloads to simulate without an invariant violation.
  */
-export function simulationProblem(sim: { ok: true; value: unknown } | { ok: false; error: string }): string | null {
+export function simulationProblem(sim: { ok: true; value: unknown } | { ok: false; error: string }, bundle: readonly SignedNep413[]): string | null {
   if (!sim.ok) return `simulate_intents refused the bundle: ${sim.error.slice(0, 300)}`;
   if (typeof sim.value !== "object" || sim.value === null) return "simulate_intents returned no simulation output";
-  const violated = (sim.value as { invariant_violated?: unknown }).invariant_violated;
+  const { invariant_violated: violated, intents_executed: executions } = sim.value as { invariant_violated?: unknown; intents_executed?: unknown };
   if (violated !== undefined && violated !== null) return `simulate_intents reports an invariant violation: ${JSON.stringify(violated).slice(0, 300)}`;
+  const executed = SimulatedIntents.safeParse(executions);
+  if (!executed.success || bundle.length !== 2) return "simulate_intents did not report both trade intents";
+  const matched = bundle.every(({ payload }, index) => {
+    const { message, nonce, recipient, callbackUrl } = payload;
+    const hash = baseEncode(nep413Prehash({ message, nonce: Buffer.from(nonce, "base64"), recipient, ...(callbackUrl === undefined ? {} : { callbackUrl }) }));
+    return executed.data[index]?.intent_hash === hash && executed.data[index].nonce === nonce;
+  });
+  if (!matched) return "simulate_intents reported a different bundle";
   return null;
 }
 
