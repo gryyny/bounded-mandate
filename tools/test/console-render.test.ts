@@ -9,7 +9,7 @@ import { consoleScript, consoleScriptHash, mainnetProfile, renderConsoleHtml, sa
 import { ExternalHandoff, ExternalIntent, intentSha256 } from "../src/live/external.js";
 import type { FetchFn } from "../src/page/verify-client.js";
 import { MAINNET_GENESIS_HASH } from "../src/page/verify.js";
-import { storyEvidence, txHash } from "./video-story-specimen.js";
+import { STORY, storyEvidence, txHash } from "./video-story-specimen.js";
 
 type Call = (method: string, params: unknown) => Promise<{ ok: true; result: unknown } | { ok: false; error: string }>;
 interface Client {
@@ -146,6 +146,31 @@ describe("static rendering", () => {
     expect(live).not.toContain("mode sandbox");
     expect(live).not.toContain('class="mode live"');
     expect(live).not.toContain("chain verified");
+  });
+
+  it.each(["scripted", "recorded-model"])("distinguishes a declined replay from the first proposal with evidence mode %s", (mode) => {
+    const ev = storyEvidence();
+    const rendered = renderConsoleHtml({
+      ...ev,
+      assertions: ev.assertions.map((a) => a.id === "model-proposal-on-chain" ? {
+        ...a,
+        passed: false,
+        observed: {
+          ...(a.observed as object),
+          mode,
+          decision: {
+            model: STORY.model,
+            decision_text: JSON.stringify({ action: "decline", proposal: null, reason: SYN }),
+            adapter_verdict: { kind: "decline", reason: SYN },
+          },
+        },
+      } : a),
+    }, { wallets: false });
+    const start = rendered.indexOf("<h3>First proposal and model replay</h3>");
+    const card = rendered.slice(start, rendered.indexOf("</section>", start));
+    expect(card).toContain("The first proposal was scripted.");
+    expect(card).toContain(`The replayed response from <code>${STORY.model}</code> declined to propose.`);
+    expect(card).not.toContain("returned a proposal");
   });
 
   it("states that no real wallet provider is verified and that the test signer and test wallet are not wallets", () => {

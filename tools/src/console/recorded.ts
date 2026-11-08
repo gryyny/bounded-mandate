@@ -111,12 +111,21 @@ function recoveryCard(ev: Evidence): string {
 }
 
 function agentCard(ev: Evidence): string {
-  const reason = modelReason(ev);
-  const d = z.object({ mode: z.string(), decision: z.object({ model: z.string(), proposal: z.unknown().optional() }).loose().nullable() }).safeParse(observed(ev, "model-proposal-on-chain"));
-  if (!d.success || d.data.decision === null) return card("The agent's last decision", absent("a recorded model decision"));
+  const title = "First proposal and model replay";
+  const parsed = z.object({
+    mode: z.enum(["recorded-model", "scripted"]),
+    decision: z.object({ model: z.string(), adapter_verdict: z.object({ kind: z.enum(["proposal", "decline", "rejected"]) }).optional() }).nullable(),
+  }).safeParse(observed(ev, "model-proposal-on-chain"));
+  if (!parsed.success) return card(title, absent("first proposal and replay evidence"));
+  const { mode, decision } = parsed.data;
+  const verdict = decision?.adapter_verdict?.kind;
+  const scripted = mode === "scripted" || verdict === "decline" || verdict === "rejected" ? "<p>The first proposal was scripted.</p>" : "";
+  if (decision === null || verdict === undefined) return card(title, scripted + absent("a recorded model verdict"));
+  const outcomes = { proposal: "returned a proposal", decline: "declined to propose", rejected: "returned a response the adapter rejected" };
+  const reason = verdict === "rejected" ? null : modelReason(ev);
   return card(
-    "The agent's last decision",
-    `<p>${modeBadge(d.data.mode)} Replayed genuine output of <code>${escapeHtml(d.data.decision.model)}</code>; no model was called in this run.</p>${reason === null ? absent("the model's stated reason") : `<blockquote>${escapeHtml(reason)}</blockquote>`}`,
+    title,
+    `${scripted}<p>${modeBadge("recorded-model")} The replayed response from <code>${escapeHtml(decision.model)}</code> ${outcomes[verdict]}. No provider call was made during replay.</p>${reason === null ? "" : `<blockquote>${escapeHtml(reason)}</blockquote>`}`,
   );
 }
 

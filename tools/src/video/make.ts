@@ -72,12 +72,11 @@ function parseLog(text: string, ev: Evidence): { steps: LogStep[]; setupMs: numb
 
 // ---- scenes --------------------------------------------------------------------------------------
 
-type Kind = "demo" | "page" | "summary";
+type Kind = "demo" | "summary";
 
 const DEMO_LABELS = ["Local NEAR sandbox", "Real Intents verifier WASM", "Test doubles: MPC, oracle, tokens", "No mainnet"];
 const KIND_LABEL: Record<Kind, string[]> = {
   demo: DEMO_LABELS,
-  page: ["Evidence page rendered from run files", "Not an execution", "Sandbox results only", "No mainnet"],
   summary: ["Summary of run files", "Sandbox results only", "No mainnet"],
 };
 
@@ -200,8 +199,8 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     return `<span class="pill ${cls}">${esc(name)}: ${esc(c.status)}</span>`;
   };
   const caseRows = Object.entries(REQUIRED_CASES)
-    .map(([g, names]) => `<tr><th>${esc(g)}<br><small>${esc(GATE_LABEL[g] ?? "")}</small></th><td>${names.map((n) => pill(g, n)).join(" ")}</td></tr>`)
-    .join("");
+    .map(([g, names]) => `<tr><th>${esc(g)}<br><small>${esc(GATE_LABEL[g] ?? "")}</small></th><td>${names.map((n) => pill(g, n)).join(" ")}</td></tr>`);
+  const splitCases = Math.ceil(caseRows.length / 2);
   const counted = Object.entries(REQUIRED_CASES).flatMap(([g, names]) => names.filter((n) => acc?.cases.some((c) => c.gate === g && c.case === n && c.status === "passed"))).length;
   const totalCases = Object.values(REQUIRED_CASES).flat().length;
   const t5 = acc?.baseline ?? null;
@@ -372,13 +371,15 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     {
       kind: "summary",
       title: `Acceptance gates per case: ${String(counted)} of ${String(totalCases)} passed`,
-      body: `${binding.certified ? "" : `<p class="note">Amber: passed in the acceptance run, but not certified for this demo.</p>`}<table class="cases">${caseRows}</table><p class="note">Emergency owner-key rescue, reported separately and never counted toward T4: ${esc(rescue === undefined ? "not reported" : rescue.status)}.</p>`,
+      body: `${binding.certified ? "" : `<p class="note">Amber: passed in the acceptance run, but not certified for this demo.</p>`}<div class="split"><table class="cases">${caseRows.slice(0, splitCases).join("")}</table><table class="cases">${caseRows.slice(splitCases).join("")}</table></div><p class="note">Emergency owner-key rescue, reported separately and never counted toward T4: ${esc(rescue === undefined ? "not reported" : rescue.status)}.</p>`,
       captions: [binding.certified ? `${String(counted)} of ${String(totalCases)} required cases passed, certified for this demo.` : `${String(counted)} of ${String(totalCases)} required cases passed, but this run is not certified for this demo.`, "The emergency owner-key rescue is reported separately; it never counts as ordinary recovery."],
     },
     {
-      kind: "page",
+      kind: "summary",
       title: "T5 · our re-implementation of the Claw Guard design",
-      body: img(shots.baselineTable ?? Buffer.alloc(0)),
+      body: t5 === null
+        ? '<p class="note">No T5 report in this acceptance run.</p>'
+        : `<table class="log baseline"><thead><tr><th>Threat or control</th><th>Re-implemented baseline</th><th>Mandate gate</th></tr></thead><tbody>${t5.cases.map((c) => `<tr><td>${esc(c.threat)}</td><td>${esc(c.baseline_outcome.replaceAll("_", " "))}</td><td><code>${esc(c.compare_gate)}</code></td></tr>`).join("")}</tbody></table><p class="note">The comparison used the same sandbox verifier and authority in both systems.</p>`,
       captions: [
         t5 === null
           ? "T5 compares against our own re-implementation of the pinned Claw Guard design; this evidence has no T5 report, so differentiation is unproven."
@@ -514,16 +515,19 @@ const CSS = `
 .chip { font: 600 20px/1 "SF Mono", Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 10px 14px; border: 2px solid #7fb6dc; color: #7fb6dc; border-radius: 4px; }
 .chip.model { border-color: #e6b450; color: #e6b450; } .chip.acc { margin-left: auto; border-color: #e0866f; color: #e0866f; } .chip.acc.ok { border-color: #6fcf9f; color: #6fcf9f; }
 h1 { font-size: 54px; line-height: 1.1; margin: 22px 48px 16px; }
-.body { margin: 0 48px; height: 690px; overflow: hidden; font-size: 28px; } .body.strip-on { height: 520px; }
+.body { margin: 0 48px; height: 690px; overflow: hidden; font-size: 28px; } .body.strip-on { height: 535px; }
 .body ul { margin: 8px 0; padding-left: 28px; } .body li { margin: 6px 0; }
 code { font: 22px "SF Mono", Menlo, monospace; color: #c9d6e3; }
 .ok { color: #6fcf9f; font-weight: 700; } .bad { color: #ff8a7a; font-weight: 700; }
 table.kv { border-collapse: collapse; margin-bottom: 14px; } table.kv th { text-align: left; color: #a39d8f; font-weight: 600; padding: 4px 28px 4px 0; vertical-align: top; white-space: nowrap; }
 table.kv td { font: 24px/1.35 "SF Mono", Menlo, monospace; word-break: break-word; padding: 4px 0; }
 table.log { border-collapse: collapse; width: 100%; font-size: 22px; } table.log td { padding: 3px 18px 3px 0; vertical-align: top; border-bottom: 1px solid #2a3039; } table.log code { font-size: 19px; }
-table.cases th { text-align: left; padding: 3px 20px 3px 0; font: 700 22px "SF Mono", Menlo, monospace; vertical-align: top; white-space: nowrap; }
+table.baseline th { text-align: left; color: #a39d8f; } table.baseline td { padding-block: 4px; }
+table.cases { align-self: start; border-collapse: collapse; line-height: 1.2; }
+table.cases th { text-align: left; padding: 4px 12px 4px 0; font: 700 19px/1.15 "SF Mono", Menlo, monospace; vertical-align: top; }
 .pill { display: inline-block; font: 600 17px "SF Mono", Menlo, monospace; padding: 4px 8px; margin: 2px; border-radius: 4px; border: 2px solid; }
 .pill.ok { color: #6fcf9f; } .pill.warn { color: #e6b450; } .pill.bad { color: #ff8a7a; } .pill.none { color: #9a958a; border-style: dashed; }
+table.cases .pill { font-size: 16px; padding: 2px 5px; margin: 1px; }
 .reason { margin: 10px 48px 0; font: 600 20px/1.3 "SF Mono", Menlo, monospace; color: #e0866f; max-height: 54px; overflow: hidden; }
 .claim { font-size: 40px; line-height: 1.35; max-width: 1600px; }
 .note { font-size: 22px; color: #e6b450; margin: 4px 0 8px; } table.cases small { font: 500 15px -apple-system, sans-serif; color: #a39d8f; }
@@ -535,7 +539,7 @@ ol.rail li b { font-family: "SF Mono", Menlo, monospace; } ol.rail li.past { col
 ol.rail li.off { border-color: #e6b450; border-top-style: dashed; }
 .status-line { margin: 0 0 10px; } .status-line .pill { font-size: 22px; padding: 6px 12px; }
 .objective { font-size: 26px; color: #c9d6e3; margin: 0 0 10px; }
-.headline { font-size: 56px; line-height: 1.12; font-weight: 600; margin: 0 0 18px; } .headline.medium { font-size: 42px; } .headline.small { font-size: 34px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin-top: 10px; }
+.headline { font-size: 56px; line-height: 1.12; font-weight: 600; margin: 0 0 18px; } .headline.medium { font-size: 42px; } .headline.small { font-size: 34px; } .bound { font: 20px/1.45 "SF Mono", Menlo, monospace; color: #a39d8f; margin: 10px 0 0; }
 .attack-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px; margin: 0; }
 .attack-facts > div { background: #151a20; padding: 8px 14px; }
 .attack-facts dt { font: 600 22px/1.2 -apple-system, sans-serif; color: #a39d8f; }
@@ -573,10 +577,7 @@ function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
 
 interface PwPage {
   setContent(html: string): Promise<void>;
-  goto(url: string): Promise<unknown>;
-  evaluate(expression: string): Promise<unknown>;
   screenshot(opts: { path?: string; clip?: { x: number; y: number; width: number; height: number }; fullPage?: boolean }): Promise<Buffer>;
-  close(): Promise<void>;
 }
 interface PwBrowser {
   newPage(opts: { viewport: { width: number; height: number }; colorScheme?: "dark" | "light"; deviceScaleFactor?: number }): Promise<PwPage>;
@@ -589,20 +590,6 @@ interface PwCore {
 function loadPlaywright(): PwCore {
   const path = process.env.PLAYWRIGHT_CORE ?? join(execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim(), "@playwright/cli/node_modules/playwright-core");
   return createRequire(import.meta.url)(path) as PwCore;
-}
-
-/** Viewport-sized crops of the evidence page, starting at the given CSS selectors. */
-async function pageShots(browser: PwBrowser, pagePath: string): Promise<Record<string, Buffer>> {
-  const page = await browser.newPage({ viewport: { width: 1240, height: 560 }, colorScheme: "dark", deviceScaleFactor: 2 });
-  await page.goto(`file://${pagePath}`);
-  const shots: Record<string, Buffer> = {};
-  // Without a T5 report the baseline section has no table; its heading is shown instead.
-  for (const [name, selector] of Object.entries({ baselineTable: "#baseline table, #baseline" })) {
-    const top = Number(await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top + window.scrollY`));
-    shots[name] = await page.screenshot({ fullPage: true, clip: { x: 0, y: Math.max(0, top - 16), width: 1240, height: 560 } });
-  }
-  await page.close();
-  return shots;
 }
 
 /** The console screenshots the demo recorded, each refused unless its bytes match the sha256 in demo.json. */
@@ -736,7 +723,7 @@ async function main(): Promise<void> {
   const browser = await loadPlaywright().chromium.launch({ channel: process.env.PW_CHANNEL ?? "chrome", headless: true });
   const outputs: Partial<Record<Cut["name"], CutOutput>> = {};
   try {
-    const shots = { ...(await pageShots(browser, files.page)), ...consoleShots(ev).shots };
+    const { shots } = consoleShots(ev);
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
     const cuts: Cut[] = [
       { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown), pace: shortPace, range: SHORT_RANGE_S },

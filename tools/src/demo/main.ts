@@ -197,9 +197,10 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     firstProposal = { sell: "usdc", sell_amount: "49900000", max_concession_bps: 20 };
     unknowns.push("first order used a SCRIPTED proposal because no valid recorded model proposal was available; the MODEL assertion below fails");
   }
+  const proposalSource = decision?.verdict.kind === "proposal" ? "recorded-model" : "scripted";
   const proposeOutcome = rec.receipt(await submitProposal(client, world.agent.account, mandate.id, firstProposal, "agent propose_order (first order)"), {
     proposal: firstProposal,
-    proposal_source: decision?.verdict.kind === "proposal" ? "recorded-model" : "scripted",
+    proposal_source: proposalSource,
   });
   const firstId = z.string().parse(String(proposeOutcome.return_value));
   const first = await settledOrder(mandate, firstId);
@@ -208,7 +209,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
     "MODEL",
     "a recorded genuine model proposal (prompt hash bound to chain state) reached propose_order and was signed",
     decision?.verdict.kind === "proposal" && first?.state.state === "signed" && first.sell === firstProposal.sell && first.sell_amount === firstProposal.sell_amount,
-    { mode: "recorded-model", decision: decision === null ? null : decisionRecord(decision), recording: recorded.ok ? recorded.recording.path : null, order: first },
+    { mode: proposalSource, decision: decision === null ? null : decisionRecord(decision), recording: recorded.ok ? recorded.recording.path : null, order: first },
   );
   if (first?.payload == null) throw new Error("first order has no payload");
   const prehash = nep413Prehash({ message: first.payload.message, nonce: Buffer.from(first.payload.nonce, "base64"), recipient: first.payload.recipient }).toString("hex");
