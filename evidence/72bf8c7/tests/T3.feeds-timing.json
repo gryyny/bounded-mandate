@@ -1,0 +1,122 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T3",
+  "case": "feeds-timing",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261107T213223255Z-0bf93e5a38f7",
+  "source": {
+    "revision": "72bf8c7dc13318fe37ed956321da3a40c2814a10",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "target/debug/deps/t3_trading-54eda26eb0e31d36",
+  "generated_at_unix": 1794088142,
+  "data": {
+    "cases": [
+      {
+        "case": "fresh",
+        "signed": true,
+        "state": "signed",
+        "deadline_seconds_left_at_view": 57,
+        "expected_signed": true
+      },
+      {
+        "case": "stale 61s",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "near-stale 59s (deadline too short)",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "aged 40s (short deadline)",
+        "signed": true,
+        "state": "signed",
+        "deadline_seconds_left_at_view": 17,
+        "expected_signed": null
+      },
+      {
+        "case": "confidence 1%",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "confidence exactly 0.5%",
+        "signed": true,
+        "state": "signed",
+        "deadline_seconds_left_at_view": 58,
+        "expected_signed": true
+      },
+      {
+        "case": "zero price",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "negative price",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "published 30s in future",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": null
+      },
+      {
+        "case": "USDC depeg 0.90 (trips breaker)",
+        "signed": false,
+        "state": "rejected",
+        "deadline_seconds_left_at_view": null,
+        "expected_signed": false
+      },
+      {
+        "case": "breaker after depeg",
+        "breaker": {
+          "observed_at_ns": "1794088127574466000",
+          "observed_value": "18014250000000000",
+          "executable_orders": 0,
+          "executable_value": "0"
+        }
+      },
+      {
+        "case": "missing NEAR price",
+        "signed": false
+      },
+      {
+        "case": "oracle failing",
+        "signed": false
+      },
+      {
+        "case": "signature delivered after deadline",
+        "respond_ok": false,
+        "state_after_callback": "sign_unknown",
+        "relay_executed": null,
+        "expire_ok": true,
+        "final": "released:expired"
+      }
+    ],
+    "failures": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "status": "PASS",
+  "routes": [
+    "/bounded-mandate/",
+    "/bounded-mandate/console/"
+  ],
+  "attack_rows": 39,
+  "enforcement_layers": 5,
+  "mobile": {
+    "viewport": 390,
+    "document": 390
+  },
+  "csp_violations": 0,
+  "external_requests": [],
+  "page_errors": [],
+  "videos": {
+    "short": {
+      "duration_s": 85.033333,
+      "width": 1920,
+      "height": 1080,
+      "current_time_s": 0.1566,
+      "error": null
+    },
+    "walkthrough": {
+      "duration_s": 195.4,
+      "width": 1920,
+      "height": 1080,
+      "current_time_s": 0.1563,
+      "error": null
+    }
+  },
+  "revision": "2373d399c275dbd35a3caa467dcfde800266631b",
+  "checked_at": "2026-11-08",
+  "browser": "headless Google Chrome (playwright-cli)",
+  "page_sha256": "044451e9a910104efafcfeaeb57f2c53e9e8a905253eb4ca0493ee7b5382bf22",
+  "console_sha256": "53fab4a4de861424a9ce33b1c640a4af083654da5b199e22b696428c02ba93b6",
+  "video_manifest_sha256": "7c961a9d064ed2cb0b6ceefa4937fb9a261caa176a7d81ee633bb1ab7040db00"
+}

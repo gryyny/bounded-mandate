@@ -1,0 +1,47 @@
+1
+00:00:00,000 --> 00:00:05,000
+Give an AI agent trading power. Keep the power to stop it.
+
+2
+00:00:05,000 --> 00:00:11,133
+One local sandbox run with labelled test doubles and a replayed model recording, in eight steps.
+
+3
+00:00:11,133 --> 00:00:17,933
+The owner grants fixed limits on $1,899.80: each order at most 20% ($379.96), price concession at most 0.5%.
+
+4
+00:00:17,933 --> 00:00:25,067
+The owner console reads it back from the sandbox: grant active, key registered on the verifier, limits as granted.
+
+5
+00:00:25,067 --> 00:00:32,567
+A recorded claude-haiku-5-5 proposal, replayed, sells 49.90 USDC for 16.5468 wNEAR, filled exactly as signed. USDC share: 52.63% to 50.01%, target 50%.
+
+6
+00:00:32,567 --> 00:00:40,067
+39 of 39 scripted hostile requests refused, nothing changed: local validation 10, contract method check 14, policy validation 4, agent key permission 10, verifier 1.
+
+7
+00:00:40,067 --> 00:00:47,567
+A second, scripted order, 20 wNEAR for 59.83 USDC, is signed by the grant key and withheld. The verifier would still accept it.
+
+8
+00:00:47,567 --> 00:00:55,067
+After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed.
+
+9
+00:00:55,067 --> 00:01:02,567
+Another account relays the withheld order 55 s before its deadline. The verifier rejects it: the signing key no longer exists.
+
+10
+00:01:02,567 --> 00:01:10,067
+With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR into its Intents account.
+
+11
+00:01:10,067 --> 00:01:17,533
+Separately, outside recovery, the owner withdraws 950.10 USDC and 316.5468 wNEAR to its NEAR account, registering storage only where needed.
+
+12
+00:01:17,533 --> 00:01:25,033
+Revocation is not instant; the claim starts at confirmed key removal. Mainnet run pending approval; no mainnet transaction executed. Reproduce: make demo, make test.

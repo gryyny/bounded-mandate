@@ -1,0 +1,684 @@
+{
+  "schema": "bounded-mandate/license-check/v1",
+  "counts": {
+    "npm:permissive": 293,
+    "npm:total": 305,
+    "npm:weak-copyleft": 12,
+    "cargo:permissive": 534,
+    "cargo:total": 537,
+    "cargo:weak-copyleft": 3
+  },
+  "flagged": [
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-android-arm64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-darwin-arm64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-darwin-x64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-freebsd-x64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-linux-arm-gnueabihf",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-linux-arm64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-linux-arm64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-linux-x64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-win32-arm64-msvc",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lightningcss-win32-x64-msvc",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "package-lock.json"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "colored",
+      "version": "3.1.1",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": true,
+      "in_contract_wasm": false,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "memory_units",
+      "version": "0.4.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wee_alloc",
+      "version": "0.4.5",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    }
+  ],
+  "contract_wasm": [
+    {
+      "ecosystem": "cargo",
+      "name": "base64",
+      "version": "0.22.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "base64",
+      "version": "0.23.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "block-buffer",
+      "version": "0.12.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "borsh",
+      "version": "1.8.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "bs58",
+      "version": "0.5.1",
+      "license": "MIT/Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cfg-if",
+      "version": "0.1.10",
+      "license": "MIT/Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cfg-if",
+      "version": "1.0.5",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "const-oid",
+      "version": "0.10.2",
+      "license": "Apache-2.0 OR MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crypto-common",
+      "version": "0.1.6",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crypto-common",
+      "version": "0.2.2",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "digest",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "digest",
+      "version": "0.11.3",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "digest-io",
+      "version": "0.1.0",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "equivalent",
+      "version": "1.0.3",
+      "license": "Apache-2.0 OR MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "foldhash",
+      "version": "0.2.0",
+      "license": "Zlib",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "generic-array",
+      "version": "0.14.9",
+      "license": "MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hex",
+      "version": "0.4.3",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hybrid-array",
+      "version": "0.4.15",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "indexmap",
+      "version": "2.14.2",
+      "license": "Apache-2.0 OR MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "itoa",
+      "version": "1.0.18",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "keccak",
+      "version": "0.2.2",
+      "license": "Apache-2.0 OR MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "memchr",
+      "version": "2.8.3",
+      "license": "Unlicense OR MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "memory_units",
+      "version": "0.4.0",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-account-id",
+      "version": "2.6.0",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-crypto-hash",
+      "version": "0.2.0",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-gas",
+      "version": "0.3.7",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-global-contracts",
+      "version": "0.2.6",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-sdk",
+      "version": "5.29.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-sdk-core",
+      "version": "4.2.3",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-sdk-env",
+      "version": "0.1.8",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-sys",
+      "version": "0.2.14",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "near-token",
+      "version": "0.3.6",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "once_cell",
+      "version": "1.21.4",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ripemd",
+      "version": "0.1.3",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde_core",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde_json",
+      "version": "1.0.154",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde_with",
+      "version": "3.24.0",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "sha2",
+      "version": "0.11.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "sha3",
+      "version": "0.11.0",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "typenum",
+      "version": "1.20.1",
+      "license": "MIT OR Apache-2.0",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wee_alloc",
+      "version": "0.4.5",
+      "license": "MPL-2.0",
+      "class": "weak-copyleft",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zmij",
+      "version": "1.0.23",
+      "license": "MIT",
+      "class": "permissive",
+      "dev": false,
+      "in_contract_wasm": true,
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+      "kind": "deployment-candidate",
+      "in_manifest": true,
+      "external": false,
+      "in_notice": false
+    },
+    {
+      "path": "fixtures/model/injection.json",
+      "kind": "recorded-genuine-model-interaction",
+      "in_manifest": true,
+      "external": true,
+      "in_notice": true
+    },
+    {
+      "path": "fixtures/model/normal.json",
+      "kind": "recorded-genuine-model-interaction",
+      "in_manifest": true,
+      "external": true,
+      "in_notice": true
+    },
+    {
+      "path": "fixtures/sputnik/sputnikdao2-2.3.1.provenance.json",
+      "kind": "provenance-record",
+      "in_manifest": true,
+      "external": false,
+      "in_notice": true
+    },
+    {
+      "path": "fixtures/sputnik/sputnikdao2-2.3.1.wasm",
+      "kind": "external-binary",
+      "in_manifest": true,
+      "external": true,
+      "in_notice": true
+    },
+    {
+      "path": "fixtures/vectors/nep413.json",
+      "kind": "generated-vectors",
+      "in_manifest": true,
+      "external": false,
+      "in_notice": false
+    },
+    {
+      "path": "fixtures/vectors/oracle.json",
+      "kind": "recorded-external-response",
+      "in_manifest": true,
+      "external": true,
+      "in_notice": true
+    },
+    {
+      "path": "fixtures/verifier/defuse-0.4.5.wasm",
+      "kind": "external-binary",
+      "in_manifest": true,
+      "external": true,
+      "in_notice": true
+    },
+    {
+      "path": "fixtures/wallets/near-connect.json",
+      "kind": "curated-external-metadata",
+      "in_manifest": true,
+      "external": true,
+      "in_notice": true
+    }
+  ],
+  "problems": [],
+  "open_items": [
+    "Owner confirmation of the README AI-tools disclosure (rule Q-005) and of NOTICE authorship remains open."
+  ]
+}

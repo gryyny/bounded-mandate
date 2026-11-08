@@ -1,0 +1,47 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T1",
+  "case": "pending-sign",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261107T213223255Z-0bf93e5a38f7",
+  "source": {
+    "revision": "72bf8c7dc13318fe37ed956321da3a40c2814a10",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "target/debug/deps/t1_revocation-47286f49319fd2b2",
+  "generated_at_unix": 1794087526,
+  "data": {
+    "relays": [
+      {
+        "label": "signature-delivered-after-revoke",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false,
+        "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3753692260037 }, transaction: ExecutionOutcome { transaction_hash: EkmwMVjbgNAsvS3pmacyYkCVWtLvmemZXpHkZRPgwVas, block_hash: FZzGmNwVgtDAigFUhjYdzKNwLurRxqheMxZ6F1DXEjP1, logs: [], receipt_ids: [EiwLAWSPi9odnaYSZYVMEehix3kZdvvHykagC4xQdLLm], gas_burnt: NearGas { inner: 361179158510 }, tokens_burnt: NearToken { inner: 36117915851000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(EiwLAWSPi9odnaYSZYVMEehix3kZdvvHykagC4xQdLLm) }, receipts: [ExecutionOutcome { transaction_hash: EiwLAWSPi9odnaYSZYVMEehix3kZdvvHykagC4xQdLLm, block_hash: 9t7t37VLQKHEZuMYfx68WwiRXGed1GGNb9258N3EH5fo, logs: [], receipt_ids: [5hJL41irzr8EHhn8aXd4LAzW6vBrNNTRd4vGtWXmTLaT], gas_burnt: NearGas { inner: 3392513101527 }, tokens_burnt: NearToken { inner: 339251310152700000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) })",
+        "deadline_margin_ns_at_least": "52209779000"
+      },
+      {
+        "label": "signature-delivered-after-regrant",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false,
+        "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3752820875834 }, transaction: ExecutionOutcome { transaction_hash: DUpcyCxth5DqfHXXoGFSW9TNqmLt4eNzyojt2XP55Pve, block_hash: 2QWiEwakF8QhZwAUiUunTfubzNnbXCtCNkuLwdgfLj1k, logs: [], receipt_ids: [7DWtF5PLYMGWSzzQ7qCsKaVJgU7yQVyQY1acDLUkBx4E], gas_burnt: NearGas { inner: 361131474795 }, tokens_burnt: NearToken { inner: 36113147479500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(7DWtF5PLYMGWSzzQ7qCsKaVJgU7yQVyQY1acDLUkBx4E) }, receipts: [ExecutionOutcome { transaction_hash: 7DWtF5PLYMGWSzzQ7qCsKaVJgU7yQVyQY1acDLUkBx4E, block_hash: 4zztG3yUqgWofZqd3DdBjPkW2jKyJLG8Fsq5fe4ru4Kq, logs: [], receipt_ids: [4CX3WXGNKQ7g2qCpXvwp2Jg3Q6iUmGgxFXFCycLG1Ks8], gas_burnt: NearGas { inner: 3391689401039 }, tokens_burnt: NearToken { inner: 339168940103900000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) })",
+        "deadline_margin_ns_at_least": "50560953000"
+      }
+    ],
+    "executions_after_confirmed_removal": 0,
+    "notes": [],
+    "rejection_rule": "after confirmed removal, a relay counts as rejected for revocation only with the verifier's missing-key error for this mandate, while the order was unexpired (the verifier checks the deadline before the key)"
+  }
+}

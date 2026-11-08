@@ -1,0 +1,149 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "RESCUE",
+  "case": "owner-key",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261108T093844482Z-effddf52e788",
+  "source": {
+    "revision": "2373d399c275dbd35a3caa467dcfde800266631b",
+    "dirty": false
+  },
+  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
+  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "bounded_mandate_fault": "f6b33658d1c03bbe791d227fb09770d0fc231ff1b284b9157a1d0e8eae8106a8",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "target/debug/deps/registration_rescue-c7c2223952648dac",
+  "generated_at_unix": 1794131092,
+  "data": {
+    "scenario": "add_public_key failed (verifier DAO locked the account) and on_key_added panicked (fault-injection build)",
+    "trust": "emergency path: uses the owner's full-access key on the mandate account (trusted upgrade authority); not keyless, not T4",
+    "fault_injection_wasm": "bounded_mandate_fault",
+    "public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+    "grant_tx": "8Jx7Bqq79PLBcTgHwjnL8yviH7EPGgqnK89CAWR8QuzY",
+    "rpc_terminal_check": {
+      "final_execution_status": "FINAL",
+      "receipts": 17,
+      "all_terminal": true,
+      "add_public_key_failed": true,
+      "on_key_added_failed": true
+    },
+    "checks": [
+      {
+        "check": "account locked by verifier DAO",
+        "ok": true
+      },
+      {
+        "check": "stuck activating",
+        "ok": true
+      },
+      {
+        "check": "key absent",
+        "ok": true
+      },
+      {
+        "check": "revoke stops authorization (revoking)",
+        "ok": true
+      },
+      {
+        "check": "after failed add: recover refused",
+        "ok": true
+      },
+      {
+        "check": "after failed add: revoke cannot issue removal",
+        "ok": true
+      },
+      {
+        "check": "after failed add: no proposal accepted",
+        "ok": true
+      },
+      {
+        "check": "reconcile reports unresolved",
+        "ok": true
+      },
+      {
+        "check": "reconcile changed nothing",
+        "ok": true
+      },
+      {
+        "check": "reconcile reports unresolved",
+        "ok": true
+      },
+      {
+        "check": "reconcile changed nothing",
+        "ok": true
+      },
+      {
+        "check": "rpc: grant transaction terminal",
+        "ok": true
+      },
+      {
+        "check": "rpc: add_public_key failed",
+        "ok": true
+      },
+      {
+        "check": "rpc: on_key_added failed",
+        "ok": true
+      },
+      {
+        "check": "account unlocked",
+        "ok": true
+      },
+      {
+        "check": "owner re-adds the key as the mandate account",
+        "ok": true
+      },
+      {
+        "check": "reconcile proves presence",
+        "ok": true
+      },
+      {
+        "check": "removal confirmed: revoked",
+        "ok": true
+      },
+      {
+        "check": "grant key absent",
+        "ok": true
+      },
+      {
+        "check": "no orders exist",
+        "ok": true
+      },
+      {
+        "check": "recover usdc succeeds",
+        "ok": true
+      },
+      {
+        "check": "recover wnear succeeds",
+        "ok": true
+      },
+      {
+        "check": "mandate emptied",
+        "ok": true
+      },
+      {
+        "check": "every unit reached the owner's Intents account",
+        "ok": true
+      },
+      {
+        "check": "production WASM has no fault injection",
+        "ok": true
+      }
+    ],
+    "recovery": {
+      "mandate_before": [
+        "10000000000",
+        "3000000000000000000000000000"
+      ],
+      "owner_gain": [
+        "10000000000",
+        "3000000000000000000000000000"
+      ]
+    }
+  }
+}

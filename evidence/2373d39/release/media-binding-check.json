@@ -1,0 +1,79 @@
+{
+  "revision": "2373d399c275dbd35a3caa467dcfde800266631b",
+  "acceptance_run": "20261108T093844482Z-effddf52e788",
+  "acceptance_cases_passed": 35,
+  "demo_assertions_passed": 59,
+  "demo_log_sha256": "7dbc8657fd087f3cb84a62fa112d6c8cb6321af3caba18bcd49fb503ff8be1e2",
+  "video_manifest_sha256": "7c961a9d064ed2cb0b6ceefa4937fb9a261caa176a7d81ee633bb1ab7040db00",
+  "attack_cases": 39,
+  "confirmed_refusals_by_layer": {
+    "local validation": 10,
+    "contract method check": 14,
+    "policy validation": 4,
+    "agent key permission": 10,
+    "verifier": 1
+  },
+  "duration_s": {
+    "short": 85.033333,
+    "walkthrough": 195.4
+  },
+  "encoded_samples": {
+    "short": {
+      "lead": {
+        "seconds": 0.5,
+        "sha256": "c0fdd3b3d51db3199dc1592e9895a27cd3e49fdd502bb64acd6f1baa79b72480"
+      },
+      "trade": {
+        "seconds": 25.567,
+        "sha256": "5a3d0e869ee4ae78941742d9ccf84c0e5fb7fb5ed7eada9ed7239d8046c7be9a"
+      },
+      "attacks": {
+        "seconds": 33.067,
+        "sha256": "1b662b3dc4de9a993a11153af71cb3bd73fb09767a723425f3584497ea6be9bd"
+      },
+      "revocation": {
+        "seconds": 55.567,
+        "sha256": "527aff37ac25e36f8dcfcd227c5abe5315e2edd3045eebae5fc0272e46dbeda9"
+      },
+      "recovery": {
+        "seconds": 63.067,
+        "sha256": "cce80ffa6cdf1666ade89c4d29573bbb5b7a4d229995993bebb140f06eec6023"
+      }
+    },
+    "walkthrough": {
+      "lead": {
+        "seconds": 0.5,
+        "sha256": "a3884c5baffd19fa38ceb6661faa1334ed5b9f50a1e9fbfd87c805b9dcae29b8"
+      },
+      "trade": {
+        "seconds": 51.4,
+        "sha256": "2a598b3e8f86f9e6496b6f1e552fd5ce1c4b5aa596bc3ce985d57df23bda0477"
+      },
+      "attacks": {
+        "seconds": 66.4,
+        "sha256": "7515c5b709029d717d79160e33715045cbacdbc9e830e549c2b76aecf16aef1e"
+      },
+      "verifier": {
+        "seconds": 84.6,
+        "sha256": "d400973f15738504ded8825393b2755278ca41d236302d3449b250e3cb3b6206"
+      },
+      "revocation": {
+        "seconds": 108.6,
+        "sha256": "72c9ad81672a078159c92fb6e17a80f5c9293aab09357d97d33444d1b8d2b169"
+      },
+      "recovery": {
+        "seconds": 117.6,
+        "sha256": "9f619cb1f337231aa82dab0c69ef71d9e46f19a5f6bc62ae53fafb5fcad192bb"
+      },
+      "gates": {
+        "seconds": 135.6,
+        "sha256": "71d3e4892a58901f599e178c1189731b7de3b42b74548bd1a286d5110c39a955"
+      },
+      "comparison": {
+        "seconds": 148.1,
+        "sha256": "b2ec2674e5dbe906fb4e0ff8e9ab3a125378a123cfa7e9121e191271b3d297e9"
+      }
+    }
+  },
+  "errors": []
+}

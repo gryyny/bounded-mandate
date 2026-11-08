@@ -1,0 +1,257 @@
+{
+  "sources": 40,
+  "anchors_checked": 54,
+  "problems": [],
+  "checks": [
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/concepts",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/executions",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/grants",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/native-accounts",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/owner-signing",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/policies-and-limits",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/signing-standards",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/status-and-errors",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/tee",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://docs.agentsonintents.com/integration/agent-api/transparency",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/README.md",
+      "http": "200",
+      "anchors_checked": 4,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/0xdopewilly/veto/blob/a7843443e94fb6c98f42f9139c57e0a0deb3129e/contract/src/lib.rs",
+      "http": "200",
+      "anchors_checked": 4,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/NEAR-Intents-Agent-API/examples",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/NEAR-Intents-Agent-API/examples/blob/25528957276e18ec933eb7d6e8e5c59a5fe033c4/07-native-accounts/README.md",
+      "http": "200",
+      "anchors_checked": 5,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/ProjectOpenSea/seaport/blob/7f966fe7bd75932beb0366f6485aa720512b1259/docs/SeaportDocumentation.md",
+      "http": "200",
+      "anchors_checked": 0,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/Watchmeecryt/near-private-otc",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/AGENTS.md",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/README.md",
+      "http": "200",
+      "anchors_checked": 5,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/Watchmeecryt/near-private-otc/blob/55d5b645bc6212cf975474cee12f1a63e9a37d55/keeper/index.mjs",
+      "http": "200",
+      "anchors_checked": 2,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/README.md",
+      "http": "200",
+      "anchors_checked": 6,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/agent.rs",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/owner.rs",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/iskander-kudashev-13/agent-treasury/blob/46116b1c88fc5d5068698dc73de348e62f428136/contract/src/payment.rs",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/metafrogmeme-droid/claw-guard-near",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/README.md",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/docs/DECISIONS.md",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/metafrogmeme-droid/claw-guard-near/blob/225d37d3c1b04959947fa7c18544fa50e273dcd8/docs/THREAT_MODEL.md",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/engine/mod.rs",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/near/intents/blob/16d04f6ec4401263f8914638710260da50bb46b0/contracts/defuse/core/src/intents/mod.rs",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/near/intents/tree/16d04f6ec4401263f8914638710260da50bb46b0",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/soldanoandrea/allowance",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/Cargo.toml",
+      "http": "200",
+      "anchors_checked": 1,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/README.md",
+      "http": "200",
+      "anchors_checked": 4,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/soldanoandrea/allowance/blob/74edffec98cbeffd88d31223802f088c2d0f10b8/src/lib.rs",
+      "http": "200",
+      "anchors_checked": 5,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/soze-ki/Near-LEASH",
+      "http": "504",
+      "anchors_checked": 0,
+      "bad_anchors": [],
+      "github_api": "verified public reference"
+    },
+    {
+      "url": "https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/README.md",
+      "http": "200",
+      "anchors_checked": 3,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/contract/src/lib.rs",
+      "http": "200",
+      "anchors_checked": 4,
+      "bad_anchors": []
+    },
+    {
+      "url": "https://github.com/soze-ki/Near-LEASH/blob/b122410aac152d8a38aa36ebe064baf42c91fc10/docs/guardrail-spec.md",
+      "http": "200",
+      "anchors_checked": 2,
+      "bad_anchors": []
+    }
+  ],
+  "readme_source_revision": "2373d399c275dbd35a3caa467dcfde800266631b",
+  "note": "External public README references checked by HTTP, raw pinned sources or GitHub API. Planned hosting URLs are checked separately against the local release site."
+}
