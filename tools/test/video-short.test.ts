@@ -141,7 +141,7 @@ describe("short video cut", () => {
       "37 s before its deadline",
       "the MPC test double on hold, the owner recovers 1,987.66 USDC and 104 wNEAR into its Intents account",
       "Separately, outside recovery, the owner withdraws 1,987.66 USDC and 104 wNEAR to its NEAR account",
-      "Revocation is not instant; the claim starts at confirmed key removal.",
+      "Signed orders can still execute before confirmed key removal.",
     ]) {
       expect(text).toContain(expected);
     }
@@ -182,6 +182,13 @@ describe("short video cut", () => {
     const closing = scenes.at(-1)?.body ?? "";
     expect(closing).toContain("Not certified for this demo");
     expect(closing).not.toMatch(/Certified for this demo:/);
+  });
+
+  it("runs the demo after the full proof gate in the closing slide and caption", () => {
+    const ev = storyEvidence();
+    const closing = shortScenes(ev, bindDemo(ev, null), false).at(-1);
+    expect(closing?.body).toContain("<b>Quick demo:</b> <code>make demo</code>. <b>Full proof:</b> <code>make test &amp;&amp; make demo</code>.");
+    expect(closing?.captions.flatMap(chunks)).toContain("Quick demo: make demo. Full proof: make test && make demo.");
   });
 
   it("narrates an expired withheld order marked passed:false as inconclusive, not as rejected by revocation", () => {

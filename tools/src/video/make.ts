@@ -521,10 +521,13 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
       body: `${notShown.length === 0 ? "" : `<p class="note">${esc(storyCaption)}</p>`}${list([
         "<b>Watch</b> this video, or read the evidence page: each step links to its transactions and checks.",
         `<b>Inspect mainnet receipts:</b> ${esc(mainnet)}`,
-        "<b>Run</b> <code>make demo</code> and <code>make test</code>: no funds or model key needed.",
+        "<b>Quick demo:</b> <code>make demo</code>. <b>Full proof:</b> <code>make test &amp;&amp; make demo</code>. No funds or model key needed.",
         `<b>Planned hosting (${esc(PLANNED_LABEL)}):</b> <code>${esc(PLANNED_URLS.page)}</code>, console <code>${esc(PLANNED_URLS.console)}</code>`,
       ])}<p class="note">${esc(status.sentence)}</p>`,
-      captions: [`${storyCaption}Revocation is not instant; the claim starts at confirmed key removal. ${mainnetCaption} Reproduce: make demo, make test.`],
+      captions: [
+        `${storyCaption}Signed orders can still execute before confirmed key removal. ${mainnetCaption}`,
+        "Quick demo: make demo. Full proof: make test && make demo.",
+      ],
     },
   ];
 }
