@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import { z } from "zod";
 import type { DemoBinding } from "../evidence/binding.js";
+import { enforcementLayer } from "../evidence/journey.js";
 import { GateReportV2, type Acceptance } from "../evidence/schema.js";
 import type { ReportFile } from "./casefiles.js";
 import { escapeHtml } from "./html.js";
@@ -22,8 +23,20 @@ const AttackData = z.object({
     passed: z.boolean(),
     contained: z.boolean().nullable(),
     origin: z.enum(["injected-request", "scripted-direct"]),
+    observed: z.string().optional(),
   })).nonempty() }),
 });
+const OpenOrderData = z.object({
+  open_orders: count.positive(),
+  states_before_revoke: z.record(z.string(), count),
+  thirty_third_refused: z.boolean(),
+  released_key_removed: count,
+  withheld_relay_after_removal_executed: z.boolean(),
+  recovered_all_units: z.boolean(),
+  failed_removal: z.object({ grant_status: z.string() }).optional(),
+  successful_removal: z.object({ grant_status: z.string(), callbacks: z.array(z.object({ method: z.string(), succeeded: z.boolean() })) }).optional(),
+});
+const RegrantData = z.object({ relays: z.array(z.object({ after_confirmed_removal: z.boolean(), executed: z.boolean() })).nonempty() });
 const Relay = z.object({ executed: z.boolean() });
 const Alternatives = z.object({
   withheld_orders: z.string(),
@@ -70,24 +83,33 @@ export function sandboxResults(acc: Acceptance | null, binding: DemoBinding, fil
   };
   const trades = from("T3.concession", TradeData);
   const attacks = from("BOUNDARY.attacks", AttackData);
+  const refused = attacks?.data.suite.results.filter((r) => r.passed && r.contained === true) ?? [];
   return {
     trades: trades === null ? null : { data: trades.data.legitimate, report: trades.report },
     attacks: attacks === null ? null : {
       data: {
         contained: attacks.data.suite.results.filter((r) => r.passed && r.contained === true).length,
         attempted: attacks.data.suite.results.length,
+        /** Distinct enforcement layers of the refused requests; null when the report does not record where each stopped. */
+        layers: refused.every((r) => r.observed !== undefined) ? new Set(refused.map((r) => enforcementLayer(r.observed ?? "").layer)).size : null,
       },
       report: attacks.report,
     },
     alternatives: from("COMPARE.revocation-alternatives", Alternatives),
+    openOrders: from("T4.open-order-limit", OpenOrderData),
+    regrant: from("T1.withheld-regrant", RegrantData),
+    contract: from("BOUNDARY.contract", z.unknown()),
   };
 }
 
-type Results = ReturnType<typeof sandboxResults>;
+export type Results = ReturnType<typeof sandboxResults>;
 
-function reportDetails(report: ReportFile): string {
+/** In-page anchor of an embedded gate report, so a page hosted alone can link to it. */
+export const reportAnchor = (file: string): string => `report-${file.replace(/\.json$/, "")}`;
+
+export function reportDetails(report: ReportFile): string {
   const sha = createHash("sha256").update(report.text).digest("hex");
-  return `<details><summary>Read <code>${escapeHtml(report.file)}</code></summary><p class="source">Report SHA-256 <code>${sha}</code></p><pre>${escapeHtml(report.text)}</pre></details>`;
+  return `<details id="${escapeHtml(reportAnchor(report.file))}"><summary>Read <code>${escapeHtml(report.file)}</code></summary><p class="source">Report SHA-256 <code>${sha}</code></p><pre>${escapeHtml(report.text)}</pre></details>`;
 }
 
 export function benchmarkBody({ trades, attacks }: Results): string {

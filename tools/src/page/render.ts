@@ -21,12 +21,17 @@ import { LegacyGateReport, loadGateReports } from "./reports.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, ownerJourney, priceText, revocationStory, share, shortHash, stageNumber, stateLine, usd, usdc, wnear, type JourneyStep, type Stage } from "./story.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
 import { agentApiBody } from "./related.js";
+import { LEAD_LINE, POSITION, actionsBlock, factsSection, pageLayout, provenance, realSection, runProvenance, stateStrip, type PageBlock } from "./landing.js";
 import { STYLES } from "./styles.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
 export { escapeHtml } from "./html.js";
+export { LEAD_LINE, PAGE_LAYOUT, POSITION } from "./landing.js";
 
-/** The lead line, verbatim as the README opens, and the product in one sentence. */
+/**
+ * The previous lead line and sentence. The page now opens with LEAD_LINE and POSITION (landing.ts); these stay
+ * exported for the video until it moves to the new lead line.
+ */
 export const HEADLINE = "Give an AI agent trading power. Keep the power to stop it.";
 export const SUBTITLE =
   "The agent only proposes trades; a NEAR contract signs those within the owner's limits, and once the owner's revocation is confirmed, every outstanding order signed under that grant fails and the owner takes the assets back without the agent.";
@@ -82,6 +87,7 @@ export const GATE_LABEL: Record<string, string> = {
   DAO: "a pinned Sputnik DAO as the fixed owner, threshold-voted (sandbox)",
   AGENT: "runner sale budgets bound the agent; no-transaction provider rehearsal",
   COMPARE: "the owner's alternatives compared on the verifier: wait, cancel nonces, remove the key",
+  SIGNER: "a recorded read-only mainnet signer response, decoded and verified in the unit VM (not a mainnet run of our signing)",
 };
 
 const json = (value: unknown): string => {
@@ -377,7 +383,7 @@ ${first === undefined ? "" : `<details class="replay" name="owner-replay"><summa
 /** The first screen's journey: the owner's eight steps, each with this run's recorded outcome. */
 function journeyBlock(ev: Evidence, stages: readonly Stage[]): string {
   const steps = ownerJourney(ev, stages);
-  return `<div class="replay-guide"><div><h2>Replay the owner’s actions</h2><p>Open any step to see the recorded balances, authority and evidence. This is a replay of one ${escapeHtml(ev.mode)} run.</p></div><nav aria-label="More ways to check the run"><a href="#paths">Reproduce locally</a><a href="#revocation-alternatives">Compare ways to stop orders</a></nav></div>
+  return `<div class="replay-guide" id="replay"><div><h2>Replay the owner’s actions</h2><p>Open any step to see the recorded balances, authority and evidence. This is a replay of one ${escapeHtml(ev.mode)} run.</p></div><nav aria-label="More ways to check the run"><a href="#paths">Reproduce locally</a><a href="#revocation-alternatives">Compare ways to stop orders</a></nav></div>
 <ol class="journey" aria-label="The owner's journey in eight steps, as recorded in this run">${steps.map(journeyCard).join("\n")}</ol>
 <p class="journey-note">One ${escapeHtml(ev.mode)} run (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}). Every outcome above is a recorded story check, not an acceptance gate. Amounts are rounded down for reading; exact units are in the detail below. Revocation is not instant: orders may execute while it is pending; the claim is about orders after confirmed key removal.</p>`;
 }
@@ -666,6 +672,34 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
   const results = sandboxResults(acc, binding, extras.reports ?? []);
   const passedCount = views.filter((v) => v.status === "passed").length;
   const anyFailed = views.some((v) => v.status === "failed");
+  const stages = revocationStory(ev);
+  const labels = runLabels(ev);
+  const sandboxLabel = provenance(runProvenance(ev, labels));
+  const blocks: Record<PageBlock, string> = {
+    replay: `<section class="replay-block" aria-label="Replay">${sandboxLabel}${journeyBlock(ev, stages)}
+${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
+<p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
+${outcomeBlock(ev)}
+<p class="facts-line">Gates passed and certified for this demo: ${String(passedCount)} / ${String(views.length)}</p>
+${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
+${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
+    story: storySection(ev),
+    paths: pathsSection(live),
+    benchmark: section("§B", "sandbox", "benchmark", "Legitimate trades and hostile requests", benchmarkBody(results)),
+    attacks: attackLogSection(ev, acc, binding),
+    alternatives: section("§A2", "sandbox", "revocation-alternatives", "What happens to orders after the owner acts?", revocationAlternativesBody(results)),
+    mainnet: section("§M", "mainnet", "mainnet", "Mainnet receipts", `${provenance(live.kind === "mainnet" ? "NEAR mainnet transactions, each with a transaction hash" : "No mainnet transaction on this page")}${mainnetBody(live)}`),
+    verify: section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", `${provenance("Read-only queries to a public mainnet RPC, only after you press the button")}${verifySection(ev, verifyData(ev, live))}`),
+    regrant: casesSection(acc, binding, extras.reports ?? []),
+    demo: demonstrationSection(ev),
+    gates: gatesSection(acc, binding, views),
+    baseline: comparisonSection(acc, views),
+    "agent-api": section("§C", "related", "agent-api", "Related design: the NEAR Intents Agent API", agentApiBody()),
+    limits: limitsSection(ev, acc, binding, views, live),
+    policy: policySection(policy),
+    provenance: provenanceSection(ev, acc, binding),
+    legacy: legacySection(legacy),
+  };
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -674,7 +708,7 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src '${scriptHash(script)}'; connect-src https:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
-<title>Bounded mandate — evidence (${escapeHtml(ev.mode)})</title>
+<title>${escapeHtml(LEAD_LINE)} — evidence (${escapeHtml(ev.mode)})</title>
 <style>${STYLES}</style>
 </head>
 <body>
@@ -683,32 +717,14 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
 <header class="docket">
 <p class="kicker">Bounded mandate · evidence dossier · NEAR Intents · USDC / wNEAR</p>
 <p class="chips" role="status">${headerChips(ev, binding, live)}</p>
-<h1 class="lead-line">${escapeHtml(HEADLINE)}</h1>
-<p class="position lead-sub">${escapeHtml(SUBTITLE)}</p>
-${journeyBlock(ev, revocationStory(ev))}
-${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
-${modesKey(ev, live)}
-<p class="lede">Claim: the mandate contract builds and signs every trade itself, so the agent can only propose within immutable limits, and after the owner's confirmed key removal withheld signed orders fail while the owner recovers assets without the agent, oracle or signer.</p>
-${outcomeBlock(ev)}
-<p class="facts-line">Gates passed and certified for this demo: ${String(passedCount)} / ${String(views.length)}</p>
-${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
+<h1 class="lead-line">${escapeHtml(LEAD_LINE)}</h1>
+<p class="position lead-sub">${escapeHtml(POSITION)}</p>
+${actionsBlock()}
+${stateStrip(ev, binding, passedCount, views.length, live, stages)}
+${provenance(live.kind === "mainnet" ? `NEAR mainnet receipts first, then the ${runProvenance(ev, labels)}` : runProvenance(ev, labels))}
 </header>
-${storySection(ev)}
-${pathsSection(live)}
-${section("§B", "sandbox", "benchmark", "Legitimate trades and hostile requests", benchmarkBody(results))}
-${attackLogSection(ev, acc, binding)}
-${section("§A2", "sandbox", "revocation-alternatives", "What happens to orders after the owner acts?", revocationAlternativesBody(results))}
-${section("§M", "mainnet", "mainnet", "Mainnet receipts", mainnetBody(live))}
-${section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", verifySection(ev, verifyData(ev, live)))}
-${casesSection(acc, binding, extras.reports ?? [])}
-${demonstrationSection(ev)}
-${gatesSection(acc, binding, views)}
-${comparisonSection(acc, views)}
-${section("§C", "related", "agent-api", "Related design: the NEAR Intents Agent API", agentApiBody())}
-${limitsSection(ev, acc, binding, views, live)}
-${policySection(policy)}
-${provenanceSection(ev, acc, binding)}
-${legacySection(legacy)}
+${factsSection(ev, results, `certified ${ev.mode} acceptance reports · selected samples · test doubles as labelled`)}
+${pageLayout(live).map((b) => blocks[b]).join("\n")}
 <footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no external files, fonts or links needed. Its one inline script makes network requests only after you press “Run read-only checks” (§V). Evidence schema version ${String(ev.schema_version)}.</footer>
 </main>
 <script>${script}</script>

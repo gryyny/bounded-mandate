@@ -103,7 +103,7 @@ const SANDBOX_NOTE = "sandbox acceptance test - not part of the mainnet sequence
 function caseCard(c: { id: string; did: string }, acc: Acceptance, binding: DemoBinding, files: readonly ReportFile[]): string {
   const result = acc.cases.find((x) => x.id === c.id);
   const head = (status: string) => `<h3><code>${escapeHtml(c.id)}</code> ${status}</h3><p class="note-line">${escapeHtml(SANDBOX_NOTE)}</p><p>${escapeHtml(c.did)}</p>`;
-  if (result === undefined) return `<article class="casefile">${head(word("missing", "not in this acceptance run"))}</article>`;
+  if (result === undefined) return `<article class="casefile" id="${escapeHtml(`report-${c.id}`)}">${head(word("missing", "not in this acceptance run"))}</article>`;
   const status = result.status === "passed" && !binding.certified ? word("uncertified", "passed, not certified for this demo") : word(result.status, result.status);
   const reports = result.files.map((name) => {
     const f = files.find((x) => x.file === name);
@@ -133,7 +133,7 @@ ${mechanism.success ? `<p><strong>Mechanism (recorded):</strong> ${escapeHtml(me
 ${summary === null ? `<p class="muted">The report's data has an unexpected shape; see the verbatim report.</p>` : `<ul>${summary.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`}
 ${rowsTable(r.data.data)}${raw}`;
   });
-  return `<article class="casefile">${head(status)}${reports.join("")}</article>`;
+  return `<article class="casefile" id="${escapeHtml(`report-${c.id}`)}">${head(status)}${reports.join("")}</article>`;
 }
 
 export function caseFilesBody(acc: Acceptance | null, binding: DemoBinding, files: readonly ReportFile[]): string {

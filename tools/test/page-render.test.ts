@@ -650,10 +650,10 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
     }
   });
 
-  it("heads the page with the README's lead line, verbatim, and one sentence", () => {
-    expect(html).toContain('<h1 class="lead-line">Give an AI agent trading power. Keep the power to stop it.</h1>');
+  it("heads the page with the lead line and the two sentences", () => {
+    expect(html).toContain('<h1 class="lead-line">Bounded Mandate: keyless AI trading on NEAR Intents</h1>');
     expect(html).toContain(
-      `<p class="position lead-sub">${escapeHtml("The agent only proposes trades; a NEAR contract signs those within the owner's limits, and once the owner's revocation is confirmed, every outstanding order signed under that grant fails and the owner takes the assets back without the agent.")}</p>`,
+      `<p class="position lead-sub">${escapeHtml("An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.")}</p>`,
     );
     expect(html).not.toContain("Revoke the entire grant—including outstanding signed orders");
     // No instant-revocation, first/only, profit or guaranteed-loss wording in the first screen.
