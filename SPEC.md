@@ -91,6 +91,18 @@ The runner persists each external owner action as an intent (signer, approved ke
 
 The agent's snapshot, prompt and validation include the runner's remaining per-order and cumulative sale budgets. A proposal above them is rejected, never silently clipped; a useful partial rebalance within the tighter cap is valid. A no-transaction rehearsal mode exercises the provider path and records planned inventory separately from observed balances; it does not qualify a live provider without an approved call.
 
+## Open challenge grant (optional)
+
+After a completed mainnet run, the owner may open a challenge: a new deposit and a fresh grant whose agent private key is published, so anyone can act as the agent against real funds. Building and testing the template commits to nothing. Running it needs the owner's separate approval of the deposit and of publishing the key.
+
+- Contract source, the deployment candidate and the primary live templates stay unchanged. The challenge is a separate live template and sandbox case.
+- It shows that whoever holds the agent key cannot withdraw, transfer to another account, change keys or policy, or exceed the caps, concession bound and breaker, and that the earlier grant's withheld order stays rejected while the challenge grant is live.
+- It does not show that the deposit is safe from poor trades. The key holder can make permitted trades up to the concession bound and the turnover cap, and can exhaust the agent's gas allowance and the grant's proposal budget. Every public surface that presents the challenge states this.
+- The owner's revoke, recovery and withdrawal still work after the allowance and the proposal budget are exhausted.
+- The published key is never committed to any repository or evidence bundle; it is published outside them and linked.
+- Evidence presents the challenge grant apart from the completed run's receipts. Verification of the completed run does not treat the challenge's later activity as a failure.
+- The cost is bounded by the challenge deposit and the agent's allowance. An unknown contract defect could lose the deposit; the owner weighs that before approving. After judging the owner revokes, recovers and withdraws.
+
 
 ## Acceptance tests
 
@@ -115,6 +127,7 @@ Also require:
 - The runner's external-action import rejects wrong chain, signer, key, receiver, method, arguments and bounds, altered and duplicate hashes; resume after a lost response neither resubmits nor double-charges; both withdrawals pass with an unregistered owner and a failed withdrawal receipt.
 - The console's owner flow runs in a real browser against sandbox through a labelled local signing adapter: wrong owner and wrong network disable the controls, a cancelled signature and a reload during a pending action resubmit nothing, and the runner imports the resulting hashes. This does not establish compatibility with any external wallet.
 - The DAO-owner case passes against pinned Sputnik code in sandbox: insufficient approvals execute nothing, threshold approval executes grant, revoke and recovery, and recovery reaches the DAO's Intents account. If it cannot pass, the claim is withdrawn rather than weakened.
+- If the open challenge template is shipped, its sandbox case passes on the exact deployment binary: after a completed run, a new deposit and a fresh grant; an adversary holding the agent key fails every withdrawal, transfer, key and policy attempt; permitted trades stay inside the caps, concession bound and breaker; the earlier withheld order stays rejected; with the allowance and the proposal budget exhausted, the owner's revoke, recovery and withdrawal still work. If it cannot pass, the template is withdrawn rather than weakened.
 
 T1/T4 failure blocks the corresponding claim; T2/T2b failure blocks signing safety; T3 failure blocks the stated policy; T5 failure leaves competitive differentiation unresolved. Keep independent corrective work moving without claiming these gates passed.
 
