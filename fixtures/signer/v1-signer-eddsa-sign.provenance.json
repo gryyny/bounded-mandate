@@ -1,0 +1,94 @@
+{
+  "file": "signer/v1-signer-eddsa-sign.json",
+  "sha256": "f68890e8eb21c0eb98d1da08d089b3e6f4e9d681f99fb0b2fbbdbfe998e835e4",
+  "size_bytes": 7637,
+  "kind": "recorded-external-response",
+  "transaction": {
+    "hash": "4AShjujhAsA4XnbVebi6VkFQncPEzAUqGwysZ9Mjxfkw",
+    "sender_account_id": "zec-vault-accountant.near",
+    "sign_receipt_block_height": 223836728,
+    "response_receipt_block_height": 223836734
+  },
+  "source": {
+    "network": "NEAR mainnet",
+    "rpc": "https://archival-rpc.mainnet.fastnear.com (read-only JSON-RPC, archival)",
+    "discovery": [
+      {
+        "url": "https://tx.main.fastnear.com/v0/account",
+        "method": "POST {\"account_id\":\"v1.signer\"}",
+        "at_utc": "2026-11-09T23:46Z"
+      },
+      {
+        "url": "https://tx.main.fastnear.com/v0/transactions",
+        "method": "POST {\"tx_hashes\":[...]} in batches of 20; filtered receipts to v1.signer with method sign and request.domain_id 1",
+        "at_utc": "2026-11-09T23:46Z"
+      }
+    ],
+    "reads": [
+      {
+        "method": "EXPERIMENTAL_tx_status",
+        "params": {
+          "tx_hash": "4AShjujhAsA4XnbVebi6VkFQncPEzAUqGwysZ9Mjxfkw",
+          "sender_account_id": "zec-vault-accountant.near",
+          "wait_until": "FINAL"
+        },
+        "at_utc": "2026-11-09T23:47:16Z"
+      },
+      {
+        "method": "block",
+        "params": {
+          "block_id": "each block hash in the fixture"
+        },
+        "at_utc": "2026-11-09T23:47:16Z"
+      },
+      {
+        "method": "query call_function",
+        "account_id": "v1.signer",
+        "method_name": "derived_public_key",
+        "args": {
+          "path": "near-1",
+          "predecessor": "kernel-zec.meteor-vaults.near",
+          "domain_id": 1
+        },
+        "block": "finality final (223836975) and block_id 223836728",
+        "at_utc": "2026-11-09T23:47:34Z"
+      },
+      {
+        "method": "query view_account and call_function contract_source_metadata",
+        "account_id": "v1.signer",
+        "block": "finality final (223836979/223836980) and block_id 223836728",
+        "at_utc": "2026-11-09T23:47:34Z"
+      },
+      {
+        "method": "query call_function",
+        "account_id": "v1.signer",
+        "method_name": "derived_public_key",
+        "args": {
+          "path": "near-2",
+          "predecessor": "kernel-zec.meteor-vaults.near",
+          "domain_id": 1
+        },
+        "block": "block_id 223836728",
+        "at_utc": "2026-11-09T23:48:18Z"
+      },
+      {
+        "method": "query call_function",
+        "account_id": "v1.signer",
+        "method_name": "config",
+        "args": {},
+        "block": "block_id 223836728",
+        "at_utc": "2026-11-09T23:48:18Z"
+      }
+    ],
+    "transform": "Values copied from the RPC JSON without re-encoding: sign receipt args (base64), response receipt SuccessValue (base64), derived_public_key result bytes (UTF-8). Decoded copies (args, success_value_utf8) are for reading; tests use the base64 fields and check the decoded copies against them."
+  },
+  "signer_contract": {
+    "account_id": "v1.signer",
+    "code_hash": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
+    "version": "3.18.0",
+    "source": "https://github.com/near/mpc/tree/e691bdb98d68dcf74653da58d043453a6318765f"
+  },
+  "scope": "Third-party sign request by kernel-zec.meteor-vaults.near. Shows the signer's request/response wire format, key derivation view and signature validity. It does not exercise this repository's contract signing on mainnet.",
+  "license": "public chain data",
+  "retrieved_at": "2026-11-09"
+}

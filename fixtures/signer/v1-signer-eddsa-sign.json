@@ -1,0 +1,180 @@
+{
+  "description": "A real NEAR mainnet v1.signer `sign` request with domain_id 1 (Ed25519, payload_v2 Eddsa) made cross-contract by another contract, the signature response the signer resolved it with, and the signer's derived_public_key for that predecessor and path. Recorded by read-only public RPC queries; no transaction was sent. Third-party data: it shows the signer's wire format and key derivation, not this repository's own signing.",
+  "network": "mainnet",
+  "signer": {
+    "account_id": "v1.signer",
+    "code_hash": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
+    "contract_source_metadata": {
+      "version": "3.18.0",
+      "link": "https://github.com/near/mpc/tree/e691bdb98d68dcf74653da58d043453a6318765f"
+    },
+    "observed_at_block_heights": [
+      223836728,
+      223836979
+    ],
+    "config_sign_call_gas_attachment_requirement_tera_gas": 15,
+    "note": "contract/src/protocol/mpc.rs cites v3.17.0 @ d0fc87b; the deployed signer at the sign block and at recording time is 3.18.0 (same code hash at both blocks)."
+  },
+  "transaction": {
+    "hash": "4AShjujhAsA4XnbVebi6VkFQncPEzAUqGwysZ9Mjxfkw",
+    "signer_id": "zec-vault-accountant.near",
+    "receiver_id": "kernel-zec.meteor-vaults.near",
+    "block_hash": "8EYz3MnkYwgxmbqbuRD7DSnF7niZ1fYrrKnyQN4w1RD6",
+    "block_height": 223836726,
+    "final_execution_status": "FINAL"
+  },
+  "sign_receipt": {
+    "receipt_id": "8TpFZ1qQWre8Z7LEvo5WUrGmY2HhYJC1CHXFJg1VWMXi",
+    "predecessor_id": "kernel-zec.meteor-vaults.near",
+    "receiver_id": "v1.signer",
+    "method_name": "sign",
+    "args_base64": "eyJyZXF1ZXN0Ijp7InBhdGgiOiJuZWFyLTEiLCJkb21haW5faWQiOjEsInBheWxvYWRfdjIiOnsiRWRkc2EiOiJhNmQ2NDYzNzUwZDIzNWQ3NjY5OTlhZWRmMWMzMmI5ZTNjNjcxNWM4OTg5YWIzM2U3NTA2ZDA4MzIxNTlmZmNlIn19fQ==",
+    "args": {
+      "request": {
+        "path": "near-1",
+        "domain_id": 1,
+        "payload_v2": {
+          "Eddsa": "a6d6463750d235d766999aedf1c32b9e3c6715c8989ab33e7506d0832159ffce"
+        }
+      }
+    },
+    "deposit_yocto": "1",
+    "gas": 151974615499635,
+    "block_hash": "4cTfGW1SKo8JicUZvKinosNLCfvEnKDy2zsFaYN3iFjt",
+    "block_height": 223836728,
+    "status": {
+      "SuccessReceiptId": "GyqJQbWGNo8dhzTKwiXaYcF74FUiDpm8RRAE4HardrdK"
+    },
+    "logs": [
+      "sign: predecessor=AccountId(\"kernel-zec.meteor-vaults.near\"), request=SignRequestArgs { path: \"near-1\", payload: Eddsa(BoundedVec { inner: [166, 214, 70, 55, 80, 210, 53, 215, 102, 153, 154, 237, 241, 195, 43, 158, 60, 103, 21, 200, 152, 154, 179, 62, 117, 6, 208, 131, 33, 89, 255, 206], witness: PossiblyEmpty(()) }), domain_id: DomainId(1) }"
+    ]
+  },
+  "response_receipt": {
+    "receipt_id": "GyqJQbWGNo8dhzTKwiXaYcF74FUiDpm8RRAE4HardrdK",
+    "method_name": "return_signature_and_clean_state_on_success",
+    "is_promise_yield": true,
+    "output_data_receiver": "kernel-zec.meteor-vaults.near",
+    "block_hash": "8nZqGuGFN5s25bipA1sYpNjzfDtBhW1gM8PaKg9FGvmZ",
+    "block_height": 223836734,
+    "success_value_base64": "eyJzY2hlbWUiOiJFZDI1NTE5Iiwic2lnbmF0dXJlIjpbMTAyLDE4NywyMTYsMTk2LDIwOSw5NSwyMzMsMjUsMTMsMjM0LDIxMSw2NiwzMSwyMDcsODgsMjMwLDI1MywxMzIsOTcsMTY0LDE4NSwyMjEsMTE0LDI0OCw3MiwxNDQsMzAsMjI3LDEsMTU2LDEzOCwyNSwxMDQsMTk1LDIwLDExMywxMzgsMTQ5LDE1NCwxMjEsMjI0LDU3LDIyMSwxOTQsMywxNzUsMjQ3LDcxLDE1OCw4NiwyMzQsMTQ1LDIyNCwxMjUsMTk3LDIyMSwxMiwxMiwxOTEsMTQyLDExMiwxMjUsMjksNF19",
+    "success_value_utf8": "{\"scheme\":\"Ed25519\",\"signature\":[102,187,216,196,209,95,233,25,13,234,211,66,31,207,88,230,253,132,97,164,185,221,114,248,72,144,30,227,1,156,138,25,104,195,20,113,138,149,154,121,224,57,221,194,3,175,247,71,158,86,234,145,224,125,197,221,12,12,191,142,112,125,29,4]}",
+    "note": "The sign receipt resolves (SuccessReceiptId) to this yield-resume receipt; its SuccessValue is the promise result the caller's callback receives."
+  },
+  "caller_callback_receipt": {
+    "receipt_id": "BdkboZnXqtbhNu8Mkjb5kibvwyeAm2xTXgKNm5kWVgoG",
+    "receiver_id": "kernel-zec.meteor-vaults.near",
+    "method_name": "after_sign",
+    "block_hash": "3Zorgao1X1qhCyJkkzgjRysK8ZVtKK4yEJqoPT4w3Xh9",
+    "block_height": 223836735
+  },
+  "derived_public_key": [
+    {
+      "role": "signing key",
+      "args": {
+        "path": "near-1",
+        "predecessor": "kernel-zec.meteor-vaults.near",
+        "domain_id": 1
+      },
+      "block_height": 223836728,
+      "block_hash": "4cTfGW1SKo8JicUZvKinosNLCfvEnKDy2zsFaYN3iFjt",
+      "result_utf8": "\"ed25519:RoU5hpwh75EeYk6k9dqQPnvXzFGcRpmUnvLUTzWeFHr\""
+    },
+    {
+      "role": "signing key, recording time",
+      "args": {
+        "path": "near-1",
+        "predecessor": "kernel-zec.meteor-vaults.near",
+        "domain_id": 1
+      },
+      "block_height": 223836975,
+      "block_hash": "2jJebnrNBcQBCb3FuhkksKcUWahjmcUPwJpMU7FYQXX2",
+      "result_utf8": "\"ed25519:RoU5hpwh75EeYk6k9dqQPnvXzFGcRpmUnvLUTzWeFHr\""
+    },
+    {
+      "role": "wrong-key control (sibling path)",
+      "args": {
+        "path": "near-2",
+        "predecessor": "kernel-zec.meteor-vaults.near",
+        "domain_id": 1
+      },
+      "block_height": 223836728,
+      "block_hash": "4cTfGW1SKo8JicUZvKinosNLCfvEnKDy2zsFaYN3iFjt",
+      "result_utf8": "\"ed25519:Aa92D7hYebTkibPibTB5AvaBfwDk6SAqtq6cV1eHu7LA\""
+    }
+  ],
+  "reads": [
+    {
+      "at_utc": "2026-11-09T23:47:16Z",
+      "endpoint": "https://archival-rpc.mainnet.fastnear.com",
+      "method": "EXPERIMENTAL_tx_status",
+      "params": {
+        "tx_hash": "4AShjujhAsA4XnbVebi6VkFQncPEzAUqGwysZ9Mjxfkw",
+        "sender_account_id": "zec-vault-accountant.near",
+        "wait_until": "FINAL"
+      },
+      "yields": [
+        "transaction",
+        "sign_receipt",
+        "response_receipt",
+        "caller_callback_receipt"
+      ]
+    },
+    {
+      "at_utc": "2026-11-09T23:47:16Z",
+      "endpoint": "https://archival-rpc.mainnet.fastnear.com",
+      "method": "block",
+      "params": {
+        "block_id": "<each block_hash above>"
+      },
+      "yields": [
+        "block_height values"
+      ]
+    },
+    {
+      "at_utc": "2026-11-09T23:47:34Z",
+      "endpoint": "https://archival-rpc.mainnet.fastnear.com",
+      "method": "query call_function v1.signer derived_public_key",
+      "params": {
+        "finality": "final | block_id 223836728",
+        "args": {
+          "path": "near-1",
+          "predecessor": "kernel-zec.meteor-vaults.near",
+          "domain_id": 1
+        }
+      },
+      "yields": [
+        "derived_public_key[0..2]"
+      ]
+    },
+    {
+      "at_utc": "2026-11-09T23:47:34Z",
+      "endpoint": "https://archival-rpc.mainnet.fastnear.com",
+      "method": "query view_account v1.signer; call_function contract_source_metadata",
+      "params": {
+        "finality": "final | block_id 223836728"
+      },
+      "yields": [
+        "signer.code_hash",
+        "signer.contract_source_metadata"
+      ]
+    },
+    {
+      "at_utc": "2026-11-09T23:48:18Z",
+      "endpoint": "https://archival-rpc.mainnet.fastnear.com",
+      "method": "query call_function v1.signer derived_public_key; call_function config",
+      "params": {
+        "block_id": 223836728,
+        "args": {
+          "path": "near-2",
+          "predecessor": "kernel-zec.meteor-vaults.near",
+          "domain_id": 1
+        }
+      },
+      "yields": [
+        "derived_public_key[2]",
+        "signer.config_sign_call_gas_attachment_requirement_tera_gas"
+      ]
+    }
+  ],
+  "selection": "Found via https://tx.main.fastnear.com/v0/account (account_id v1.signer, newest page) and /v0/transactions on 2026-11-09: successful sign receipts with domain_id 1. Chosen for a contract predecessor (like the mandate) and a path without a personal identifier."
+}

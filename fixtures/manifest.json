@@ -61,6 +61,19 @@
       "source": "Wallet entries of the NEAR Connect manifest at hot-dao/near-selector@9cee11c04cfd42f5a420688f808d4aca612b5fde (repository/manifest.json, sha256 recorded inside), with each adapter (executor) URL replaced by the raw file at a pinned commit and that file's sha256; wallets whose adapter is not on a commit-pinnable host, or that need WalletConnect, are listed as excluded with the reason",
       "license": "MIT as declared in the @hot-labs/near-connect npm metadata (the hot-dao/near-selector repository has no LICENSE file); see NOTICE. The adapters it points to are fetched at run time from their own repositories and are not part of this repository",
       "retrieved_at": "2026-11-07"
+    },
+    "signer/v1-signer-eddsa-sign.json": {
+      "sha256": "f68890e8eb21c0eb98d1da08d089b3e6f4e9d681f99fb0b2fbbdbfe998e835e4",
+      "kind": "recorded-external-response",
+      "source": "Read-only NEAR mainnet archival RPC (https://archival-rpc.mainnet.fastnear.com) EXPERIMENTAL_tx_status of tx 4AShjujhAsA4XnbVebi6VkFQncPEzAUqGwysZ9Mjxfkw: v1.signer sign receipt (domain_id 1, payload_v2 Eddsa, predecessor kernel-zec.meteor-vaults.near, block 223836728) and its response receipt SuccessValue (block 223836734), plus derived_public_key views (path near-1 and near-2, domain 1) at block 223836728 and final; signer 3.18.0, code hash CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ; third-party request, not this repository's signing",
+      "license": "public chain data",
+      "retrieved_at": "2026-11-09"
+    },
+    "signer/v1-signer-eddsa-sign.provenance.json": {
+      "sha256": "eeef5a1ac5cae07aceb54da5834fa2bbb719b5c22ad7766b236c2e462248fe40",
+      "kind": "provenance-record",
+      "source": "Read-only mainnet RPC and FastNEAR transaction-index queries recorded by the repository author for signer/v1-signer-eddsa-sign.json",
+      "license": "MIT (this repository)"
     }
   }
 }
