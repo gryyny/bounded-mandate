@@ -1,8 +1,8 @@
-# Public targets: test, demo, page, live. Everything else is an implementation detail.
+# Public targets: test, demo, page, live, verify. Everything else is an implementation detail.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := test
-.PHONY: test demo page live
+.PHONY: test demo page live verify
 
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
@@ -38,6 +38,8 @@ test:
 	$(TSX) src/release/main.ts links
 	$(TSX) src/release/main.ts secrets
 	$(TSX) src/release/main.ts licenses
+	# The committed bundle must be internally consistent; `make verify` is the full checkout-bound check.
+	node verify.mjs --no-checkout --rules bundle
 	$(TSX) src/checks/gates.ts
 	$(TSX) src/checks/acceptance.ts
 
@@ -46,6 +48,10 @@ demo:
 	$(BROWSER)
 	$(call build_wasm)
 	$(TSX) src/demo/main.ts
+
+# Checks the committed evidence bundle without a toolchain (Node 20+, no install); it does not rerun the tests.
+verify:
+	node verify.mjs
 
 page:
 	$(TSX) src/page/main.ts
