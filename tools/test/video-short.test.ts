@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { bindDemo } from "../src/evidence/binding.js";
 import { attackRows, layerCounts, revocationStory } from "../src/page/story.js";
 import { type Evidence } from "../src/types.js";
+import { escapeHtml as esc } from "../src/page/html.js";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { OWNER_CONTROLS_LABEL } from "../src/evidence/journey.js";
 import { REPO_ROOT } from "../src/evidence/report.js";
-import { SHORT_RANGE_S, chunks, consoleShots, type LogStep, shortPace, shortScenes, walkthroughScenes } from "../src/video/make.js";
+import { LEAD, PLANNED_REPO, PROBLEM, SHORT_RANGE_S, chunks, consoleShots, type LogStep, reproFromMakefile, shortPace, shortScenes, walkthroughScenes } from "../src/video/make.js";
 import { ATTACKS, CONSOLE_RENDERED, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence } from "./video-story-specimen.js";
 
 const STEPS: LogStep[] = [
@@ -37,59 +38,75 @@ const withDecision = (ev: Evidence): Evidence => ({
 });
 const walk = (ev: Evidence) => walkthroughScenes(withDecision(ev), null, bindDemo(ev, null), STEPS, {}, STORY.model);
 
-const captions = (mainnet = false) => shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), mainnet).flatMap((s) => s.captions.flatMap(chunks));
+const short = (ev: Evidence = storyEvidence(), mainnet = false) => shortScenes(ev, bindDemo(ev, null), mainnet);
+const captions = (mainnet = false) => short(storyEvidence(), mainnet).flatMap((s) => s.captions.flatMap(chunks));
+const scene = (ev: Evidence, prefix: string) => short(ev).find((s) => s.title.startsWith(prefix));
+const TITLES = [
+  "Give an AI agent trading power. Keep the power to stop it.",
+  "The agent trades inside fixed limits",
+  "Hostile requests are refused; one signed order is held back",
+  "The owner revokes; the verifier rejects the held order",
+  "The funds return to the owner",
+  "Where to verify",
+];
 
 describe("short video cut", () => {
-  it("opens with the lead line, then tells the owner's eight journey steps in order, then the paths", () => {
-    const scenes = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false);
-    expect(scenes.map((s) => s.title)).toEqual([
-      "Give an AI agent trading power. Keep the power to stop it.",
-      "1 · Read the mandate and its limits",
-      "2 · The agent makes a permitted trade",
-      "3 · Hostile requests are refused",
-      "4 · Spot the withheld signed order",
-      "5 · Revoke with the owner controls",
-      "6 · The same order is rejected",
-      "7 · Recover without agent, oracle or MPC",
-      "8 · Withdraw to the owner's NEAR account",
-      "Check it yourself",
-    ]);
-    // The lead line is the first caption, verbatim and alone; the next states what the run is.
-    expect(scenes[0]?.captions.flatMap(chunks)).toEqual([
-      "Give an AI agent trading power. Keep the power to stop it.",
-      "One local sandbox run with labelled test doubles and a replayed model recording, in eight steps.",
-    ]);
-    expect(scenes[0]?.labels).toEqual(["Local NEAR sandbox", "Real Intents verifier WASM", "Test doubles: MPC, oracle, tokens", "No mainnet"]);
-    // Each step's status pill is its recorded outcome.
-    for (const sc of scenes.slice(1, 9)) expect(sc.body).toMatch(/<span class="pill ok">/);
+  it("states the problem, then trades, refusals and the held order, revocation and rejection, the funds' return, and where to verify", () => {
+    const scenes = short();
+    expect(scenes.map((s) => s.title)).toEqual(TITLES);
+    // The problem is the first caption, alone; the next states what the run is.
+    expect(scenes[0]?.captions.flatMap(chunks)).toEqual([PROBLEM, "One local sandbox run with labelled test doubles and a replayed model recording."]);
+    expect(scenes[0]?.body).toContain(esc(LEAD));
+    // Each told step's status pill is its recorded outcome, under its journey number.
+    for (const [i, sc] of scenes.slice(1, 5).entries()) {
+      expect(sc.body.match(/<span class="pill ok">/g)).toHaveLength(2);
+      for (const n of [2 * i + 1, 2 * i + 2]) expect(sc.body).toContain(`<b>${String(n)} · `);
+    }
   });
 
-  it("puts the recorded chain state of each step's last stage in the strip", () => {
-    const scenes = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false);
-    const strip = (n: string) => scenes.find((s) => s.title.startsWith(`${n} ·`))?.strip;
-    expect(strip("1")).toMatchObject({ grant_status: "active", key_present: true, open_orders: 0 });
-    expect(strip("3")).toMatchObject({ grant_status: "active", key_present: true, open_orders: 0 });
-    expect(strip("4")).toMatchObject({ grant_status: "active", key_present: true, open_orders: 1 });
-    expect(strip("5")).toMatchObject({ grant_status: "revoked", key_present: false, open_orders: 0 });
+  it("gives every scene exactly one provenance label, derived from its stages", () => {
+    const scenes = short();
+    for (const sc of scenes) {
+      expect(sc.provenance).toBeTruthy();
+      expect(sc.labels).toBeUndefined();
+    }
+    expect(scenes.map((s) => s.provenance)).toEqual([
+      "Summary of one local sandbox run · no mainnet",
+      "Local sandbox, test doubles · recorded model output, replayed",
+      "Local sandbox · scripted attacks and order, one replayed model recording",
+      "Local sandbox · owner console, test signer, not a wallet",
+      "Local sandbox · oracle and MPC test doubles switched off",
+      "Commands · URLs planned, unpublished",
+    ]);
+    expect(short(storyEvidence(), true)[0]?.provenance).toBe("Summary of one local sandbox run");
+    // A revocation by direct owner call is not labelled as the console.
+    expect(scene(olderStoryEvidence(), "The owner revokes")?.provenance ?? scene(olderStoryEvidence(), "Owner revocation")?.provenance).toBe("Local sandbox · direct owner call");
+  });
+
+  it("puts the recorded chain state of each scene's last stage in the strip", () => {
+    const strip = (i: number) => short()[i]?.strip;
+    expect(strip(1)).toMatchObject({ grant_status: "active", key_present: true, open_orders: 0 });
+    expect(strip(2)).toMatchObject({ grant_status: "active", key_present: true, open_orders: 1 });
+    expect(strip(3)).toMatchObject({ grant_status: "revoked", key_present: false, open_orders: 0 });
     const after = { usdc: (STORY.before.usdc - STORY.sell).toString(), wnear: (STORY.before.wnear + STORY.buy).toString() };
-    expect(strip("7")).toMatchObject({ owner_intents: after, owner_near: { usdc: "0", wnear: "0" } });
-    expect(strip("8")).toMatchObject({ owner_intents: { usdc: "0", wnear: "0" }, owner_near: after });
-    expect(scenes.find((s) => s.title === "Check it yourself")?.strip).toBeUndefined();
+    expect(strip(4)).toMatchObject({ owner_intents: { usdc: "0", wnear: "0" }, owner_near: after });
+    expect(short()[0]?.strip).toBeUndefined();
+    expect(short().at(-1)?.strip).toBeUndefined();
   });
 
   it("shows no ok pill over a step whose outcome values are absent, and never calls a scripted proposal model output", () => {
     const ev = storyEvidence();
     const unbuilt = { ...ev, assertions: ev.assertions.map((a) => (a.id === "trade-executed" ? { ...a, observed: { ...(a.observed as object), signed: { ...(a.observed as { signed: object }).signed, buy_amount: null } } } : a)) };
-    const two = shortScenes(unbuilt, bindDemo(unbuilt, null), false).find((s) => s.title.startsWith("2 ·"));
-    expect(two?.title).toBe("2 · The agent's trade: not in this evidence");
-    expect(two?.body).toContain('<span class="pill bad">not in this evidence</span>');
-    expect(two?.body).not.toContain('<span class="pill ok">');
+    const trade = short(unbuilt)[1];
+    expect(trade?.title).toBe("The agent's trade: not in this evidence");
+    expect(trade?.body).toContain('<span class="pill bad">not in this evidence</span> <b>2 · The agent&#39;s trade</b>');
+    expect(trade?.body.match(/<span class="pill ok">/g)).toHaveLength(1);
 
     const scripted = { ...ev, assertions: ev.assertions.map((a) => (a.id === "model-proposal-on-chain" ? { ...a, observed: { ...(a.observed as object), mode: "scripted", decision: null } } : a)) };
-    const first = shortScenes(scripted, bindDemo(scripted, null), false)[0];
-    expect(first?.captions[1]).toBe("One local sandbox run with labelled test doubles and a scripted proposal, not model output, in eight steps.");
-    expect(first?.body).not.toContain("replayed model recording");
-    expect(shortScenes(ev, bindDemo(ev, null), false)[0]?.captions[1]).toBe("One local sandbox run with labelled test doubles and a replayed model recording, in eight steps.");
+    const s = short(scripted);
+    expect(s[0]?.captions[1]).toBe("One local sandbox run with labelled test doubles and a scripted proposal, not model output.");
+    expect(s[0]?.body).not.toContain("replayed model recording");
+    expect(s[1]?.provenance).toBe("Local sandbox, test doubles · scripted proposal, not model output");
   });
 
   it("calls the trade scripted when the replayed model declined, in both cuts", () => {
@@ -101,37 +118,36 @@ describe("short video cut", () => {
       ),
     });
     const ev = declined(storyEvidence());
-    const short = shortScenes(ev, bindDemo(ev, null), false);
-    expect(short[0]?.captions[1]).toBe("One local sandbox run with labelled test doubles and a scripted proposal, not model output, in eight steps.");
-    expect(short.flatMap((s) => [s.body, ...s.captions]).join(" ")).not.toMatch(/replayed model recording|recorded genuine model output/i);
+    const s = short(ev);
+    expect(s[0]?.captions[1]).toBe("One local sandbox run with labelled test doubles and a scripted proposal, not model output.");
+    // The hostile scene may still carry the injected-prompt recording; the trade itself is never called model output.
+    expect(s.flatMap((x) => [x.body, ...x.captions]).join(" ")).not.toMatch(/replayed model recording|recorded genuine model output|recorded model output/i);
+    expect(s[1]?.provenance).toBe("Local sandbox, test doubles · scripted proposal, not model output");
     const walked = walkthroughScenes(declined(withDecision(storyEvidence())), null, bindDemo(ev, null), STEPS, {}, STORY.model);
-    const trade = walked.find((s) => s.title.startsWith("2a ·"));
+    const trade = walked.find((sc) => sc.title.startsWith("2a ·"));
     expect(trade?.title).toBe("2a · Scripted proposal, not model output");
     expect(trade?.captions.join(" ")).not.toMatch(/recorded genuine model output|replayed/i);
-    expect(walked.flatMap((s) => s.captions).join(" ")).not.toMatch(/replayed with no provider call|the model step is a replay/);
+    expect(walked.flatMap((sc) => sc.captions).join(" ")).not.toMatch(/replayed with no provider call|the model step is a replay/);
   });
 
   it("never titles or narrates a step that is not evidence with its success wording", () => {
     const ev = expiredStoryEvidence();
-    const scenes = shortScenes(ev, bindDemo(ev, null), false);
+    const scenes = short(ev);
     expect(scenes[0]?.title).toBe("Give an AI agent trading power. Keep the power to stop it.");
-    const six = scenes.find((s) => s.title.startsWith("6 ·"));
-    expect(six?.title).toBe("6 · The withheld order relayed: inconclusive");
-    expect(six?.body).toContain('<span class="pill warn">inconclusive</span>');
-    expect(six?.body).not.toContain('<span class="pill ok">');
-    expect(scenes.map((s) => s.title)).not.toContain("6 · The same order is rejected");
+    expect(scenes[3]?.title).toBe("The withheld order relayed: inconclusive");
+    expect(scenes[3]?.body).toContain('<span class="pill warn">inconclusive</span>');
+    expect(scenes.map((s) => s.title)).not.toContain("The owner revokes; the verifier rejects the held order");
     const failed = { ...storyEvidence(), assertions: storyEvidence().assertions.map((a) => (a.id === "revoke-through-console" ? { ...a, passed: false } : a)) };
-    const five = shortScenes(failed, bindDemo(failed, null), false).find((s) => s.title.startsWith("5 ·"));
-    expect(five?.title).toBe("5 · Owner revocation: did not hold");
-    expect(five?.body).toContain('<span class="pill bad">did not hold</span>');
-    expect(five?.captions.join(" ")).not.toContain("Key removal is confirmed");
+    const revoke = short(failed)[3];
+    expect(revoke?.title).toBe("Owner revocation: did not hold");
+    expect(revoke?.body).toContain('<span class="pill bad">did not hold</span>');
+    expect(revoke?.captions.join(" ")).not.toContain("Key removal is confirmed");
   });
 
   it("captions carry the run's numbers, derived from the evidence", () => {
     const text = captions().join("\n");
     const layers = "local validation 1, agent key permission 1, contract method check 1, policy validation 1, verifier 1";
     for (const expected of [
-      `The owner console reads it back from the sandbox: grant ${CONSOLE_RENDERED.grant_status}, key registered on the verifier, limits as granted.`,
       "After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed.",
       "$2,300.00",
       "($460.00)",
@@ -149,9 +165,18 @@ describe("short video cut", () => {
     expect(captions(true).join("\n")).not.toContain("no mainnet transaction executed");
   });
 
+  it("shows the console read-back on the slide, and narrates it only when it did not hold", () => {
+    const read = `read in the owner console: grant ${CONSOLE_RENDERED.grant_status}, key registered, limits as granted`;
+    expect(short()[1]?.body).toContain(read);
+    expect(captions().join(" ")).not.toContain("The owner console reads it back");
+    const inconclusive = short(olderStoryEvidence())[1];
+    expect(inconclusive?.title).toBe("The mandate and its limits: inconclusive");
+    expect(inconclusive?.captions.length).toBe(3);
+  });
+
   it("keeps every enforcement layer in the short slide and its caption", () => {
     const ev = storyEvidence();
-    const attack = shortScenes(ev, bindDemo(ev, null), false).find((sc) => sc.title.startsWith("3 ·"));
+    const attack = short(ev)[2];
     const counts = layerCounts(attackRows(ev));
     expect(counts).toHaveLength(5);
     for (const [layer, count] of counts) {
@@ -161,41 +186,54 @@ describe("short video cut", () => {
     expect(attack?.body).toContain("<dt>Injected prompt</dt>");
   });
 
-  it("fits the 45-90 s target", () => {
-    const total = captions().reduce((t, c) => t + shortPace(c), 0);
-    expect(total).toBeGreaterThanOrEqual(SHORT_RANGE_S[0]);
-    expect(total).toBeLessThanOrEqual(SHORT_RANGE_S[1]);
+  it("fits the 45-90 s target, with every reproduction path shown", () => {
+    for (const repro of [{ verify: null, quick: false }, { verify: "make verify, or node verify.mjs with no install", quick: true }]) {
+      const total = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false, repro).flatMap((s) => s.captions.flatMap(chunks)).reduce((t, c) => t + shortPace(c), 0);
+      expect(total).toBeGreaterThanOrEqual(SHORT_RANGE_S[0]);
+      expect(total).toBeLessThanOrEqual(SHORT_RANGE_S[1]);
+    }
+    expect(SHORT_RANGE_S[1]).toBeLessThanOrEqual(90);
   });
 
   it("refuses evidence missing a stage's assertion, or with a receipt no stage shows", () => {
     const ev = storyEvidence();
     const noRelay = { ...ev, assertions: ev.assertions.filter((a) => a.id !== "withheld-rejected") };
-    expect(() => shortScenes(noRelay, bindDemo(noRelay, null), false)).toThrow(/Withheld order relayed: assertion withheld-rejected/);
+    expect(() => short(noRelay)).toThrow(/Withheld order relayed: assertion withheld-rejected/);
     const noWithdrawal = { ...ev, assertions: ev.assertions.filter((a) => a.id !== "owner-withdrawal") };
-    expect(() => shortScenes(noWithdrawal, bindDemo(noWithdrawal, null), false)).toThrow(/Owner withdrawal to NEAR: assertion owner-withdrawal/);
+    expect(() => short(noWithdrawal)).toThrow(/Owner withdrawal to NEAR: assertion owner-withdrawal/);
     const extra = { ...ev, receipts: [...ev.receipts, { label: "SYNTHETIC unrelated call", outcome: "success" as const, detail: {} }] };
-    expect(() => shortScenes(extra, bindDemo(extra, null), false)).toThrow(/receipts not bound to any story stage: SYNTHETIC unrelated call/);
+    expect(() => short(extra)).toThrow(/receipts not bound to any story stage: SYNTHETIC unrelated call/);
   });
 
   it("states the certification only from the binding", () => {
-    const scenes = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false);
-    const closing = scenes.at(-1)?.body ?? "";
+    const closing = short().at(-1)?.body ?? "";
     expect(closing).toContain("Not certified for this demo");
     expect(closing).not.toMatch(/Certified for this demo:/);
   });
 
-  it("runs the demo after the full proof gate in the closing slide and caption", () => {
+  it("names only the reproduction paths the Makefile ships, and the repository as planned", () => {
     const ev = storyEvidence();
-    const closing = shortScenes(ev, bindDemo(ev, null), false).at(-1);
-    expect(closing?.body).toContain("<b>Quick demo:</b> <code>make demo</code>. <b>Full proof:</b> <code>make test &amp;&amp; make demo</code>.");
-    expect(closing?.captions.flatMap(chunks)).toContain("Quick demo: make demo. Full proof: make test && make demo.");
+    const none = shortScenes(ev, bindDemo(ev, null), false).at(-1);
+    expect(none?.captions.at(-1)).toBe("Demo: make demo. Full proof: make test && make demo.");
+    expect(none?.body).not.toMatch(/make verify|make quick/);
+    expect(none?.body).toContain(`<b>Repository and evidence page (planned, unpublished):</b> <code>${PLANNED_REPO}</code>`);
+    const all = shortScenes(ev, bindDemo(ev, null), false, { verify: "make verify, or node verify.mjs with no install", quick: true }).at(-1);
+    expect(all?.captions.at(-1)).toBe("Verify the evidence: make verify, or node verify.mjs with no install. Quick demo: make quick. Full proof: make test && make demo.");
+    expect(all?.captions.flatMap(chunks)).toHaveLength(2);
+    expect(all?.body).toContain("It checks the evidence bundle, not that the tests ran.");
+    expect(all?.body).toContain("<code>make quick</code> (prebuilt WASM, uncertified)");
+
+    const makefile = "test:\n\tcargo test\n\nverify:\n\tnode verify.mjs\n\nquick:\n\t$(TSX) src/quick/main.ts\n";
+    expect(reproFromMakefile(makefile)).toEqual({ verify: "make verify, or node verify.mjs with no install", quick: true });
+    expect(reproFromMakefile("verify:\n\t$(NODE) x\n")).toEqual({ verify: "make verify", quick: false });
+    expect(reproFromMakefile("test:\n\tnode verify.mjs\n")).toEqual({ verify: null, quick: false });
   });
 
   it("narrates an expired withheld order marked passed:false as inconclusive, not as rejected by revocation", () => {
     const ev = expiredStoryEvidence();
     const rejected = revocationStory(ev).find((st) => st.key === "rejected");
     expect(rejected?.outcome).toBe("inconclusive");
-    const text = shortScenes(ev, bindDemo(ev, null), false).flatMap((sc) => sc.captions.flatMap(chunks)).join("\n");
+    const text = short(ev).flatMap((sc) => sc.captions.flatMap(chunks)).join("\n");
     expect(text).not.toContain("before its deadline");
     expect(text).not.toContain("the signing key no longer exists");
     expect(text).toContain("Withheld order relayed is inconclusive in this run: the withheld order was relayed 4.5 s after its deadline");
@@ -210,10 +248,16 @@ describe("short video cut", () => {
     // Certification comes from the binding alone; it does not turn the failed stage into a pass.
     expect(closing?.body).toContain("Certified for this demo:");
     expect(closing?.captions.join(" ")).toContain("The withheld order relayed (inconclusive)");
-    const clean = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false).at(-1);
+    const clean = short().at(-1);
     // And a fully held story does not make an uncertified run certified.
     expect(clean?.body).toContain("Not certified for this demo");
     expect(clean?.captions.join(" ")).not.toContain("not shown as evidence");
+  });
+
+  it("never says instant or first, nor only in its own titles, labels and lead", () => {
+    const text = short().flatMap((s) => [s.title, s.body, s.provenance ?? "", ...s.captions]).join(" ");
+    expect(text).not.toMatch(/\binstant(ly)?\b|\bfirst\b/i);
+    expect([PROBLEM, LEAD, ...short().flatMap((s) => [s.title, s.provenance ?? ""])].join(" ")).not.toMatch(/\bonly\b/i);
   });
 
   it("walkthrough narrates the expired relay's outcome instead of its rejection", () => {
@@ -319,14 +363,14 @@ describe("short video cut", () => {
 
   it("states the agent's objective, the allocation outcome and the withheld order's identity", () => {
     const ev = storyEvidence();
-    const short = shortScenes(ev, bindDemo(ev, null), false);
-    expect(short[0]?.body).toContain("Agent's objective: keep the portfolio near 50% USDC / 50% wNEAR by USD value. An instruction to the agent, not a rule the contract enforces.");
+    const s = short(ev);
+    expect(s[0]?.body).toContain("Agent's objective: keep the portfolio near 50% USDC / 50% wNEAR by USD value. An instruction to the agent, not a rule the contract enforces.");
     // Shares derived in the page test from the same SYNTHETIC inputs: 2,000 USDC + 100 wNEAR at $1 / $3, then the trade.
-    const trade = short.find((sc) => sc.title === "2 · The agent makes a permitted trade");
-    expect(trade?.captions.join(" ")).toContain("A recorded synthetic-model-1 proposal, replayed, sells 12.34 USDC for 4 wNEAR, filled exactly as signed. USDC share: 86.96% to 86.43%, target 50%.");
+    const trade = s[1];
+    const tradeCaption = trade?.captions.find((c) => c.startsWith("A recorded"));
+    expect(tradeCaption).toContain("A recorded synthetic-model-1 proposal, replayed, sells 12.34 USDC for 4 wNEAR, filled exactly as signed. USDC share: 86.96% to 86.43%, target 50%.");
     // The allocation sentence does not add a caption frame to the short cut.
-    expect(trade?.captions.flatMap(chunks)).toHaveLength(1);
-    expect(trade?.labels).toContain("Recorded genuine model output");
+    expect(chunks(tradeCaption ?? "")).toHaveLength(1);
     const scenes = walk(ev);
     const withheld = scenes.find((sc) => sc.title.startsWith("4 ·"));
     expect(withheld?.captions.join(" ")).toContain("A scripted second order (order id 7) is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.");
@@ -336,11 +380,13 @@ describe("short video cut", () => {
     expect(scenes.find((sc) => sc.title.startsWith("2a ·"))?.captions.join(" ")).toContain("replayed with no provider call");
   });
 
-  it("opens both cuts with the README's lead line, verbatim, and the one-sentence claim", () => {
-    const first = shortScenes(storyEvidence(), bindDemo(storyEvidence(), null), false)[0];
+  it("opens the short cut with the problem and the walkthrough with the README's lead line", () => {
+    const first = short()[0];
     expect(first?.title).toBe("Give an AI agent trading power. Keep the power to stop it.");
-    expect(first?.body).toContain("once the owner&#39;s revocation is confirmed, every outstanding order signed under that grant fails");
-    expect(first?.body).not.toContain("Revoke the entire grant");
+    expect(first?.captions[0]).toBe(PROBLEM);
+    // The two sentences keep revocation and recovery apart and claim no key-free agent.
+    expect(LEAD).toBe("An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.");
+    expect(first?.body).not.toMatch(/voids everything|never holds a key/);
     const walkFirst = walk(storyEvidence())[0];
     expect(walkFirst?.title).toBe("Give an AI agent trading power. Keep the power to stop it.");
     expect(walkFirst?.captions[0]).toBe("Give an AI agent trading power. Keep the power to stop it.");

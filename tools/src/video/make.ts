@@ -1,7 +1,9 @@
-// Builds two captioned videos from the files of one actual run: a short cut (45-90 s) that opens with the lead line and
-// tells the owner's eight-step journey with a state strip, and the longer technical walkthrough of the same run, numbered
-// by the same steps, with an attack-log segment, gates and provenance. Captions only; any narration is added later by
-// the owner. Not part of make test, make demo or CI.
+// Builds two captioned videos from the files of one actual run: a short cut (45-90 s) that states the problem in one line,
+// then tells the run in four scenes with one provenance label each and a state strip (the agent trades; hostile requests
+// are refused and one signed order is held back; the owner revokes and the verifier rejects that order; the funds
+// return) and ends with where to verify; and the longer technical walkthrough of the same run, numbered by the owner's
+// eight steps, with an attack-log segment, gates and provenance. Every frame is checked to fit before it is captured.
+// Captions only; any narration is added later by the owner. Not part of make test, make demo or CI.
 //
 // Usage (from the repository root):
 //   make test                                      # required for certified gate results; optional for a demo-only cut
@@ -20,7 +22,8 @@
 //   - playwright-core from the globally installed playwright-cli: $(npm root -g)/@playwright/cli/node_modules/playwright-core
 //     (PLAYWRIGHT_CORE overrides the path).
 //
-// Every number shown is read from the input files; the script refuses a log that is not from the demo.json run.
+// Every number shown is read from the input files; the script refuses a log that is not from the demo.json run. The
+// short cut names `make verify` and `make quick` only when the Makefile has those targets.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -32,7 +35,7 @@ import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js"
 import type { Acceptance } from "../evidence/schema.js";
 import { liveView, loadLive } from "../page/mainnet.js";
 import { loadReportFiles } from "../page/casefiles.js";
-import { GATE_LABEL, HEADLINE, SUBTITLE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
+import { GATE_LABEL, HEADLINE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
 import { sandboxResults } from "../page/results.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, modelReason, ownerJourney, priceText, readable, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type JourneyStep, type StageKey } from "../page/story.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, ConsoleRevoke, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, demoSteps, type Screenshot, type StepState } from "../evidence/journey.js";
@@ -53,7 +56,7 @@ export interface LogStep {
   lines: { ok: boolean; gate: string; text: string }[];
 }
 
-function parseLog(text: string, ev: Evidence): { steps: LogStep[]; setupMs: number; storyMs: number } {
+export function parseLog(text: string, ev: Evidence): { steps: LogStep[]; setupMs: number; storyMs: number } {
   const steps: LogStep[] = [];
   for (const line of text.split("\n")) {
     const head = /^== (.+)$/.exec(line);
@@ -87,6 +90,8 @@ interface Scene {
   kind: Kind;
   /** Extra execution labels for this scene, e.g. recorded genuine model output or scripted attacks. */
   labels?: string[];
+  /** The scene's single provenance label; when set, it replaces the labels and the kind's labels on the slide. */
+  provenance?: string;
   title: string;
   body: string;
   captions: string[];
@@ -452,32 +457,80 @@ const STATUS_CLASS: Record<JourneyStep["outcome"], string> = { held: "ok", "not-
 const statusWord = (j: JourneyStep): string =>
   j.outcome === "held" ? j.done : j.outcome === "not-held" ? "did not hold" : j.outcome === "inconclusive" ? "inconclusive" : "not in this evidence";
 
-/** One journey step's slide: the rail, its recorded status and outcome line, its facts and the evidence it is bound to. */
-const stepBody = (steps: readonly JourneyStep[], i: number): string => {
-  const j = steps[i];
-  if (j === undefined) return "";
+/** The evidence a journey step is bound to: its transactions and its checks, condensed when there are many. */
+const boundOf = (j: JourneyStep): string[] => {
   const checks = j.stages.flatMap((s) => s.checks);
   const many = checks.length > 8;
-  const bound = [
+  return [
     ...j.stages.flatMap((s) => s.receipts.map(({ receipt }) => `tx ${esc(shortHash(receipt.tx_hash ?? receipt.label))}${receipt.outcome === "failure" ? " (failed)" : ""}`)),
     ...(many ? [`${String(checks.filter((c) => c.held === true).length)} of ${String(checks.length)} checks held`] : []),
     ...checks.filter((c) => !many || c.held !== true).map((c) => `${esc(c.id)} ${c.held === true ? "held" : "did not hold"}`),
   ];
-  const result = j.result ?? "";
-  // Long outcome lines shrink so the facts below stay on the slide.
-  const size = result.length > 150 ? " small" : result.length > 80 ? " medium" : "";
-  const facts = j.stages.flatMap((s) => s.facts);
-  const details = j.key === "attacks"
-    ? `<dl class="attack-facts">${facts.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>`
-    : kv(facts.slice(0, size === " small" ? 3 : 4));
-  return `${rail(steps, i)}<p class="status-line"><span class="pill ${STATUS_CLASS[j.outcome]}">${esc(statusWord(j))}</span></p><p class="headline${size}">${esc(result)}</p>${details}<p class="bound">Evidence: ${bound.join(" · ")}</p>`;
 };
 
+/** One short-cut scene's slide: the rail, then each of its journey steps with its recorded status and outcome line. */
+const beatsBody = (steps: readonly JourneyStep[], of: readonly number[]): string => {
+  const beats = of.flatMap((i) => {
+    const j = steps[i];
+    if (j === undefined) return [];
+    const facts = j.key === "attacks" ? `<dl class="attack-facts">${j.stages.flatMap((s) => s.facts).map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>` : "";
+    return [`<div class="beat"><p class="status-line"><span class="pill ${STATUS_CLASS[j.outcome]}">${esc(statusWord(j))}</span> <b>${String(j.n)} · ${esc(j.outcome === "held" ? j.title : j.neutral)}</b></p><p class="beat-line">${esc(j.result ?? "")}</p>${facts}</div>`];
+  });
+  const bound = of.flatMap((i) => (steps[i] === undefined ? [] : boundOf(steps[i])));
+  return `${rail(steps, of.at(-1) ?? -1)}${beats.join("")}<p class="bound">Evidence: ${bound.join(" · ")}</p>`;
+};
+
+/** The problem the short cut opens with, in one line. */
+export const PROBLEM = "An agent holding a trading key can exceed your limits, and orders it already signed can outlive your decision to stop it.";
 /**
- * The short cut: the lead line, the owner's eight journey steps bound to this run with a state strip, and how to check
- * it. Throws when any stage lacks its evidence.
+ * The product in two sentences. Revocation and recovery are separate owner calls, orders executed before confirmed
+ * removal stay executed, and the agent holds a propose-only function-call key, so the wording claims none of those away.
  */
-export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: boolean): Scene[] {
+export const LEAD =
+  "An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.";
+/** Planned, unpublished repository URL; always shown with PLANNED_LABEL. */
+export const PLANNED_REPO = "https://github.com/gryyny/bounded-mandate";
+
+/** Reproduction paths the product actually ships, read from its Makefile. */
+export interface Repro {
+  /** The toolchain-free evidence check: "make verify", plus its direct node command when the recipe names one. */
+  verify: string | null;
+  /** Whether `make quick` (prebuilt, uncertified quick demo) exists. */
+  quick: boolean;
+}
+
+export function reproFromMakefile(makefile: string): Repro {
+  const recipe = (target: string): string[] | null => {
+    const lines = makefile.split("\n");
+    const at = lines.findIndex((l) => new RegExp(`^${target}:`).test(l));
+    if (at < 0) return null;
+    const body: string[] = [];
+    for (const l of lines.slice(at + 1)) {
+      if (!l.startsWith("\t")) break;
+      body.push(l.trim());
+    }
+    return body;
+  };
+  const verify = recipe("verify");
+  const script = verify?.map((l) => /\bnode (\S+\.mjs)/.exec(l)?.[1]).find((m) => m !== undefined);
+  return { verify: verify === null ? null : script === undefined ? "make verify" : `make verify, or node ${script} with no install`, quick: recipe("quick") !== null };
+}
+
+/** The short cut's scenes: which journey steps each tells, in the order the cut tells them. */
+type Beat = "trade" | "hostile" | "revoke" | "return";
+const SHORT_BEATS: readonly { key: Beat; title: string; steps: readonly JourneyStep["key"][] }[] = [
+  { key: "trade", title: "The agent trades inside fixed limits", steps: ["mandate", "trade"] },
+  { key: "hostile", title: "Hostile requests are refused; one signed order is held back", steps: ["attacks", "withheld"] },
+  { key: "revoke", title: "The owner revokes; the verifier rejects the held order", steps: ["revoked", "rejected"] },
+  { key: "return", title: "The funds return to the owner", steps: ["recovered", "withdrawn"] },
+];
+
+/**
+ * The short cut: the problem in one line, then the agent trades, hostile requests are refused while one signed order is
+ * held back, the owner revokes and the verifier rejects that order, the funds return, and where to verify. One
+ * provenance label per scene. Throws when any stage lacks its evidence.
+ */
+export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: boolean, repro: Repro = { verify: null, quick: false }): Scene[] {
   const stages = revocationStory(ev);
   const missing = stages.flatMap((s) => s.missing.map((m) => `${s.title}: ${m}`));
   if (missing.length > 0) throw new Error(`demo.json lacks evidence for the short cut: ${missing.join("; ")}`);
@@ -485,8 +538,10 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   if (unbound.length > 0) throw new Error(`receipts not bound to any story stage: ${unbound.join(", ")}`);
   const steps = ownerJourney(ev, stages);
   const status = certification(binding);
+  const step = (key: JourneyStep["key"]): JourneyStep | undefined => steps.find((j) => j.key === key);
+  const labelled = (key: JourneyStep["key"], label: string): boolean => step(key)?.labels.includes(label) === true;
   // "Replayed model recording" only when the trade's proposal is recorded model output; a scripted one is never called that.
-  const replayed = steps.find((j) => j.key === "trade")?.labels.includes("recorded genuine model output") === true && ev.environment.model_mode === "recorded-model";
+  const replayed = labelled("trade", "recorded genuine model output") && ev.environment.model_mode === "recorded-model";
   const what = replayed ? "One local sandbox run with labelled test doubles and a replayed model recording" : "One local sandbox run with labelled test doubles and a scripted proposal, not model output";
   const mainnet = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run: pending approval — no mainnet transaction has been executed.";
   const notShown = steps.filter((j) => j.outcome !== "held");
@@ -494,40 +549,55 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   const storyCaption =
     notShown.length === 0 ? "" : `In this run ${String(notShown.length)} of ${String(steps.length)} journey steps are not shown as evidence: ${notShown.map((j) => `${j.neutral} (${j.outcome})`).join(", ")}. `;
   const mainnetCaption = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run pending approval; no mainnet transaction executed.";
+  // One provenance label per scene, from the labels its stages carry.
+  const provenance: Record<Beat, string> = {
+    trade: `Local sandbox, test doubles · ${replayed ? "recorded model output, replayed" : "scripted proposal, not model output"}`,
+    hostile: `Local sandbox · scripted attacks and order${labelled("attacks", "recorded genuine model output") ? ", one replayed model recording" : ""}`,
+    revoke: `Local sandbox · ${labelled("revoked", OWNER_CONTROLS_LABEL) ? "owner console, test signer, not a wallet" : "direct owner call"}`,
+    return: "Local sandbox · oracle and MPC test doubles switched off",
+  };
+  const repro_ = [
+    ...(repro.verify === null ? [] : [`Verify the evidence: ${repro.verify}.`]),
+    ...(repro.quick ? ["Quick demo: make quick."] : ["Demo: make demo."]),
+    "Full proof: make test && make demo.",
+  ].join(" ");
   return [
     {
       kind: "summary",
-      labels: DEMO_LABELS,
+      provenance: `Summary of one local sandbox run${mainnetShown ? "" : " · no mainnet"}`,
       title: HEADLINE,
-      body: `<p class="claim">${esc(SUBTITLE)}</p>${rail(steps, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">${esc(what)}. Every number shown comes from out/evidence/demo.json.</p>`,
-      // The lead line alone, then what the run is.
-      captions: [HEADLINE, `${what}, in eight steps.`],
+      body: `<p class="claim problem">${esc(PROBLEM)}</p><p class="claim">${esc(LEAD)}</p>${rail(steps, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">${esc(what)}. Every number shown comes from out/evidence/demo.json.</p>`,
+      // The problem alone, then what the run is.
+      captions: [PROBLEM, `${what}.`],
     },
-    ...steps.map((j, i): Scene => {
-      const last = j.stages.at(-1);
+    ...SHORT_BEATS.map((beat, b): Scene => {
+      const of = beat.steps.flatMap((k) => { const i = steps.findIndex((j) => j.key === k); return i < 0 ? [] : [i]; });
+      const js = of.flatMap((i) => (steps[i] === undefined ? [] : [steps[i]]));
+      const off = js.filter((j) => j.outcome !== "held");
+      const last = js.at(-1)?.stages.at(-1);
       return {
         kind: "demo",
-        labels: j.labels.map(sentenceCase),
-        title: `${String(j.n)} · ${j.outcome === "held" ? j.title : `${j.neutral}: ${statusWord(j)}`}`,
-        body: stepBody(steps, i),
-        captions: j.stages.map((s) => s.caption ?? ""),
+        provenance: provenance[beat.key],
+        title: off.length === 0 ? beat.title : off.map((j) => `${j.neutral}: ${statusWord(j)}`).join("; "),
+        body: beatsBody(steps, of),
+        // The console read-back is on the slide; its caption is narrated only when it did not hold.
+        captions: js.flatMap((j) => j.stages.filter((s) => s.key !== "console" || s.outcome !== "held").map((s) => s.caption ?? "")),
         strip: last?.state ?? null,
-        stage: `${String(j.n)} of ${String(steps.length)} · ${j.rail}`,
+        stage: `${String(b + 1)} of ${String(SHORT_BEATS.length)} · ${js.map((j) => j.rail).join(", ")}`,
       };
     }),
     {
       kind: "summary",
-      title: "Check it yourself",
+      provenance: `Commands · URLs ${PLANNED_LABEL}`,
+      title: "Where to verify",
       body: `${notShown.length === 0 ? "" : `<p class="note">${esc(storyCaption)}</p>`}${list([
-        "<b>Watch</b> this video, or read the evidence page: each step links to its transactions and checks.",
-        `<b>Inspect mainnet receipts:</b> ${esc(mainnet)}`,
-        "<b>Quick demo:</b> <code>make demo</code>. <b>Full proof:</b> <code>make test &amp;&amp; make demo</code>. No funds or model key needed.",
-        `<b>Planned hosting (${esc(PLANNED_LABEL)}):</b> <code>${esc(PLANNED_URLS.page)}</code>, console <code>${esc(PLANNED_URLS.console)}</code>`,
+        ...(repro.verify === null ? [] : [`<b>Check the committed evidence, no toolchain:</b> <code>${esc(repro.verify)}</code>. It checks the evidence bundle, not that the tests ran.`]),
+        ...(repro.quick ? ["<b>Quick demo:</b> <code>make quick</code> (prebuilt WASM, uncertified)."] : ["<b>Demo:</b> <code>make demo</code>."]),
+        "<b>Full proof:</b> <code>make test &amp;&amp; make demo</code>. No funds or model key needed.",
+        `<b>Mainnet receipts:</b> ${esc(mainnet)}`,
+        `<b>Repository and evidence page (${esc(PLANNED_LABEL)}):</b> <code>${esc(PLANNED_REPO)}</code>, <code>${esc(PLANNED_URLS.page)}</code>`,
       ])}<p class="note">${esc(status.sentence)}</p>`,
-      captions: [
-        `${storyCaption}Signed orders can still execute before confirmed key removal. ${mainnetCaption}`,
-        "Quick demo: make demo. Full proof: make test && make demo.",
-      ],
+      captions: [`${storyCaption}Signed orders can still execute before confirmed key removal. ${mainnetCaption}`, repro_],
     },
   ];
 }
@@ -550,12 +620,14 @@ table.kv td { font: 24px/1.35 "SF Mono", Menlo, monospace; word-break: break-wor
 table.log { border-collapse: collapse; width: 100%; font-size: 22px; } table.log td { padding: 3px 18px 3px 0; vertical-align: top; border-bottom: 1px solid #2a3039; } table.log code { font-size: 19px; }
 table.baseline th { text-align: left; color: #a39d8f; } table.baseline td { padding-block: 4px; }
 table.cases { align-self: start; border-collapse: collapse; line-height: 1.2; }
-table.cases th { text-align: left; padding: 4px 12px 4px 0; font: 700 19px/1.15 "SF Mono", Menlo, monospace; vertical-align: top; }
+table.cases th { text-align: left; padding: 2px 12px 2px 0; font: 700 19px/1.15 "SF Mono", Menlo, monospace; vertical-align: top; }
 .pill { display: inline-block; font: 600 17px "SF Mono", Menlo, monospace; padding: 4px 8px; margin: 2px; border-radius: 4px; border: 2px solid; }
 .pill.ok { color: #6fcf9f; } .pill.warn { color: #e6b450; } .pill.bad { color: #ff8a7a; } .pill.none { color: #9a958a; border-style: dashed; }
 table.cases .pill { font-size: 16px; padding: 2px 5px; margin: 1px; }
 .reason { margin: 10px 48px 0; font: 600 20px/1.3 "SF Mono", Menlo, monospace; color: #e0866f; max-height: 54px; overflow: hidden; }
-.claim { font-size: 40px; line-height: 1.35; max-width: 1600px; }
+.claim { font-size: 40px; line-height: 1.35; max-width: 1600px; } .claim.problem { color: #e0866f; margin-bottom: 0; }
+.beat { margin: 0 0 12px; } .beat .status-line { margin: 0 0 4px; font-size: 30px; } .beat-line { font-size: 30px; line-height: 1.25; margin: 0 0 6px; }
+.beat .attack-facts { gap: 6px 14px; } .beat .attack-facts > div { padding: 5px 12px; } .beat .attack-facts dt, .beat .attack-facts dd { font-size: 20px; }
 .note { font-size: 22px; color: #e6b450; margin: 4px 0 8px; } table.cases small { font: 500 15px -apple-system, sans-serif; color: #a39d8f; }
 img.shot { width: 100%; height: 690px; object-fit: contain; object-position: top center; border: 1px solid #2a3039; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; } .split table.kv td { font-size: 21px; } .split li { font-size: 20px; margin: 3px 0; }
@@ -591,8 +663,8 @@ function stripHtml(st: StepState | null, stage: string): string {
 }
 
 function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
-  const labels = [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])];
-  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary|Owner action|Owner controls|Owner console|Read-only)/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
+  const labels = s.provenance === undefined ? [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])] : [s.provenance];
+  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary|Owner action|Owner controls|Owner console|Read-only)|·/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
   const status = certification(binding);
   const reason = binding.certified ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
   const strip = s.strip === undefined ? "" : stripHtml(s.strip, s.stage ?? s.title);
@@ -603,6 +675,7 @@ function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
 
 interface PwPage {
   setContent(html: string): Promise<void>;
+  evaluate(expression: string): Promise<unknown>;
   screenshot(opts: { path?: string; clip?: { x: number; y: number; width: number; height: number }; fullPage?: boolean }): Promise<Buffer>;
 }
 interface PwBrowser {
@@ -613,7 +686,7 @@ interface PwCore {
   chromium: { launch(opts: { channel?: string; headless: boolean }): Promise<PwBrowser> };
 }
 
-function loadPlaywright(): PwCore {
+export function loadPlaywright(): PwCore {
   const path = process.env.PLAYWRIGHT_CORE ?? join(execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim(), "@playwright/cli/node_modules/playwright-core");
   return createRequire(import.meta.url)(path) as PwCore;
 }
@@ -649,7 +722,7 @@ export const chunks = (caption: string): string[] => {
 };
 /** Seconds on screen for a caption, in whole video frames; the short cut reads at about 3 words per second. */
 const wholeFrames = (s: number): number => Math.round(s * FPS) / FPS;
-const walkthroughPace = (text: string): number => wholeFrames(Math.min(9, Math.max(6, text.split(" ").length / 2.6 + 1.5)));
+export const walkthroughPace = (text: string): number => wholeFrames(Math.min(9, Math.max(6, text.split(" ").length / 2.6 + 1.5)));
 export const shortPace = (text: string): number => wholeFrames(Math.min(7.5, Math.max(5, text.split(" ").length / 3 + 0.8)));
 export const SHORT_RANGE_S: readonly [number, number] = [45, 90];
 
@@ -667,7 +740,7 @@ interface Frame {
   kind: Kind;
 }
 
-interface Cut {
+export interface Cut {
   name: "short" | "walkthrough";
   mp4: string;
   srt: string;
@@ -678,7 +751,27 @@ interface Cut {
   range: readonly [number, number] | null;
 }
 
-async function renderFrames(slide: PwPage, cut: Cut, binding: DemoBinding): Promise<Frame[]> {
+/**
+ * Evaluated in the slide (tools/ has no DOM types, hence a string): what does not fit. Content clipped inside the body, a
+ * state-strip cell or the reason line, or regions that overlap (chips and title pushing the body into the strip, or a
+ * long caption rising over either).
+ */
+export const FRAME_MISFIT = `(() => {
+  const out = [];
+  const q = (sel) => Array.from(document.querySelectorAll(sel));
+  const box = (sel) => q(sel)[0]?.getBoundingClientRect();
+  for (const [sel, name] of [[".body", "slide body"], [".strip > div", "state strip cell"], [".reason", "certification reason"]]) {
+    for (const el of q(sel)) if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) out.push(name + " clipped (" + el.scrollHeight + " > " + el.clientHeight + " px)");
+  }
+  const body = box(".body"), strip = box(".strip"), caption = box(".caption");
+  if (body && strip && body.bottom > strip.top + 1) out.push("slide body overlaps the state strip");
+  if (body && caption && body.bottom > caption.top + 1) out.push("slide body overlaps the caption");
+  if (strip && caption && strip.bottom > caption.top + 1) out.push("caption overlaps the state strip");
+  if (caption && caption.bottom > window.innerHeight + 1) out.push("caption runs off the frame");
+  return out;
+})()`;
+
+export async function renderFrames(slide: PwPage, cut: Cut, binding: DemoBinding): Promise<Frame[]> {
   rmSync(cut.framesDir, { recursive: true, force: true });
   mkdirSync(cut.framesDir, { recursive: true });
   const frames: Frame[] = [];
@@ -686,6 +779,8 @@ async function renderFrames(slide: PwPage, cut: Cut, binding: DemoBinding): Prom
     for (const caption of scene.captions.flatMap(chunks)) {
       const file = join(cut.framesDir, `${String(frames.length + 1).padStart(3, "0")}.png`);
       await slide.setContent(slideHtml(scene, caption, binding));
+      const misfit = (await slide.evaluate(FRAME_MISFIT)) as string[];
+      if (misfit.length > 0) throw new Error(`${cut.name} frame ${String(frames.length + 1)} ("${scene.title}") does not fit: ${misfit.join("; ")}`);
       await slide.screenshot({ path: file });
       frames.push({ file, seconds: cut.pace(caption), caption, title: scene.title, kind: scene.kind });
     }
@@ -701,7 +796,7 @@ interface CutOutput {
   frames: { file: string; seconds: number; kind: Kind; title: string; caption: string }[];
 }
 
-function encode(cut: Cut, frames: readonly Frame[]): CutOutput {
+export function encode(cut: Cut, frames: readonly Frame[]): CutOutput {
   if (frames.length === 0) throw new Error(`${cut.name}: no frames`);
   // One looped input per frame, each exactly its caption's length, so the SRT timings match the video.
   const inputs = frames.flatMap((f) => ["-loop", "1", "-framerate", String(FPS), "-t", f.seconds.toFixed(4), "-i", f.file]);
@@ -747,6 +842,7 @@ async function main(): Promise<void> {
   if (sha256(modelFixture) !== ev.source.fixtures["model/normal.json"]) throw new Error("fixtures/model/normal.json differs from the hash recorded in demo.json");
   const modelName = (JSON.parse(modelFixture.toString("utf8")) as { model: string }).model;
   const mainnetShown = liveView(loadLive(REPO_ROOT)).kind === "mainnet";
+  const repro = reproFromMakefile(readFileSync(join(REPO_ROOT, "Makefile"), "utf8"));
 
   const browser = await loadPlaywright().chromium.launch({ channel: process.env.PW_CHANNEL ?? "chrome", headless: true });
   const outputs: Partial<Record<Cut["name"], CutOutput>> = {};
@@ -754,7 +850,7 @@ async function main(): Promise<void> {
     const { shots } = consoleShots(ev);
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
     const cuts: Cut[] = [
-      { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown), pace: shortPace, range: SHORT_RANGE_S },
+      { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown, repro), pace: shortPace, range: SHORT_RANGE_S },
       { name: "walkthrough", mp4: join(OUT, "bounded-mandate-demo.mp4"), srt: join(OUT, "captions.srt"), framesDir: join(OUT, "frames"), scenes: walkthroughScenes(ev, acc, binding, steps, shots, modelName, results), pace: walkthroughPace, range: null },
     ];
     for (const cut of cuts) outputs[cut.name] = encode(cut, await renderFrames(slide, cut, binding));
@@ -773,6 +869,7 @@ async function main(): Promise<void> {
     acceptance: acc === null ? null : { run_id: acc.run_id, revision: acc.revision, certified: acc.certified, complete: acc.complete },
     certification: { certified_for_this_demo: binding.certified, reasons: binding.reasons, inputs: binding.inputs },
     mainnet_receipts_shown: mainnetShown,
+    repro_paths_shown: repro,
     sources: {
       ...Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),
       ...Object.fromEntries(Object.entries(consoleShots(ev).files).map(([k, f]) => [k, f])),
