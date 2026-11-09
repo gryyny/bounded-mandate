@@ -9,6 +9,8 @@
 //! `mpc::parse_public_key`. `ext` is private, so the same two adapter calls and the same host
 //! function are exercised here directly, with `ed25519-dalek` as an independent verifier.
 
+mod common;
+
 use std::path::PathBuf;
 
 use bounded_mandate::protocol::ProtocolError;
@@ -16,6 +18,7 @@ use bounded_mandate::protocol::mpc::{
     DOMAIN_ID_ED25519, SIGN_DEPOSIT, SignPayload, SignRequest, parse_public_key, parse_signature,
     sign_args,
 };
+use common::evidence;
 use ed25519_dalek::{Signature, VerifyingKey};
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::{CurveType, PublicKey, env};
@@ -97,7 +100,6 @@ fn independent_verify(response: &[u8], pk: &PublicKey, payload: &[u8]) -> bool {
 }
 
 /// The provenance record binds the fixture bytes it describes.
-#[test]
 fn provenance_matches_fixture() {
     let prov: Value = serde_json::from_slice(
         &std::fs::read(fixtures_dir().join("v1-signer-eddsa-sign.provenance.json")).unwrap(),
@@ -114,7 +116,6 @@ fn provenance_matches_fixture() {
 
 /// The recorded request has the shape the contract sends: same JSON wrapper, domain, deposit and
 /// 32-byte Eddsa payload; `sign_args` reproduces it from the recorded path and payload.
-#[test]
 fn recorded_request_matches_contract_wire_format() {
     let doc = fixture();
     let receipt = &doc["sign_receipt"];
@@ -154,7 +155,6 @@ fn recorded_request_matches_contract_wire_format() {
 
 /// The signer's resolved value decodes with the contract's decoder and verifies under the derived
 /// key over the recorded payload, both through the contract's host call and independently.
-#[test]
 fn recorded_response_decodes_and_verifies() {
     let r = recorded();
     let doc = fixture();
@@ -174,7 +174,6 @@ fn recorded_response_decodes_and_verifies() {
 }
 
 /// Negative controls: each single alteration of the fixture is refused.
-#[test]
 fn corrupted_fixture_fails() {
     let r = recorded();
     let sig = parse_signature(&r.response).unwrap();
@@ -232,4 +231,35 @@ fn corrupted_fixture_fails() {
         Err(ProtocolError::Malformed("signature response"))
     );
     assert!(!contract_accepts(cut, &r.key, &r.payload));
+}
+
+/// One report for the whole case, written only after every check above has passed in this process.
+#[test]
+fn conformance() {
+    provenance_matches_fixture();
+    recorded_request_matches_contract_wire_format();
+    recorded_response_decodes_and_verifies();
+    corrupted_fixture_fails();
+    let doc = fixture();
+    let fixture_bytes = std::fs::read(fixtures_dir().join("v1-signer-eddsa-sign.json")).unwrap();
+    evidence::write(
+        "SIGNER",
+        "conformance",
+        true,
+        "unit-vm",
+        serde_json::json!({
+            "input": "recorded mainnet v1.signer response (read-only), checked in the near-sdk unit VM",
+            "fixture": "fixtures/signer/v1-signer-eddsa-sign.json",
+            "fixture_sha256": hex::encode(Sha256::digest(&fixture_bytes)),
+            "transaction": doc["transaction"]["hash"],
+            "signer": doc["signer"],
+            "checks": [
+                "provenance binds the fixture bytes",
+                "recorded request equals the contract's sign_args wire format (domain 1, one yocto)",
+                "recorded response decodes with mpc::parse_signature and verifies under the derived key over the recorded payload (host ed25519_verify and ed25519-dalek)",
+                "altered signature bytes, altered payload bytes, a sibling-path key and malformed encodings are refused",
+            ],
+            "limits": "A third-party request recorded read-only; the mandate's own path, NEP-413 prehash and the Intents verifier's acceptance of this signature are not exercised.",
+        }),
+    );
 }

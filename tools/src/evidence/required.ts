@@ -32,6 +32,8 @@ export const REQUIRED_CASES = {
    * remove the key and resume with a fresh key, remove and re-add the same key.
    */
   COMPARE: ["revocation-alternatives"],
+  /** The contract's MPC decoder and key check against a recorded mainnet v1.signer EdDSA response (unit VM, read-only fixture). */
+  SIGNER: ["conformance"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */
