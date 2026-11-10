@@ -141,7 +141,8 @@ const OWNER = "owner.synthetic.near";
 const AGENT = "agent.synthetic.near";
 const FILLER = "filler.synthetic.near";
 const VERIFIER = "intents.near";
-const USDC = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+const USDC_TOKEN = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+const USDC = `nep141:${USDC_TOKEN}`;
 const WNEAR = "nep141:wrap.near";
 export const GRANT_KEY = "ed25519:SyntheticGrantKey1111111111111111111111111111";
 /** A key that was never a grant key of the synthetic mandate. */
@@ -158,6 +159,8 @@ interface TxModel {
   signer: string;
   receiver: string;
   method: string;
+  /** JSON arguments of the transaction's function call, as the chain shows them. */
+  args: Record<string, unknown>;
   height: number;
   /** One receipt per block after inclusion, each a function call (default: the transaction's method, then a callback). */
   receipts: { executor: string; error?: string; method?: string; args?: Record<string, unknown> }[];
@@ -176,22 +179,106 @@ export interface RunOptions {
   removalReceiver?: string;
   /** Receiver of the revoke transaction (default: the mandate). */
   revokeReceiver?: string;
+  /**
+   * Both recover transactions fail on the verifier and the assets stay in the mandate. The receipts and the recorded
+   * balances say so, but the step assertions are still marked passed (a record that contradicts itself and the chain).
+   */
+  recoverFails?: boolean;
+  /**
+   * The USDC recover step has two transactions: the first fails, a second one succeeds, recorded as attempt 2. The live
+   * runner never does this (a failed recover stops the run), so it is a record no run can have produced.
+   */
+  recoverRetried?: boolean;
+  /** A refused_proposal step after the proposal: "refused" fails on the mandate as it must, "accepted" succeeds on chain. */
+  refusedProposal?: "refused" | "accepted";
+  /**
+   * A final USDC withdraw step whose first transaction failed and whose retry succeeded, in the shape of a resumed run:
+   * the retry is "step <n> withdraw" with attempt 2, every earlier transaction is "reconcile <kind>" without a step.
+   */
+  withdrawRetried?: boolean;
 }
 
-function txs(o: RunOptions = {}): TxModel[] {
-  const panic = (text: string): string => `{"ActionError":{"index":0,"kind":{"FunctionCallError":{"ExecutionError":"Smart contract panicked: ${text}"}}}}`;
+type TxSpec = Pick<TxModel, "signer" | "receiver" | "method" | "height" | "receipts"> & { name: string; args?: Record<string, unknown>; detail?: Record<string, unknown> };
+interface StepModel {
+  kind: string;
+  txs: TxSpec[];
+  /** One assertion per attempt, in order: what it observed and whether it passed (default true). */
+  attempts: { observed: Record<string, unknown>; passed?: boolean }[];
+}
+
+const panic = (text: string): string => `{"ActionError":{"index":0,"kind":{"FunctionCallError":{"ExecutionError":"Smart contract panicked: ${text}"}}}}`;
+
+/** Block in which the USDC recovery reaches the owner. */
+const usdcRecoveredAt = (o: RunOptions): number => (o.recoverFails === true ? Number.POSITIVE_INFINITY : o.recoverRetried === true ? 157 : 152);
+const WITHDRAWN_AT = 181;
+
+/** The steps of the synthetic manifest, in order, with the transactions and verifications of each. */
+function steps(o: RunOptions = {}): StepModel[] {
   const rejection = panic(`public key '${o.rejectedKey ?? GRANT_KEY}' doesn't exist for account '${MANDATE}'`);
   const removal = { executor: o.removalReceiver ?? VERIFIER, method: "remove_public_key", args: { public_key: GRANT_KEY } };
   const revoke = o.revokeFails === true ? [{ executor: MANDATE, error: panic("SYNTHETIC revoke failure") }] : [{ executor: MANDATE }, removal];
-  // Labels as the live runner writes them: "step <n> <kind>".
+  const recovery = o.recoverFails === true ? [{ executor: MANDATE }, { executor: VERIFIER, error: panic("SYNTHETIC recovery transfer failed") }] : [{ executor: MANDATE }, { executor: VERIFIER }];
+  const held = { usdc: "5000000", wnear: ONE_NEAR };
+  const none = { usdc: "0", wnear: "0" };
+  const recover = (asset: "usdc" | "wnear", name: string, height: number, receipts = recovery): TxSpec => ({ name, signer: OWNER, receiver: MANDATE, method: "recover", args: { asset }, height, receipts, detail: { asset } });
+  const afterUsdc = o.recoverFails === true ? { mandate_after: held, owner_after: none } : { mandate_after: { usdc: "0", wnear: ONE_NEAR }, owner_after: { usdc: "5000000", wnear: "0" } };
+  const afterWnear = o.recoverFails === true ? { mandate_after: held, owner_after: none } : { mandate_after: none, owner_after: held };
+  const refused: StepModel[] =
+    o.refusedProposal === undefined
+      ? []
+      : [
+          {
+            kind: "refused_proposal",
+            txs: [{ name: "refused-proposal", signer: AGENT, receiver: MANDATE, method: "propose_order", height: 115, receipts: [o.refusedProposal === "refused" ? { executor: MANDATE, error: panic("SYNTHETIC policy refusal") } : { executor: MANDATE }], detail: { expected_error: "SYNTHETIC policy refusal" } }],
+            attempts: [{ observed: { refused: true } }],
+          },
+        ];
+  const withdrawal = { token: USDC_TOKEN, receiver_id: OWNER, amount: "5000000" };
+  const withdraw: StepModel[] =
+    o.withdrawRetried !== true
+      ? []
+      : [
+          {
+            kind: "withdraw",
+            txs: [
+              { name: "withdraw-usdc", signer: OWNER, receiver: VERIFIER, method: "ft_withdraw", args: withdrawal, height: 170, receipts: [{ executor: VERIFIER, error: panic("SYNTHETIC withdrawal failure") }] },
+              { name: "withdraw-usdc-2", signer: OWNER, receiver: VERIFIER, method: "ft_withdraw", args: withdrawal, height: 180, receipts: [{ executor: VERIFIER }, { executor: USDC_TOKEN, method: "ft_transfer" }, { executor: VERIFIER }], detail: { asset: "usdc", amount: "5000000", outside_recovery: true, attempt: 2 } },
+            ],
+            attempts: [
+              { observed: { asset: "usdc", token: USDC_TOKEN, classification: "failed", intents_after: held, token_after: "0" }, passed: false },
+              { observed: { asset: "usdc", token: USDC_TOKEN, classification: "withdrawn", intents_after: { usdc: "0", wnear: ONE_NEAR }, token_after: "5000000" } },
+            ],
+          },
+        ];
   return [
-    { label: "step 1 grant", hash: txHash("grant"), signer: OWNER, receiver: MANDATE, method: "grant", height: 100, receipts: [{ executor: MANDATE }, { executor: VERIFIER, method: "add_public_key", args: { public_key: GRANT_KEY } }], detail: { step: 1 } },
-    { label: "step 2 propose", hash: txHash("propose"), signer: AGENT, receiver: MANDATE, method: "propose_order", height: 110, receipts: [{ executor: MANDATE }], detail: { step: 2 } },
-    { label: "step 3 revoke", hash: txHash("revoke"), signer: OWNER, receiver: o.revokeReceiver ?? MANDATE, method: "revoke", height: 130, receipts: revoke, detail: { step: 3, imported: true } },
-    { label: "step 4 relay_withheld", hash: txHash("relay"), signer: FILLER, receiver: VERIFIER, method: "execute_intents", height: 140, receipts: [{ executor: VERIFIER, error: rejection }], detail: { step: 4, withheld_relay: true } },
-    { label: "step 5 recover", hash: txHash("recover-usdc"), signer: OWNER, receiver: MANDATE, method: "recover", height: 150, receipts: [{ executor: MANDATE }, { executor: VERIFIER }], detail: { step: 5, asset: "usdc" } },
-    { label: "step 6 recover", hash: txHash("recover-wnear"), signer: OWNER, receiver: MANDATE, method: "recover", height: 160, receipts: [{ executor: MANDATE }, { executor: VERIFIER }], detail: { step: 6, asset: "wnear" } },
+    { kind: "grant", txs: [{ name: "grant", signer: OWNER, receiver: MANDATE, method: "grant", height: 100, receipts: [{ executor: MANDATE }, { executor: VERIFIER, method: "add_public_key", args: { public_key: GRANT_KEY } }] }], attempts: [{ observed: { epoch: 1, public_key: GRANT_KEY } }] },
+    { kind: "propose", txs: [{ name: "propose", signer: AGENT, receiver: MANDATE, method: "propose_order", height: 110, receipts: [{ executor: MANDATE }] }], attempts: [{ observed: { order_id: "1" } }] },
+    ...refused,
+    { kind: "fill", txs: [{ name: "fill", signer: FILLER, receiver: VERIFIER, method: "execute_intents", height: 120, receipts: [{ executor: VERIFIER }] }], attempts: [{ observed: { order_id: "1" } }] },
+    { kind: "revoke", txs: [{ name: "revoke", signer: OWNER, receiver: o.revokeReceiver ?? MANDATE, method: "revoke", height: 130, receipts: revoke, detail: { imported: true } }], attempts: [{ observed: { status: "revoked", key_absent: true } }] },
+    {
+      kind: "relay_withheld",
+      txs: [{ name: "relay", signer: FILLER, receiver: VERIFIER, method: "execute_intents", height: 140, receipts: [{ executor: VERIFIER, error: rejection }], detail: { withheld_relay: true } }],
+      attempts: [{ observed: { classification: "rejected_revoked_key", revoked_key: o.rejectedKey ?? GRANT_KEY } }],
+    },
+    o.recoverRetried === true
+      ? {
+          kind: "recover",
+          txs: [recover("usdc", "recover-usdc", 150, [{ executor: MANDATE }, { executor: VERIFIER, error: panic("SYNTHETIC recovery transfer failed") }]), recover("usdc", "recover-usdc-2", 155)],
+          attempts: [{ observed: { asset: "usdc", mandate_after: held, owner_after: none }, passed: false }, { observed: { asset: "usdc", ...afterUsdc } }],
+        }
+      : { kind: "recover", txs: [recover("usdc", "recover-usdc", 150)], attempts: [{ observed: { asset: "usdc", ...afterUsdc } }] },
+    { kind: "recover", txs: [recover("wnear", "recover-wnear", 160)], attempts: [{ observed: { asset: "wnear", ...afterWnear } }] },
+    ...withdraw,
   ];
+}
+
+/** Labels as the live runner writes them: "step <n> <kind>", or "reconcile <kind>" for a transaction of an earlier session. */
+function txs(o: RunOptions = {}): TxModel[] {
+  const all = steps(o).flatMap((s, i) =>
+    s.txs.map((t) => ({ label: `step ${String(i + 1)} ${s.kind}`, kind: s.kind, hash: txHash(t.name), signer: t.signer, receiver: t.receiver, method: t.method, args: t.args ?? {}, height: t.height, receipts: t.receipts, detail: { step: i + 1, ...t.detail } })),
+  );
+  return all.map(({ kind, ...t }, i) => (o.withdrawRetried === true && i < all.length - 1 ? { ...t, label: `reconcile ${kind}`, detail: { reconciled: true } } : t));
 }
 
 const receiptId = (t: TxModel, i: number): string => `${t.hash.slice(0, 8)}-r${String(i)}`;
@@ -202,7 +289,7 @@ function rpcTx(t: TxModel, full = false): Record<string, unknown> {
   return {
     final_execution_status: "FINAL",
     status: failure === undefined ? { SuccessValue: "" } : { Failure: JSON.parse(failure.error ?? "{}") as unknown },
-    transaction: { hash: t.hash, signer_id: t.signer, receiver_id: t.receiver, actions: [{ FunctionCall: { method_name: t.method, args: "e30=", gas: 1, deposit: "0" } }] },
+    transaction: { hash: t.hash, signer_id: t.signer, receiver_id: t.receiver, actions: [{ FunctionCall: { method_name: t.method, args: Buffer.from(JSON.stringify(t.args)).toString("base64"), gas: 1, deposit: "0" } }] },
     ...(full
       ? {
           receipts: t.receipts.map((r, i) => ({
@@ -253,25 +340,24 @@ export function syntheticLiveEvidence(o: RunOptions = {}): Record<string, unknow
     mode: "mainnet",
     // As the live runner records it: contract_wasm_sha256 carries the mandate's NEAR code hash from the manifest.
     source: { product_commit: REVISION, dirty: false, spec_sha256: sha256(SPEC), spec_commit: "SYNTHETIC", contract_wasm_sha256: CANDIDATE_CODE_HASH, fixtures: {} },
-    environment: { chain_id: "mainnet", rpc_url: "SYNTHETIC", note: "SYNTHETIC test data, not a real mainnet run" },
+    // manifest_steps as the live runner records it: the manifest's step kinds in order.
+    environment: { chain_id: "mainnet", rpc_url: "SYNTHETIC", manifest_steps: steps(o).map((s) => s.kind).join(","), note: "SYNTHETIC test data, not a real mainnet run" },
     command: "SYNTHETIC",
     identifiers: { mandate: MANDATE, owner: OWNER, agent: AGENT, filler: FILLER, verifier: VERIFIER, signer: "v1.signer", oracle: "aggregate-oracle.near", mandate_code_hash: CANDIDATE_CODE_HASH },
     receipts,
     assertions: [
       a("preflight-network", {}),
-      a("step-1-grant", { epoch: 1, public_key: GRANT_KEY }),
-      a("step-3-revoke", { status: "revoked", key_absent: true }),
-      a("step-4-relay_withheld", { classification: "rejected_revoked_key", revoked_key: o.rejectedKey ?? GRANT_KEY }),
-      a("step-5-recover", { asset: "usdc", mandate_after: { usdc: "0", wnear: ONE_NEAR }, owner_after: { usdc: "5000000", wnear: "0" } }),
-      a("step-6-recover", { asset: "wnear", mandate_after: { usdc: "0", wnear: "0" }, owner_after: { usdc: "5000000", wnear: ONE_NEAR } }),
+      ...steps(o).flatMap((step, i) => step.attempts.map((t, j) => ({ ...a(`step-${String(i + 1)}-${step.kind}${j === 0 ? "" : `-attempt-${String(j + 1)}`}`, t.observed), passed: t.passed ?? true }))),
     ],
     unknowns: [],
   };
 }
 
 export interface ChainOptions extends RunOptions {
-  /** Code hash of the mandate account at the run's final block and now (default: the synthetic candidate's). */
+  /** Code hash of the mandate account at every block and now (default: the synthetic candidate's). */
   mandateCode?: string;
+  /** The mandate account had another code hash at every block below `block`. */
+  mandateCodeBefore?: { block: number; code: string };
   /** Code hash of the mandate account now, if it changed after the run. */
   mandateCodeNow?: string;
   chainId?: string;
@@ -286,27 +372,32 @@ export interface ChainOptions extends RunOptions {
 }
 
 /** State of the synthetic chain at a height. A later open challenge (block 200) adds a key and new funds. */
-function view(method: string, args: Record<string, unknown>, h: number, o: ChainOptions): unknown {
+function view(account: string, method: string, args: Record<string, unknown>, h: number, o: ChainOptions): unknown {
   if (method === "has_public_key" && args.account_id === MANDATE) {
     if (args.public_key === GRANT_KEY) return h >= 102 && (o.keyNeverRemoved === true || h < 132);
     if (args.public_key === CHALLENGE_KEY) return h >= 200;
     return false;
   }
   if (method === "mt_balance_of") {
-    const [account, token] = [args.account_id, args.token_id];
-    if (account === MANDATE && token === USDC) return h >= 200 ? "1000000" : h >= 152 && o.usdcLeftInMandate !== true ? "0" : "5000000";
-    if (account === MANDATE && token === WNEAR) return h >= 162 ? "0" : ONE_NEAR;
-    if (account === OWNER && token === USDC) return h >= 152 ? "5000000" : "0";
-    if (account === OWNER && token === WNEAR) return h >= 162 ? ONE_NEAR : "0";
+    const [holder, token] = [args.account_id, args.token_id];
+    const usdcAt = usdcRecoveredAt(o);
+    const wnearAt = o.recoverFails === true ? Number.POSITIVE_INFINITY : 162;
+    if (holder === MANDATE && token === USDC) return h >= 200 ? "1000000" : h >= usdcAt && o.usdcLeftInMandate !== true ? "0" : "5000000";
+    if (holder === MANDATE && token === WNEAR) return h >= wnearAt ? "0" : ONE_NEAR;
+    if (holder === OWNER && token === USDC) return h >= usdcAt && !(o.withdrawRetried === true && h >= WITHDRAWN_AT) ? "5000000" : "0";
+    if (holder === OWNER && token === WNEAR) return h >= wnearAt ? ONE_NEAR : "0";
     return "0";
   }
+  if (method === "ft_balance_of" && account === USDC_TOKEN && args.account_id === OWNER) return o.withdrawRetried === true && h >= WITHDRAWN_AT + 1 ? "5000000" : "0";
   throw new Error(`SYNTHETIC chain has no view ${method}`);
 }
 
 /** A local JSON-RPC stub of a NEAR archival node serving the synthetic chain. */
-export async function startChain(o: ChainOptions = {}): Promise<{ url: string; server: Server; requests: string[] }> {
+export async function startChain(o: ChainOptions = {}): Promise<{ url: string; server: Server; requests: string[]; codeReads: (number | "final")[] }> {
   const all = txs(o);
   const requests: string[] = [];
+  /** The blocks at which the mandate's account (its code hash) was read, in order. */
+  const codeReads: (number | "final")[] = [];
   const server = createServer((req, res) => {
     let body = "";
     req.on("data", (c: Buffer) => (body += c.toString()));
@@ -336,13 +427,15 @@ export async function startChain(o: ChainOptions = {}): Promise<{ url: string; s
       }
       if (method === "query" && params.request_type === "view_account" && params.account_id === MANDATE) {
         const now = params.finality === "final";
-        reply({ code_hash: (now ? o.mandateCodeNow : undefined) ?? o.mandateCode ?? CANDIDATE_CODE_HASH, block_height: now ? HEAD : Number(params.block_id) });
+        codeReads.push(now ? "final" : Number(params.block_id));
+        const before = !now && o.mandateCodeBefore !== undefined && Number(params.block_id) < o.mandateCodeBefore.block ? o.mandateCodeBefore.code : undefined;
+        reply({ code_hash: before ?? (now ? o.mandateCodeNow : undefined) ?? o.mandateCode ?? CANDIDATE_CODE_HASH, block_height: now ? HEAD : Number(params.block_id) });
         return;
       }
       if (method === "query" && params.request_type === "call_function") {
         const h = params.finality === "final" ? HEAD : Number(params.block_id);
         const args = JSON.parse(Buffer.from(String(params.args_base64), "base64").toString("utf8")) as Record<string, unknown>;
-        const value = view(String(params.method_name), args, h, o);
+        const value = view(String(params.account_id), String(params.method_name), args, h, o);
         reply({ result: [...Buffer.from(JSON.stringify(value))], block_height: h });
         return;
       }
@@ -351,7 +444,7 @@ export async function startChain(o: ChainOptions = {}): Promise<{ url: string; s
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${String(port)}`, server, requests };
+  return { url: `http://127.0.0.1:${String(port)}`, server, requests, codeReads };
 }
 
 export const stopChain = (server: Server): Promise<void> =>

@@ -54,6 +54,14 @@ const STEP_METHOD = {
   withdraw_external: "ft_withdraw",
   register_storage: "storage_deposit",
 };
+// Pinned here, not read from the record. Steps that read state and send nothing; the step kinds whose transaction must
+// fail on chain (every other transaction step must succeed); the only kinds the runner retries after a failed
+// transaction (a failed attempt of any other kind stops the run for good); and the field of a step's assertion with
+// which the runner records that a step of that kind legitimately sent nothing.
+const READ_STEPS = ["check", "withhold"];
+const FAILURE_STEPS = ["refused_proposal", "relay_withheld"];
+const RETRIED_STEPS = ["withdraw", "withdraw_external"];
+const NOTHING_SENT = { propose: "no_action", fill: "skipped", settle: "skipped", register_storage: "skipped", withdraw: "skipped", withdraw_external: "skipped" };
 const MANDATE_METHODS = ["grant", "propose_order", "settle_order", "revoke", "reconcile_registration", "recover"];
 const VERIFIER_METHODS = ["execute_intents", "ft_withdraw"];
 const MODES = ["sandbox", "unit-vm", "unit"];
@@ -481,7 +489,13 @@ function chainView(tx) {
   const top = statusKind(tx.status);
   const outcome = top === "unknown" || receipts.some((x) => x.kind === "unknown") ? "unknown" : top === "success" && !receipts.some((x) => x.kind === "failure") ? "success" : "failure";
   const call = (tx.transaction?.actions ?? []).map((a) => a?.FunctionCall).find(isObject);
-  return { receipts, outcome, method: call?.method_name ?? null, t: tx.transaction ?? {} };
+  let args = null;
+  try {
+    args = JSON.parse(Buffer.from(String(call?.args), "base64").toString("utf8"));
+  } catch {
+    // Not JSON arguments: nothing is read from them.
+  }
+  return { receipts, outcome, method: call?.method_name ?? null, args: isObject(args) ? args : {}, t: tx.transaction ?? {} };
 }
 
 const stepOf = (id) => {
@@ -508,8 +522,90 @@ function expectedBalances(assertions) {
   return out;
 }
 
-/** The step kind a receipt label of the live runner names ("step 3 revoke", "import step 3 revoke_external", "reconcile revoke"). */
-const kindOf = (label) => /(?:^|\s)(?:step \d+|reconcile) ([a-z_]+)$/.exec(String(label))?.[1] ?? null;
+/**
+ * The step kind a receipt label of the live runner names ("step 3 revoke", "import step 3 revoke_external",
+ * "reconcile revoke", "reconcile import revoke_external").
+ */
+const kindOf = (label) => /(?:^|\s)(?:step \d+|reconcile|reconcile import) ([a-z_]+)$/.exec(String(label))?.[1] ?? null;
+
+/** The 1-based manifest step a receipt belongs to, from its label or its detail; null when the runner recorded none (a reconciled transaction). */
+function stepNumberOf(rc) {
+  const m = /(?:^|\s)step (\d+) [a-z_]+$/.exec(String(rc.label));
+  if (m !== null) return Number(m[1]);
+  return Number.isInteger(rc.detail?.step) ? rc.detail.step : null;
+}
+
+/**
+ * The record against the manifest's step list (environment.manifest_steps, element i is step i+1), without the network:
+ * every listed step has a passed latest-attempt assertion, and every transaction step has its transaction among the
+ * receipts unless its assertion records that nothing was sent (only for the kinds in NOTHING_SENT).
+ */
+function manifestBinding(live, receipts, assertions, latest) {
+  const raw = live.environment?.manifest_steps;
+  if (typeof raw !== "string" || raw === "") return { problems: ["environment.manifest_steps is missing, so the record cannot be shown to cover the manifest's steps"], text: "" };
+  const steps = raw.split(",");
+  const p = [];
+  steps.forEach((kind, i) => {
+    if (!(kind in STEP_METHOD) && !READ_STEPS.includes(kind)) p.push(`manifest step ${i + 1} is ${JSON.stringify(kind)}, not a step kind of the live runner`);
+  });
+  const numbered = new Set();
+  const unnumbered = {};
+  for (const rc of receipts) {
+    const kind = kindOf(rc.label);
+    const n = stepNumberOf(rc);
+    if (kind === null) p.push(`receipt ${JSON.stringify(rc.label)} names no step kind`);
+    else if (Number.isInteger(rc.detail?.step) && rc.detail.step !== n) p.push(`receipt ${JSON.stringify(rc.label)} records step ${rc.detail.step} in its detail`);
+    else if (n === null && !steps.includes(kind)) p.push(`receipt ${JSON.stringify(rc.label)}: the manifest lists no ${kind} step`);
+    else if (n === null) unnumbered[kind] = (unnumbered[kind] ?? 0) + 1;
+    else if (steps[n - 1] !== kind) p.push(`receipt ${JSON.stringify(rc.label)}: the manifest's step ${n} is ${steps[n - 1] ?? "not listed"}`);
+    else numbered.add(n);
+  }
+  for (const a of assertions) {
+    const m = /^step-(\d+)-([a-z_]+)(?:-attempt-\d+)?$/.exec(String(a.id));
+    if (m !== null && steps[Number(m[1]) - 1] !== m[2]) p.push(`assertion ${a.id}: the manifest's step ${m[1]} is ${steps[Number(m[1]) - 1] ?? "not listed"}`);
+  }
+  const idle = [];
+  const need = {};
+  steps.forEach((kind, i) => {
+    const name = `step ${i + 1} ${kind}`;
+    const got = latest.get(`step-${i + 1}-${kind}`)?.a;
+    if (got === undefined) p.push(`${name}: the record has no assertion for this manifest step`);
+    else if (got.passed !== true) p.push(`${name}: its latest attempt ${got.id} passed ${JSON.stringify(got.passed ?? null)}`);
+    if (!(kind in STEP_METHOD) || numbered.has(i + 1)) return;
+    if (got?.passed === true && kind in NOTHING_SENT && got.observed?.[NOTHING_SENT[kind]] === true) idle.push(name);
+    else need[kind] = [...(need[kind] ?? []), name];
+  });
+  // A reconciled transaction carries its kind but no step number: it can stand for one step of that kind.
+  for (const [kind, names] of Object.entries(need)) {
+    const lacking = names.length - (unnumbered[kind] ?? 0);
+    if (lacking > 0) p.push(`${names.join(", ")}: ${lacking} of ${names.length} without a transaction among the receipts`);
+  }
+  const sent = steps.filter((k) => k in STEP_METHOD).length - idle.length;
+  const text = `environment.manifest_steps lists ${steps.length} steps (${steps.join(", ")}): each has a passed latest-attempt assertion and ${sent} transaction steps have their transaction among the receipts${idle.length > 0 ? `; recorded as sending nothing: ${idle.join(", ")}` : ""}`;
+  return { problems: p, text };
+}
+
+/** Each assertion's latest attempt, keyed by its id without the `-attempt-N` suffix. */
+function latestAttempts(assertions) {
+  const latest = new Map();
+  for (const a of assertions) {
+    const id = String(a.id);
+    const m = /^(.*)-attempt-(\d+)$/.exec(id);
+    const [base, attempt] = m === null ? [id, 1] : [m[1], Number(m[2])];
+    if (!latest.has(base) || latest.get(base).attempt <= attempt) latest.set(base, { a, attempt });
+  }
+  return latest;
+}
+
+/**
+ * The mainnet.manifest check on one evidence object, whatever its mode: the problems that keep the record from
+ * covering its manifest's steps. The live runner's sandbox tests apply it to real runner output.
+ */
+export function manifestCoverageProblems(live) {
+  const receipts = Array.isArray(live?.receipts) ? live.receipts.filter(isObject) : [];
+  const assertions = Array.isArray(live?.assertions) ? live.assertions.filter(isObject) : [];
+  return manifestBinding(live, receipts, assertions, latestAttempts(assertions)).problems;
+}
 
 /** Problems with where a transaction went, judged from the chain's own receiver and method and the pinned accounts. */
 function targetProblems(label, v, mandate) {
@@ -603,16 +699,12 @@ function checkRecordedRun(r, bundleDir, bundle, livePath, ev, candidate, mainnet
   if (assertions.length === 0) runProblems.push("evidence has no assertions");
   const idList = assertions.map((a) => String(a.id));
   for (const id of new Set(idList.filter((id, i) => idList.indexOf(id) !== i))) runProblems.push(`assertion id ${id} appears ${idList.filter((x) => x === id).length} times`);
-  const latest = new Map();
-  for (const a of assertions) {
-    const id = String(a.id);
-    const m = /^(.*)-attempt-(\d+)$/.exec(id);
-    const [base, attempt] = m === null ? [id, 1] : [m[1], Number(m[2])];
-    if (!latest.has(base) || latest.get(base).attempt <= attempt) latest.set(base, { a, attempt });
-  }
+  const latest = latestAttempts(assertions);
   for (const { a } of latest.values()) if (a.passed !== true) runProblems.push(`assertion ${a.id} passed ${JSON.stringify(a.passed ?? null)}: ${a.description ?? ""}`);
   const complete = r.check("mainnet.run", runProblems, `the run records no unknowns and ${latest.size} of ${latest.size} assertions passed`, "the evidence records an incomplete or failed run");
-  return { usable, complete, receipts, assertions, ids, exp };
+  const bind = manifestBinding(live, receipts, assertions, latest);
+  const bound = r.check("mainnet.manifest", bind.problems, bind.text, "the record does not cover the steps of the run's manifest");
+  return { usable, complete: complete && bound, receipts, assertions, ids, exp };
 }
 
 async function checkMainnet(r, rec, rpc, candidate) {
@@ -662,19 +754,50 @@ async function checkMainnet(r, rec, rpc, candidate) {
       continue;
     }
     if (rc.block_height !== undefined && h.value !== rc.block_height) p.push(`included in block ${h.value}, recorded ${rc.block_height}`);
-    fetched.push({ rc, v, height: h.value });
-    r.check(gate, p, `${rc.tx_hash} final, ${v.outcome}${d.expected_error !== undefined || d.withheld_relay === true ? " (expected failure)" : ""}, ${v.t.signer_id} -> ${v.t.receiver_id}.${v.method}, block ${h.value}`, `${rc.tx_hash} does not match the evidence or its step`);
+    fetched.push({ rc, v, height: h.value, kind: kindOf(rc.label), step: stepNumberOf(rc) });
+    r.check(gate, p, `${rc.tx_hash} final, ${v.outcome}${FAILURE_STEPS.includes(kindOf(rc.label)) ? " (a step that must fail)" : ""}, ${v.t.signer_id} -> ${v.t.receiver_id}.${v.method}, block ${h.value}`, `${rc.tx_hash} does not match the evidence or its step`);
   }
   if (fetched.length !== receipts.length) {
     r.line("NOT VERIFIED", "mainnet.state", "not checked: not every recorded transaction could be read");
     return;
   }
 
+  // Outcomes by step kind, whatever the record says: a refused proposal and the withheld relay must have failed, every
+  // other transaction must have succeeded. The one exception follows the runner: only a withdrawal is ever retried
+  // after a failed transaction (on resume), so a failed withdrawal is superseded by a later successful transaction of
+  // the same step: the same step number where both labels carry one, and the same signer, receiver, method, token
+  // and recipient on chain (a reconciled attempt's label carries no step number).
+  const sameCall = (a, b) =>
+    a.kind === b.kind && (a.step === null || b.step === null || a.step === b.step) && a.v.method === b.v.method && a.v.t.signer_id === b.v.t.signer_id && a.v.t.receiver_id === b.v.t.receiver_id && a.v.args.token === b.v.args.token && a.v.args.receiver_id === b.v.args.receiver_id;
+  const outcomeProblems = [];
+  let superseded = 0;
+  for (const f of fetched) {
+    const what = `${f.rc.label} (${f.rc.tx_hash})`;
+    if (f.kind === null || !(f.kind in STEP_METHOD)) outcomeProblems.push(`${what}: its label names no transaction step of the live runner, so its required outcome is unknown`);
+    else if (f.v.outcome === "unknown") outcomeProblems.push(`${what}: a status on chain is neither success nor failure`);
+    else if (FAILURE_STEPS.includes(f.kind)) {
+      if (f.v.outcome !== "failure") outcomeProblems.push(`${what}: a ${f.kind} step must fail on chain, it shows ${f.v.outcome}`);
+    } else if (f.v.outcome !== "success") {
+      const later = RETRIED_STEPS.includes(f.kind) && fetched.some((g) => g !== f && g.v.outcome === "success" && g.height > f.height && sameCall(f, g));
+      if (later) superseded += 1;
+      else outcomeProblems.push(`${what}: a ${f.kind} step must succeed on chain, it shows ${f.v.outcome}${RETRIED_STEPS.includes(f.kind) ? " and no later successful attempt of the same step" : `; the runner never retries a failed ${f.kind}`}`);
+    }
+  }
+  const mustFail = fetched.filter((f) => FAILURE_STEPS.includes(f.kind)).length;
+  r.check("mainnet.outcomes", outcomeProblems, `judged by step kind, not by the record: ${mustFail} ${FAILURE_STEPS.join("/")} transactions failed, ${fetched.length - mustFail - superseded} others succeeded${superseded > 0 ? `, ${superseded} failed withdrawal attempts superseded by a later successful attempt of the same step` : ""}`, "a transaction's outcome on chain is not the one its step kind requires");
+
+  // The block of every receipt, read once per block hash.
+  const heights = new Map();
+  const heightOf = async (hash) => {
+    if (!heights.has(hash)) heights.set(hash, await rpc.height(hash));
+    return heights.get(hash);
+  };
+
   // The run's final block: the highest block holding any receipt of its last transaction.
   const last = fetched.reduce((a, b) => (b.height > a.height ? b : a));
   let finalBlock = last.height;
   for (const x of last.v.receipts) {
-    const h = await rpc.height(x.block_hash);
+    const h = await heightOf(x.block_hash);
     if (!h.ok) {
       r.line("NOT VERIFIED", "mainnet.state", "the run's final block could not be determined", [h.error]);
       return;
@@ -683,19 +806,42 @@ async function checkMainnet(r, rec, rpc, candidate) {
   }
   r.line("INFO", "mainnet.final-block", `${finalBlock}: last receipt of ${last.rc.label} (${last.rc.tx_hash}); end state is read at this block, so later activity (an open challenge grant or deposit) is not compared`);
 
-  // The mandate account runs the deployment candidate of this checkout, at the run's final block and now.
+  // The mandate account runs the deployment candidate of this checkout: at the block of every receipt of the run it
+  // executed and at the block before it (the state the receipt started from and the state it left), at the run's final
+  // block and now. Each block is read once.
   if (candidate === null) r.line("NOT VERIFIED", "mainnet.code", `the code of ${ids.mandate} is not compared with the deployment candidate: this checkout's candidate was not read (--no-checkout or a failed checkout check)`);
   else {
-    const then = await rpc.codeHash(ids.mandate, finalBlock);
-    const now = await rpc.codeHash(ids.mandate, "final");
-    const errors = [then, now].filter((x) => !x.ok).map((x) => x.error);
-    if (errors.length > 0) r.line("NOT VERIFIED", "mainnet.code", `the code hash of ${ids.mandate} could not be read`, errors);
-    else {
-      const p = [];
-      if (then.value !== candidate.codeHash) p.push(`code hash at block ${finalBlock} is ${then.value}, the candidate's is ${candidate.codeHash}`);
-      if (now.value !== candidate.codeHash) p.push(`code hash now is ${now.value}, the candidate's is ${candidate.codeHash}`);
-      r.check("mainnet.code", p, `${ids.mandate} runs code ${candidate.codeHash} at block ${finalBlock} and now: fixtures/${candidate.file} of this checkout`, `${ids.mandate} does not run this checkout's deployment candidate`);
+    const errors = [];
+    const p = [];
+    const blocks = new Set();
+    let executed = 0;
+    for (const f of fetched) {
+      for (const x of f.v.receipts.filter((y) => y.executor_id === ids.mandate)) {
+        const h = await heightOf(x.block_hash);
+        if (!h.ok) {
+          errors.push(`block of receipt ${x.id} (${f.rc.label}): ${h.error}`);
+          continue;
+        }
+        executed += 1;
+        blocks.add(h.value - 1).add(h.value);
+      }
     }
+    if (executed === 0) p.push(`no recorded transaction has a receipt executed by ${ids.mandate}, so the code it ran during the run is not shown`);
+    const during = blocks.size;
+    for (const block of [finalBlock, ...[...blocks].filter((b) => b !== finalBlock).sort((a, b) => a - b), "final"]) {
+      const got = await rpc.codeHash(ids.mandate, block);
+      const when = block === "final" ? "now" : `at block ${block}`;
+      if (!got.ok) errors.push(`code hash ${when}: ${got.error}`);
+      else if (got.value !== candidate.codeHash) p.push(`code hash ${when} is ${got.value}, the candidate's is ${candidate.codeHash}`);
+    }
+    if (errors.length > 0) r.line("NOT VERIFIED", "mainnet.code", `the code hash of ${ids.mandate} could not be read at every block`, [...errors, ...p]);
+    else
+      r.check(
+        "mainnet.code",
+        p,
+        `${ids.mandate} has code hash ${candidate.codeHash} (fixtures/${candidate.file} of this checkout) at the block of each of the ${executed} receipts it executed in the run and at the block before each (${during} blocks), at the run's final block ${finalBlock} and now. Not excluded: a deploy and redeploy inside one block, which state reads at block boundaries cannot show`,
+        `${ids.mandate} does not run this checkout's deployment candidate throughout the run`,
+      );
   }
 
   // Grant keys: registered before a successful revoke that removed them on the verifier, gone by the run's final block,
@@ -749,7 +895,8 @@ async function checkMainnet(r, rec, rpc, candidate) {
 
   // The withheld order's relay failed on the verifier because a key of that lifecycle did not exist. The key is read
   // from the chain's own error, and must be a grant key shown above as registered before its revoke and absent after.
-  const relays = fetched.filter((f) => f.rc.detail?.withheld_relay === true);
+  const relays = fetched.filter((f) => f.kind === "relay_withheld" || f.rc.detail?.withheld_relay === true);
+  let rejectedRelays = 0;
   if (relays.length === 0) r.line("NOT VERIFIED", "mainnet.relay", "the evidence records no withheld-order relay transaction, so rejection of a signed order after revocation is not shown");
   const relayAssertions = assertions.filter((a) => /-relay_withheld(-attempt-\d+)?$/.test(a.id));
   for (const x of relays) {
@@ -765,7 +912,32 @@ async function checkMainnet(r, rec, rpc, candidate) {
       for (const a of relayAssertions) if (a.observed?.revoked_key !== undefined && a.observed.revoked_key !== key) p.push(`evidence ${a.id} names revoked key ${a.observed.revoked_key}, the chain rejected ${key}`);
     }
     if (x.v.receipts.some((y) => y.kind === "failure" && y.executor_id !== verifier)) p.push("a receipt outside the verifier failed");
-    r.check(`mainnet.relay ${x.rc.label}`, p, `${x.rc.tx_hash} rejected by ${verifier} after the revoke: removed grant key ${m?.[1]}`);
+    if (r.check(`mainnet.relay ${x.rc.label}`, p, `${x.rc.tx_hash} rejected by ${verifier} after the revoke: removed grant key ${m?.[1]}`)) rejectedRelays += 1;
+  }
+
+  // Completeness, pinned here: a whole-run pass needs each of these shown on chain, whatever the manifest or the record
+  // lists. A transaction counts only if it succeeded and went to the receiver and method its step kind calls.
+  const done = (kinds, also = () => true) => fetched.some((f) => kinds.includes(f.kind) && f.v.outcome === "success" && targetProblems(f.rc.label, f.v, ids.mandate).length === 0 && also(f));
+  const missing = [];
+  if (!done(["grant"])) missing.push("no successful grant transaction");
+  if (!done(["propose"])) missing.push("no successful propose transaction (a signed proposal)");
+  if (!done(["fill"])) missing.push("no successful fill transaction");
+  if (!done(["revoke", "revoke_external"])) missing.push("no successful revoke transaction");
+  if (rejectedRelays === 0) missing.push("no withheld-order relay shown rejected after the revoke");
+  for (const asset of Object.keys(MAINNET_TOKENS)) if (!done(["recover", "recover_external"], (f) => f.v.args.asset === asset)) missing.push(`no successful recover transaction for ${asset}`);
+  r.check("mainnet.complete", missing, `the chain shows a successful grant, proposal, fill and revoke, ${rejectedRelays} rejected withheld relay${rejectedRelays === 1 ? "" : "s"} and a successful recovery of ${Object.keys(MAINNET_TOKENS).join(" and ")}`, "the chain does not show a complete run");
+
+  // Postcondition read from the chain alone: after recovery the mandate holds nothing of either pinned token.
+  {
+    const errors = [];
+    const p = [];
+    for (const [asset, token] of Object.entries(MAINNET_TOKENS)) {
+      const got = await rpc.view(verifier, "mt_balance_of", { account_id: ids.mandate, token_id: `nep141:${token}` }, finalBlock);
+      if (!got.ok) errors.push(`${asset}: ${got.error}`);
+      else if (String(got.value) !== "0") p.push(`${ids.mandate} still holds ${got.value} ${asset} on ${verifier} at block ${finalBlock}`);
+    }
+    if (errors.length > 0) r.line("NOT VERIFIED", "mainnet.recovered", `the Intents balances of ${ids.mandate} could not be read`, [...errors, ...p]);
+    else r.check("mainnet.recovered", p, `${ids.mandate} holds 0 ${Object.keys(MAINNET_TOKENS).join(" and 0 ")} on ${verifier} at the run's final block ${finalBlock}, read from the chain independently of the record`, "assets remain in the mandate at the run's final block");
   }
 
   // End balances at the run's final block, against the last balances the run recorded. Token ids are the pinned ones.
