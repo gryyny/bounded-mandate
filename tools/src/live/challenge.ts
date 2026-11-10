@@ -8,8 +8,8 @@ import { z } from "zod";
 import { NearClient } from "../near/client.js";
 import { MandateClient, VerifierClient } from "../near/contracts.js";
 import { REPO_ROOT } from "../near/sandbox.js";
-import { Policy, type Receipt } from "../types.js";
-import { runLive, type LiveDeps, type LiveResult } from "./main.js";
+import { Policy, type Evidence, type GrantView, type Receipt } from "../types.js";
+import { runLive, writeNew, type LiveDeps, type LiveResult } from "./main.js";
 import { Refusal, loadManifest, type LiveManifest, type StepKind } from "./manifest.js";
 
 export const CHALLENGE_RECORD_SCHEMA = "bounded-mandate/open-challenge@1";
@@ -57,7 +57,12 @@ export const ChallengeRecord = z
   .object({
     schema: z.literal(CHALLENGE_RECORD_SCHEMA),
     mode: z.enum(["sandbox", "mainnet"]),
-    status: z.enum(["open", "closed", "not-opened"]),
+    /**
+     * open: the challenge grant is active on chain. closed: the close manifest completed and the grant is revoked.
+     * inactive: the challenge was opened, its grant is on chain but not active, and no completed close is recorded here.
+     * not-opened: no opening of the grant now on chain is known to this record.
+     */
+    status: z.enum(["open", "closed", "inactive", "not-opened"]),
     generated_at: z.string(),
     /** Challenge activity is not part of the completed run; verifying that run never counts it as a failure. */
     separate_from_completed_run: z.literal(true),
@@ -114,6 +119,8 @@ export const ChallengeRecord = z
       })
       .strict()
       .nullable(),
+    /** Present when a record with an opening was already on disk and nothing was carried forward from it: the reasons. */
+    previous_record_ignored: z.array(z.string()).min(1).optional(),
     shows: z.literal(CHALLENGE_SHOWS),
     does_not_show: z.tuple([z.literal(CHALLENGE_DOES_NOT_SHOW[0]), z.literal(CHALLENGE_DOES_NOT_SHOW[1]), z.literal(CHALLENGE_DOES_NOT_SHOW[2]), z.literal(CHALLENGE_DOES_NOT_SHOW[3])]),
   })
@@ -131,9 +138,40 @@ export interface RecordInput {
   manifestSha256: string;
   phase: ChallengePhase;
   result: LiveResult;
-  /** The record of an earlier phase (its opening is carried over). */
+  /** The record already on disk. Carried forward only when it is this challenge's (previousProblems), else ignored. */
   previous: ChallengeRecord | null;
   publicationUrl: string | null;
+}
+
+/**
+ * Why an earlier record is not the record of this manifest's challenge: another network, mandate, mandate code or
+ * agent key, or an opening of a grant that is not the grant now on chain. Empty when it may be carried forward.
+ */
+export function previousProblems(previous: ChallengeRecord, m: LiveManifest, grant: GrantView | null): string[] {
+  const differs = (what: string, was: string, now: string): string[] => (was === now ? [] : [`${what} was ${was}, this manifest's is ${now}`]);
+  const p = [
+    ...differs("chain id", previous.network.chain_id, m.network.chain_id),
+    ...differs("genesis hash", previous.network.genesis_hash, m.network.genesis_hash),
+    ...differs("mandate account", previous.accounts.mandate, m.accounts.mandate),
+    ...differs("mandate code hash", previous.mandate_code_hash, m.code_hashes.mandate),
+    ...differs("agent key", previous.agent_key.public_key, m.keys.agent.public_key),
+  ];
+  const g = previous.grant;
+  if (previous.opened === null || g === null) p.push("it records no opened grant");
+  else if (grant === null) p.push(`it opened grant epoch ${String(g.epoch)}, and the mandate has no grant now`);
+  else if (g.epoch !== grant.epoch || g.path !== grant.path || (g.public_key !== null && grant.public_key !== null && g.public_key !== grant.public_key)) {
+    p.push(`it opened grant epoch ${String(g.epoch)} (${g.path}, key ${g.public_key ?? "none"}), the grant on chain is epoch ${String(grant.epoch)} (${grant.path}, key ${grant.public_key ?? "none"})`);
+  }
+  return p;
+}
+
+/** The grant this run's open phase made: a successful grant transaction whose terminal verification passed. */
+function openedByRun(evidence: Evidence | undefined): { tx_hash: string; block_height: number | null; epoch: number } | null {
+  const receipt = evidence?.receipts.find((r) => methodOf(r) === "grant" && r.outcome === "success" && r.tx_hash !== undefined);
+  const verified = evidence?.assertions.find((a) => /^step-\d+-grant$/.test(a.id) && a.passed);
+  const epoch = z.object({ epoch: z.number().int() }).loose().safeParse(verified?.observed);
+  if (receipt?.tx_hash === undefined || !epoch.success) return null;
+  return { tx_hash: receipt.tx_hash, block_height: receipt.block_height ?? null, epoch: epoch.data.epoch };
 }
 
 /** Builds the challenge record from chain reads at one final block and the runner's result. Never reads a secret. */
@@ -157,8 +195,11 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
     const used = await verifier.isNonceUsed(m.accounts.mandate, o.payload?.nonce ?? "");
     if (!used) unexecuted.push({ id: o.id, epoch: o.epoch, state: o.state.state === "released" || o.state.state === "rejected" ? `${o.state.state}:${o.state.reason}` : o.state.state, deadline_ns: o.deadline_ns, nonce_used: used });
   }
-  const grantReceipt = phase === "open" ? result.evidence?.receipts.find((r) => methodOf(r) === "grant" && r.outcome === "success" && r.tx_hash !== undefined) : undefined;
-  const opened = grantReceipt?.tx_hash !== undefined ? { tx_hash: grantReceipt.tx_hash, block_height: grantReceipt.block_height ?? null } : (input.previous?.opened ?? null);
+  // An opening counts only for the grant now on chain: this run's verified grant, else a previous record bound to it.
+  const run = phase === "open" ? openedByRun(result.evidence) : null;
+  const ignored = input.previous === null ? [] : previousProblems(input.previous, m, grant);
+  const previous = ignored.length === 0 ? input.previous : null;
+  const opened = run !== null && run.epoch === grant?.epoch ? { tx_hash: run.tx_hash, block_height: run.block_height } : (previous?.opened ?? null);
   const challengeGrant = opened === null ? null : grant;
   const mine = challengeGrant === null ? [] : orders.filter((o) => o.epoch === challengeGrant.epoch);
   const byState: Record<string, number> = {};
@@ -170,7 +211,7 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
   const record: ChallengeRecord = {
     schema: CHALLENGE_RECORD_SCHEMA,
     mode: m.network.name,
-    status: opened === null ? "not-opened" : phase === "close" && result.exitCode === 0 && grant?.status === "revoked" ? "closed" : "open",
+    status: challengeGrant === null ? "not-opened" : phase === "close" && result.exitCode === 0 && challengeGrant.status === "revoked" ? "closed" : challengeGrant.status === "active" ? "open" : "inactive",
     generated_at: new Date().toISOString(),
     separate_from_completed_run: true,
     network: { chain_id: status.chain_id, genesis_hash: status.genesis_hash },
@@ -182,9 +223,9 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
       allowance_yocto: agentKey?.permission.kind === "function_call" ? (agentKey.permission.allowance?.toString() ?? null) : null,
       nonce: agentKey === undefined ? null : agentKey.nonce.toString(),
       publication: KEY_PUBLICATION,
-      publication_url: input.publicationUrl ?? input.previous?.agent_key.publication_url ?? null,
+      publication_url: input.publicationUrl ?? previous?.agent_key.publication_url ?? null,
     },
-    manifests: { open: phase === "open" ? input.manifestSha256 : (input.previous?.manifests.open ?? null), close: phase === "close" ? input.manifestSha256 : null },
+    manifests: { open: phase === "open" ? input.manifestSha256 : (previous?.manifests.open ?? null), close: phase === "close" ? input.manifestSha256 : null },
     opened,
     grant:
       challengeGrant === null
@@ -210,6 +251,7 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
       phase === "close"
         ? { exit_code: result.exitCode, message: result.message, receipts: (result.evidence?.receipts ?? []).map((r) => ({ label: r.label, tx_hash: r.tx_hash ?? null, method: methodOf(r), outcome: r.outcome })) }
         : null,
+    ...(input.previous !== null && input.previous.opened !== null && ignored.length > 0 ? { previous_record_ignored: ignored } : {}),
     shows: CHALLENGE_SHOWS,
     does_not_show: [...CHALLENGE_DOES_NOT_SHOW],
   };
@@ -234,6 +276,11 @@ export function publicationUrl(env: NodeJS.ProcessEnv): string | null {
  * (default out/challenge/), apart from the completed run's out/live and out/evidence, then writes the challenge record.
  * The runner's evidence of each phase is its own file (live-<network>-challenge-<phase>.json).
  *
+ * A record already on disk is carried forward (its opening, the open manifest's hash, the publication link) only when
+ * it is this challenge's: same network, mandate, mandate code and agent key, and an opening of the grant now on chain.
+ * Otherwise nothing is taken from it; the new record and the message say why, and the old file is kept under
+ * evidence/replaced/ before the new record takes its place.
+ *
  * The key is published only after the open phase completed and the record shows the grant active. The link is then
  * recorded by running the open manifest again with MANDATE_LIVE_RESUME=1 and MANDATE_CHALLENGE_KEY_URL=<https link>:
  * the resume sends nothing and rewrites the record with `agent_key.publication_url` set. Until then it is null.
@@ -256,12 +303,21 @@ export async function runChallenge(env: NodeJS.ProcessEnv = process.env, deps: L
   if (result.exitCode === 2 && result.evidence === undefined) return result;
   const m = loaded.manifest;
   const recordPath = join(outRoot, "..", "evidence", `challenge-${m.network.name}.json`);
-  const previous = existsSync(recordPath) ? ChallengeRecord.parse(JSON.parse(readFileSync(recordPath, "utf8"))) : null;
+  const previousText = existsSync(recordPath) ? readFileSync(recordPath, "utf8") : null;
+  const previous = previousText === null ? null : ChallengeRecord.parse(JSON.parse(previousText));
   const client = (deps.client ?? new NearClient(m.network.rpc_url)).final();
   const record = await challengeRecord({ client, manifest: m, manifestSha256: loaded.sha256, phase, result, previous, publicationUrl: url });
-  mkdirSync(join(outRoot, "..", "evidence"), { recursive: true });
+  const evidenceDir = join(outRoot, "..", "evidence");
+  mkdirSync(evidenceDir, { recursive: true });
+  // A record of an opening that is not this challenge's is neither carried forward nor lost: it is kept beside the new one.
+  const ignored = record.previous_record_ignored;
+  let note = "";
+  if (previousText !== null && ignored !== undefined) {
+    const kept = writeNew(join(evidenceDir, "replaced"), (n) => `challenge-${m.network.name}-${String(n)}.json`, previousText);
+    note = ` | challenge: the earlier record was not carried forward (${ignored.join("; ")}); it is kept as ${kept}`;
+  }
   writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`);
-  return { ...result, record, recordPath };
+  return { ...result, message: `${result.message}${note}`, record, recordPath };
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {

@@ -16,6 +16,7 @@ import { AGENT_ALLOWANCE, balances, fillerKey, mintAndDeposit, postPrices, setup
 import { Ledger, canonical } from "../src/live/ledger.js";
 import { runLive, type LiveDeps, type LiveResult } from "../src/live/main.js";
 import { LiveManifest } from "../src/live/manifest.js";
+import { runVerdict } from "../src/page/mainnet.js";
 import { totals } from "../src/live/budget.js";
 import { worstFee } from "../src/live/preflight.js";
 import { NearClient, NEAR } from "../src/near/client.js";
@@ -489,6 +490,9 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     const steps = r.evidence?.assertions.filter((a) => a.id.startsWith("step-")) ?? [];
     expect(steps.map((a) => a.id)).toEqual(KINDS.map((k, i) => `step-${i + 1}-${k}`));
     expect(steps.every((a) => a.passed)).toBe(true);
+    // The report records the manifest's step kinds, and the page's completion check holds on the runner's own output.
+    expect(r.evidence?.environment.manifest_steps).toBe(cand.steps.map((x) => x.kind).join(","));
+    expect(r.evidence === undefined ? null : runVerdict(r.evidence)).toMatchObject({ holds: true, cls: "success", missing: [], failedSteps: 0, steps: KINDS.length - 1 });
     expect(JSON.stringify(assertion(r, "refused_proposal")?.observed)).toMatch(/concession above policy maximum/);
     const relay = assertion(r, "relay_withheld")?.observed as { classification: string; error: string; revoked_key: string; mandate_nonce_used: boolean; order_id: string };
     expect(relay.classification).toBe("rejected_revoked_key");
@@ -529,6 +533,9 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     const steps = resumed.evidence?.assertions.filter((a) => a.id.startsWith("step-")) ?? [];
     expect(steps.map((a) => a.id).sort()).toEqual(KINDS.map((k, i) => `step-${i + 1}-${k}`).sort());
     expect(steps.every((a) => a.passed)).toBe(true);
+    // A resumed run's report covers the whole run: the page's completion check holds on it; the stopped one's does not.
+    expect(resumed.evidence === undefined ? null : runVerdict(resumed.evidence)).toMatchObject({ holds: true, missing: [] });
+    expect(first.evidence === undefined ? null : runVerdict(first.evidence)).toMatchObject({ holds: false, stopped: true });
     expect((assertion(resumed, "relay_withheld")?.observed as { classification: string }).classification).toBe("rejected_revoked_key");
     const ledger = ledgerOf(path);
     expect(ledger.ofKind("tx-intent").filter((e) => e.data.kind === "relay_withheld").length).toBe(1);
@@ -547,6 +554,7 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     expect(relay?.passed).toBe(false);
     expect((relay?.observed as { classification: string }).classification).toBe("inconclusive");
     expect(r.evidence?.unknowns.join()).toMatch(/inconclusive/);
+    expect(r.evidence === undefined ? null : runVerdict(r.evidence)).toMatchObject({ holds: false, cls: "inconclusive", missing: [] });
     expect(ledgerOf(path).ofKind("tx-intent").map((e) => e.data.kind)).not.toContain("relay_withheld");
     expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
     // A resume of the finished run keeps the finding: an inconclusive relay never turns into a pass.

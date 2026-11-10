@@ -49,6 +49,7 @@ function statusLine(r: ChallengeRecord): [string, string] {
   if (r.status === "closed") return ["success", "closed: revoked, recovered and withdrawn by the owner"];
   if (r.status === "not-opened") return ["not-run", "not opened: no challenge grant was made"];
   const grant = r.grant === null ? "no grant in this record" : `grant ${r.grant.status}`;
+  if (r.status === "inactive") return ["inconclusive", `not open: ${grant}; no completed close is recorded`];
   return ["inconclusive", r.agent_key.publication_url === null ? `open: ${grant}; no publication of the agent key is recorded` : `open: ${grant}; the agent key is published`];
 }
 

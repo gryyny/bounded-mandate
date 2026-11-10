@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { JsonRpcProvider, KeyPair, actions, type Account, type Action } from "near-api-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_POLICY } from "../src/demo/market.js";
@@ -173,6 +174,12 @@ afterAll(async () => {
   await net.stop();
   rmSync(dir, { recursive: true, force: true });
 });
+
+/** verify.mjs's mainnet.manifest check (the script is dependency-free JavaScript outside the package). */
+async function coverageProblems(evidence: unknown): Promise<string[]> {
+  const mod = (await import(pathToFileURL(join(import.meta.dirname, "../../verify.mjs")).href)) as { manifestCoverageProblems: (live: unknown) => string[] };
+  return mod.manifestCoverageProblems(JSON.parse(JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v))));
+}
 
 describe("external owner actions: import by hash", () => {
   // gate: HANDOFF
@@ -1015,6 +1022,13 @@ describe("owner withdrawals signed outside the runner (withdraw_external)", () =
         ["step-5-withdraw_external", false],
         ["step-5-withdraw_external-attempt-2", true],
       ]);
+      // The final session's report lists every transaction of the run with its step, including the withdrawals the
+      // owner signed and an earlier session imported; `verify --mainnet` requires a receipt per transaction step.
+      const recorded = [...l.ofKind("tx-intent"), ...l.ofKind("external-handoff")].map((e) => [e.data.tx_hash, Number(e.data.step) + 1]);
+      expect(recorded.length).toBe(7);
+      const reported = (r4.evidence?.receipts ?? []).map((x) => [x.tx_hash, (x.detail as { step?: number }).step]);
+      expect(reported.sort()).toEqual(recorded.sort());
+      expect(await coverageProblems(r4.evidence)).toEqual([]);
     });
   }, 300_000);
 
@@ -1091,6 +1105,10 @@ describe("primary template (live agent, console-signed owner actions, withdrawal
       const ids = (r.evidence?.assertions ?? []).filter((a) => a.id.startsWith("step-"));
       expect(ids.map((a) => a.id)).toEqual(steps.map((s, i) => `step-${i + 1}-${s.kind}`));
       expect(ids.every((a) => a.passed)).toBe(true);
+      // The verifier's own manifest check accepts the runner's report of the primary template.
+      expect(r.evidence?.environment.manifest_steps).toBe(steps.map((s) => s.kind).join(","));
+      expect(await coverageProblems(r.evidence)).toEqual([]);
+      expect(await coverageProblems({ ...r.evidence, receipts: r.evidence?.receipts.filter((x) => (x.detail as { method?: string }).method !== "revoke") })).toEqual([expect.stringMatching(/^step \d+ revoke_external: 1 of 1 without a transaction among the receipts$/)]);
       expect(provider.calls).toBe(1);
       const l = ledgerOf(path);
       expect(kinds(l, "tx-intent")).toEqual(["grant", "refused_proposal", "propose", "fill", "settle", "propose", "relay_withheld"]);

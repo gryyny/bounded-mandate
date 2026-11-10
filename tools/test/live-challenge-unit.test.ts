@@ -5,13 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonRpcProvider } from "near-api-js";
 import { afterAll, describe, expect, it } from "vitest";
-import { CHALLENGE_DOES_NOT_SHOW, challengePhase, publicationUrl, runChallenge } from "../src/live/challenge.js";
-import { evidenceFile, runLive } from "../src/live/main.js";
+import { CHALLENGE_DOES_NOT_SHOW, ChallengeRecord, challengePhase, challengeRecord, previousProblems, publicationUrl, runChallenge, type RecordInput } from "../src/live/challenge.js";
+import { evidenceFile, runLive, type LiveResult } from "../src/live/main.js";
 import { LiveManifest, loadManifest, publishedKeyProblems } from "../src/live/manifest.js";
 import { NearClient } from "../src/near/client.js";
 import { DEMO_POLICY } from "../src/demo/market.js";
 import { sandboxKey } from "../src/near/keys.js";
+import type { Evidence, GrantView } from "../src/types.js";
 import { offlineManifest, stubRpc, writeJson } from "./live-helpers.js";
+import { record } from "./page-challenge-specimen.js";
 
 const dirs: string[] = [];
 const tmp = (): string => {
@@ -234,5 +236,137 @@ describe("make live and make challenge keep to their own manifests and evidence"
       expect([r.exitCode, r.message]).toEqual([2, "challenge: MANDATE_CHALLENGE_KEY_URL must be an https URL"]);
     }
     expect(calls).toEqual([]);
+  });
+});
+
+describe("the challenge record carries an earlier record forward only when it is this challenge's", () => {
+  const SHA = "a".repeat(64);
+  const KEY_URL = "https://example.invalid/SYNTHETIC-published-key";
+  const specimen = record("open");
+  type Grant = NonNullable<ChallengeRecord["grant"]>;
+  const chainGrant = (over: Partial<Grant> = {}): Grant => ({ ...(specimen.grant as Grant), ...over });
+  /** A fake client: one chain grant, no orders, no keys, zero balances. No transport and no transaction method. */
+  const fake = (m: LiveManifest, grant: Grant | null): NearClient =>
+    ({
+      provider: { viewBlock: () => Promise.resolve({ header: { height: 100, hash: "SYNTHETICblock100", timestamp_nanosec: "100" } }) },
+      nodeStatus: () => Promise.resolve({ chain_id: m.network.chain_id, genesis_hash: m.network.genesis_hash }),
+      view: (_account: string, method: string) => {
+        if (method === "get_grant") return Promise.resolve(grant);
+        if (method === "list_orders") return Promise.resolve([]);
+        if (method === "has_public_key") return Promise.resolve(grant?.status === "active");
+        if (method === "mt_balance_of") return Promise.resolve("0");
+        return Promise.reject(new Error(`unexpected view ${method}`));
+      },
+      tryView: () => Promise.resolve({ ok: false, error: "SYNTHETIC: no signer" }),
+      accessKeys: () => Promise.resolve([]),
+    }) as unknown as NearClient;
+  /** An earlier record of this manifest's own challenge: same network, mandate, code, agent key, and `grant`. */
+  const ownRecord = (m: LiveManifest, grant: Grant, over: Record<string, unknown> = {}): ChallengeRecord =>
+    record("open", {
+      network: { chain_id: m.network.chain_id, genesis_hash: m.network.genesis_hash },
+      accounts: { mandate: m.accounts.mandate, owner: m.accounts.owner, agent: m.accounts.agent, verifier: m.accounts.verifier, signer: m.accounts.signer },
+      mandate_code_hash: m.code_hashes.mandate,
+      agent_key: { ...specimen.agent_key, public_key: m.keys.agent.public_key, publication_url: KEY_URL },
+      grant,
+      ...over,
+    });
+  const build = (m: LiveManifest, grant: Grant | null, over: Partial<RecordInput>): Promise<ChallengeRecord> =>
+    challengeRecord({ client: fake(m, grant), manifest: m, manifestSha256: SHA, phase: "open", result: { exitCode: 1, message: "SYNTHETIC: open failed" }, previous: null, publicationUrl: null, ...over });
+  const opening = (epoch: number, passed = true): LiveResult => ({
+    exitCode: passed ? 0 : 1,
+    message: passed ? "completed" : "SYNTHETIC: grant verification failed",
+    evidence: {
+      receipts: [{ label: "step 2 grant (SYNTHETIC)", tx_hash: "SYNTHETICgrantTx", block_height: 90, outcome: "success", detail: { method: "grant" } }],
+      assertions: [{ id: "step-2-grant", gate: "LIVE", description: "grant: terminal verification (SYNTHETIC)", passed, observed: { epoch } }],
+    } as unknown as Evidence,
+  });
+
+  // gate: LIVE
+  it("a failed opening does not inherit another mandate's opening, and is not called open", async () => {
+    // The reviewer's counterexample: the record on disk is another mandate's closed challenge; this open failed
+    // before any grant, and the mandate's grant on chain is an earlier, revoked one.
+    const m = offlineManifest(tmp());
+    const previous = record("closed", { agent_key: { ...specimen.agent_key, publication_url: KEY_URL } });
+    expect(previous.accounts.mandate).not.toBe(m.accounts.mandate);
+    const got = await build(m, chainGrant({ epoch: 1, path: "mandate/v1/1", status: "revoked" }), { previous });
+    expect(got.status).toBe("not-opened");
+    expect(got.opened).toBeNull();
+    expect(got.grant).toBeNull();
+    expect(got.agent_key.publication_url).toBeNull();
+    expect(got.manifests).toEqual({ open: SHA, close: null });
+    expect(got.challenge_orders).toEqual({ total: 0, by_state: {} });
+    expect(got.previous_record_ignored).toEqual(expect.arrayContaining([`mandate account was ${previous.accounts.mandate}, this manifest's is ${m.accounts.mandate}`]));
+    // Without any earlier record the same failed opening is not-opened as well, and says nothing about one.
+    const alone = await build(m, chainGrant({ epoch: 1, path: "mandate/v1/1", status: "revoked" }), {});
+    expect([alone.status, alone.opened, alone.previous_record_ignored]).toEqual(["not-opened", null, undefined]);
+  });
+
+  // gate: LIVE
+  it("carries its own earlier record forward, and derives the status from the grant on chain and the outcome", async () => {
+    const m = offlineManifest(tmp());
+    const active = chainGrant();
+    const previous = ownRecord(m, active);
+    expect(previousProblems(previous, m, active as unknown as GrantView)).toEqual([]);
+    const close = (exitCode: 0 | 1): LiveResult => ({ exitCode, message: exitCode === 0 ? "completed" : "SYNTHETIC: awaiting the owner's signature" });
+    // Control: a close that is still waiting, the grant still active: open, with the opening and the link carried.
+    const waiting = await build(m, active, { phase: "close", result: close(1), previous });
+    expect([waiting.status, waiting.opened, waiting.agent_key.publication_url, waiting.manifests]).toEqual(["open", previous.opened, KEY_URL, { open: previous.manifests.open, close: SHA }]);
+    expect(waiting.previous_record_ignored).toBeUndefined();
+    // Revoked but the close did not complete: no longer open, not yet closed.
+    const revoked = chainGrant({ status: "revoked" });
+    expect((await build(m, revoked, { phase: "close", result: close(1), previous })).status).toBe("inactive");
+    expect((await build(m, chainGrant({ status: "revoking" }), { phase: "close", result: close(1), previous })).status).toBe("inactive");
+    // Closed needs both the completed close and the revoked grant.
+    expect((await build(m, revoked, { phase: "close", result: close(0), previous })).status).toBe("closed");
+    expect((await build(m, active, { phase: "close", result: close(0), previous })).status).toBe("open");
+    // A failed re-run of the open manifest keeps its own opening while that grant is active, and only then.
+    expect((await build(m, active, { previous })).status).toBe("open");
+    expect((await build(m, revoked, { previous })).status).toBe("inactive");
+  });
+
+  // gate: LIVE
+  it("ignores an earlier record that differs in network, mandate, code, agent key or grant, one binding at a time", async () => {
+    const m = offlineManifest(tmp());
+    const active = chainGrant();
+    const own = ownRecord(m, active);
+    const cases: [string, ChallengeRecord, Grant | null][] = [
+      ["chain id", { ...own, network: { ...own.network, chain_id: "another-chain" } }, active],
+      ["genesis hash", { ...own, network: { ...own.network, genesis_hash: "SYNTHETICotherGenesis" } }, active],
+      ["mandate account", { ...own, accounts: { ...own.accounts, mandate: "other-mandate.sandbox" } }, active],
+      ["mandate code hash", { ...own, mandate_code_hash: "SYNTHETICotherCode" }, active],
+      ["agent key", { ...own, agent_key: { ...own.agent_key, public_key: "ed25519:SYNTHETICotherAgentKey" } }, active],
+      ["grant epoch", own, chainGrant({ epoch: active.epoch + 1, path: `mandate/v1/${String(active.epoch + 1)}` })],
+      ["grant path", own, chainGrant({ path: "mandate/v2/3" })],
+      ["grant key", own, chainGrant({ public_key: "ed25519:SYNTHETICotherGrantKey" })],
+      ["no grant on chain", own, null],
+      ["no opening recorded", { ...own, opened: null, grant: null, status: "not-opened" }, active],
+    ];
+    for (const [name, previous, grant] of cases) {
+      expect(previousProblems(previous, m, grant as unknown as GrantView), name).toHaveLength(1);
+      const got = await build(m, grant, { phase: "close", result: { exitCode: 1, message: "SYNTHETIC" }, previous });
+      expect([name, got.status, got.opened, got.grant, got.agent_key.publication_url, got.manifests.open]).toEqual([name, "not-opened", null, null, null, null]);
+      // Said in the record whenever an opening was dropped.
+      expect(got.previous_record_ignored === undefined, name).toBe(previous.opened === null);
+    }
+    // A grant key the chain no longer reports (or the record never held) does not unbind epoch and path.
+    expect(previousProblems(own, m, chainGrant({ public_key: null }) as unknown as GrantView)).toEqual([]);
+  });
+
+  // gate: LIVE
+  it("counts this run's opening only for a verified grant that is the grant on chain", async () => {
+    const m = offlineManifest(tmp());
+    const active = chainGrant();
+    // Control: the run's grant transaction succeeded, its verification passed, and it is the grant on chain.
+    const opened = await build(m, active, { result: opening(active.epoch) });
+    expect([opened.status, opened.opened, opened.grant?.epoch]).toEqual(["open", { tx_hash: "SYNTHETICgrantTx", block_height: 90 }, active.epoch]);
+    // The grant on chain is another epoch (a resumed open ledger after a later regrant): not this run's opening.
+    expect((await build(m, chainGrant({ epoch: active.epoch + 1 }), { result: opening(active.epoch) })).status).toBe("not-opened");
+    // The transaction succeeded but its terminal verification did not pass.
+    const unverified = await build(m, active, { result: opening(active.epoch, false) });
+    expect([unverified.status, unverified.opened]).toEqual(["not-opened", null]);
+    // A grant transaction in a close run's evidence opens nothing.
+    expect((await build(m, active, { phase: "close", result: opening(active.epoch) })).status).toBe("not-opened");
+    // Activating: opened by this run, not active yet.
+    expect((await build(m, chainGrant({ status: "activating" }), { result: opening(active.epoch) })).status).toBe("inactive");
   });
 });

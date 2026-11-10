@@ -21,9 +21,11 @@
 //   the same. A refused handoff whose transaction is found on chain records its fee, charged once if the owner paid.
 // - Owner withdrawals (withdraw, withdraw_external) run after recovery, outside recovery claims; a refunded or failed
 //   attempt leaves the Intents balance intact and is retried on resume, the other asset is neither blocked nor repeated.
+// - Every session's report is preserved as <ledger>/reports/<sequence>.json, created exclusively, and then copied to
+//   out/evidence/live-<network>*.json (the latest copy, which a later run of the same kind replaces).
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { actions, type Account, type Action } from "near-api-js";
 import { z } from "zod";
@@ -97,6 +99,8 @@ export interface LiveResult {
   evidence?: Evidence;
   preflight?: Check[];
   awaiting?: Awaiting;
+  /** This session's preserved report (reportsDir): the same bytes as the latest copy, never written over. */
+  reportPath?: string;
 }
 
 export interface LiveDeps {
@@ -122,12 +126,33 @@ export interface LiveDeps {
 }
 
 /**
- * The runner's evidence file. The completed run writes live-<network>.json; each challenge phase writes its own
- * live-<network>-challenge-<phase>.json, so no run can write over another kind's or the other phase's evidence.
+ * The runner's latest evidence file. The completed run writes live-<network>.json; each challenge phase writes its own
+ * live-<network>-challenge-<phase>.json, so no run can write over another kind's or the other phase's evidence. A later
+ * run of the same kind replaces this copy; every report is first preserved under its manifest's ledger (preserveReport).
  */
 export function evidenceFile(outRoot: string, network: string, challenge?: "open" | "close"): string {
   return join(outRoot, "..", "evidence", challenge === undefined ? `live-${network}.json` : `live-${network}-challenge-${challenge}.json`);
 }
+
+/** Where every report of one manifest is kept: <outRoot>/<manifest sha256>/reports/<sequence>.json, one per session. */
+export const reportsDir = (ledgerDir: string): string => join(ledgerDir, "reports");
+
+/** Writes `text` to the first free `name(n)` in `dir`, created exclusively: an existing file is never written over. */
+export function writeNew(dir: string, name: (n: number) => string, text: string): string {
+  mkdirSync(dir, { recursive: true });
+  for (let n = readdirSync(dir).length + 1; ; n++) {
+    const path = join(dir, name(n));
+    try {
+      writeFileSync(path, text, { flag: "wx" });
+      return path;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+}
+
+/** Preserves one session's report under the next free sequence number of its manifest's ledger. */
+export const preserveReport = (ledgerDir: string, text: string): string => writeNew(reportsDir(ledgerDir), (n) => `${String(n).padStart(4, "0")}.json`, text);
 
 const BalancesJson = z.object({ usdc: z.string(), wnear: z.string() }).strict();
 const toBal = (b: z.infer<typeof BalancesJson>): Balances => ({ usdc: BigInt(b.usdc), wnear: BigInt(b.wnear) });
@@ -1444,7 +1469,7 @@ async function reconcile(rt: Runtime): Promise<void> {
     }
     if (prior === undefined || prior.data.status === "ambiguous") ledger.append("reconciled", { step, ...outcomeData(found) });
     else if (prior.data.success !== found.success) throw new Refusal(`cannot resume: ledger says ${hash} success=${String(prior.data.success)}, chain says ${String(found.success)}`);
-    rt.receipts.push(toEvidenceReceipt(found, { reconciled: true }));
+    rt.receipts.push(toEvidenceReceipt(found, { step: step + 1, reconciled: true }));
     if (!doneAfter(ledger, step, intent.seq)) {
       const pre = Pre.parse(intent.data.pre);
       // A failed model proposal goes through its non-fatal verification (a mandate refusal is a finding).
@@ -1453,10 +1478,10 @@ async function reconcile(rt: Runtime): Promise<void> {
       await finishStep(rt, step, kind, pre, found, typeof intent.data.attempt === "number" ? { attempt: intent.data.attempt } : {});
     }
   }
-  // Imports accepted (handoff recorded) whose verification did not complete: verify them from chain, once.
+  // Imports accepted (handoff recorded): re-read from chain; those whose verification did not complete are verified, once.
   for (const h of ledger.ofKind("external-handoff")) {
     const step = z.number().int().parse(h.data.step);
-    if (doneAfter(ledger, step, h.seq)) continue;
+    const done = doneAfter(ledger, step, h.seq);
     const recEntry = ledger.ofKind("external-intent").find((e) => e.data.intent_sha256 === h.data.intent_sha256);
     if (recEntry === undefined) throw new Refusal(`cannot resume: handoff ${String(h.data.tx_hash)} names no intent of this ledger`);
     const rec = intentOf(recEntry);
@@ -1465,7 +1490,9 @@ async function reconcile(rt: Runtime): Promise<void> {
     if (found === null || found.ambiguous || !found.final) throw new Refusal(`cannot resume: imported transaction ${hash} (step ${step + 1} ${rec.kind}) is not resolvable as final on chain. Nothing is resubmitted.`);
     const prior = results.get(hash);
     if (prior !== undefined && prior.data.success !== found.success) throw new Refusal(`cannot resume: ledger says ${hash} success=${String(prior.data.success)}, chain says ${String(found.success)}`);
-    await finishImport(rt, rec, found, "reconciled");
+    // An import verified in an earlier session is only re-read, so a resumed run's report lists every transaction.
+    if (done) rt.receipts.push(toEvidenceReceipt(found, { step: step + 1, imported: true, signed_outside_runner: true, intent_sha256: rec.intent_sha256, reconciled: true }));
+    else await finishImport(rt, rec, found, "reconciled");
   }
 }
 
@@ -1743,7 +1770,7 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     generated_at: new Date().toISOString(),
     mode: m.network.name === "mainnet" ? "mainnet" : "sandbox",
     source: binding.source,
-    environment: environment(REPO_ROOT, { rpc_url: m.network.rpc_url, chain_id: m.network.chain_id, manifest_sha256: loaded.sha256, ledger: dir }),
+    environment: environment(REPO_ROOT, { rpc_url: m.network.rpc_url, chain_id: m.network.chain_id, manifest_sha256: loaded.sha256, manifest_steps: m.steps.map((s) => s.kind).join(","), ledger: dir }),
     command: `MANDATE_LIVE=1 ${resume ? "MANDATE_LIVE_RESUME=1 " : ""}make ${deps.challenge === undefined ? "live" : "challenge"}`,
     identifiers: { ...m.accounts, mandate_code_hash: m.code_hashes.mandate, approval: `${m.approval.approved_by}: ${m.approval.reference}` },
     receipts,
@@ -1751,9 +1778,12 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     unknowns: exitCode === 0 ? [] : [message.startsWith("completed with findings") ? message : `run stopped: ${message}`],
   });
   const evidencePath = evidenceFile(deps.outRoot ?? join(REPO_ROOT, "out/live"), m.network.name, deps.challenge);
+  const text = `${JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`;
+  // Preserved first: the latest copy below is replaced by the next run of this kind, whatever its manifest.
+  const reportPath = preserveReport(dir, text);
   mkdirSync(dirname(evidencePath), { recursive: true });
-  writeFileSync(evidencePath, `${JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`);
-  return { exitCode, message, evidence, ...extra };
+  writeFileSync(evidencePath, text);
+  return { exitCode, message, evidence, ...extra, reportPath };
 }
 
 /** Findings of each step's latest verification: a refunded withdrawal retried successfully is no longer one. */
