@@ -1,0 +1,108 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "AGENT",
+  "case": "rehearsal",
+  "passed": true,
+  "mode": "unit",
+  "run_id": "20261110T112642713Z-78a406f01e1d",
+  "source": {
+    "revision": "173942f20a99e0c373711c13428e63a0ae9ec392",
+    "dirty": false
+  },
+  "spec_sha256": "f75c6f31613a480a2dbc7951552e14f2f60af1f6d499439ce7f6385825da34f5",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {},
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794311206,
+  "data": {
+    "checks": [
+      {
+        "name": "stub-timeout",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-model-id",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "invalid-output",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "decline",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "valid-proposal",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "balanced-no-call",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "record-integrity",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "planned-vs-observed",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "real-provider-needs-approval",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "qualification",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "qualification-final-decision",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "planned-grant",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "planned-grant-cli",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "observer",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "documented-sequence",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "no-transaction-path",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "cli-stub-run",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "note": "TypeScript unit test of the agent rehearsal; stub providers only, no VM, chain or model"
+  }
+}

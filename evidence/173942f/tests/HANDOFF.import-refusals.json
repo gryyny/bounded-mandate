@@ -1,0 +1,235 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "HANDOFF",
+  "case": "import-refusals",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261110T112642713Z-78a406f01e1d",
+  "source": {
+    "revision": "173942f20a99e0c373711c13428e63a0ae9ec392",
+    "dirty": false
+  },
+  "spec_sha256": "f75c6f31613a480a2dbc7951552e14f2f60af1f6d499439ce7f6385825da34f5",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794311365,
+  "data": {
+    "checks": [
+      {
+        "name": "duplicate-hash",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "second-hash-for-satisfied-intent",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-chain",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-signer",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-key",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-receiver",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-method",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "altered-args",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "gas-below-bounds",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "gas-above-bounds",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "deposit-out-of-bounds",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "extra-action",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wrong-chain-status",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "deployment_binary": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "signing": "SANDBOX LOCAL SIGNING ADAPTER (test double)",
+    "tokens": "mock-ft test double",
+    "refusal_paths": {
+      "duplicate-hash": {
+        "path": "screened before any lookup (MANDATE_LIVE_HANDOFF on resume): the hash is already in the ledger; recorded as external-refused",
+        "message": "step 3: handoff EYVhz8pzmzytWj65D4FMZkmW7KoJb2jesCBqMfd58Egd refused: duplicate: transaction EYVhz8pzmzytWj65D4FMZkmW7KoJb2jesCBqMfd58Egd is already in the ledger. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "EYVhz8pzmzytWj65D4FMZkmW7KoJb2jesCBqMfd58Egd",
+        "fee_yocto": null,
+        "payer": null,
+        "charged": false,
+        "fee_note": "already in the ledger: counted where it was first recorded, never again"
+      },
+      "second-hash-for-satisfied-intent": {
+        "path": "screened before the import (MANDATE_LIVE_HANDOFF on resume): the intent was already handed off; looked up for its fee, recorded as external-refused",
+        "message": "step 3: handoff 7qMh3n1ikQHZfbJGxGKP4wy3ttRia3SJikXiXPcLh8KH refused: duplicate: intent b5c2bc2483036ccf46113398edf8bebf5a85bd078b227b15929934f1718d01bf was already handed off as EYVhz8pzmzytWj65D4FMZkmW7KoJb2jesCBqMfd58Egd. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "7qMh3n1ikQHZfbJGxGKP4wy3ttRia3SJikXiXPcLh8KH",
+        "fee_yocto": "690796744322600000000",
+        "payer": "ownerv.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "wrong-chain": {
+        "path": "looked up on this chain: not found final; stopped, nothing recorded",
+        "message": "step 1 recover_external: transaction 4XZjJ2F7at7SDZnszCQc4PwmjFBz9qP6kUxixf1ysLR7 is not found final on test-chain-V7kEC (unrelated, from another chain, or not final yet); nothing recorded. Resume once it is final.",
+        "fee": "none on this chain (the transaction exists only on the other chain)"
+      },
+      "wrong-signer": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "wrong signer: transaction signed by relayer.sandbox, intent requires ownerr.sandbox",
+          "wrong key: transaction signed with ed25519:6ym6WyUb1Gu5anbB7kc6bkGX9qGzFynwMbBaDAgNpnkw, the approved key is ed25519:3iZGtBJqhGBXfCqNGHKiCQNf3kfoVusa583dkLqghkXA"
+        ],
+        "message": "step 1: handoff HCj1uHJVUoEqLM8i7zVZuCUakFtB79AD9MrTzbCowSG7 refused: wrong signer: transaction signed by relayer.sandbox, intent requires ownerr.sandbox; wrong key: transaction signed with ed25519:6ym6WyUb1Gu5anbB7kc6bkGX9qGzFynwMbBaDAgNpnkw, the approved key is ed25519:3iZGtBJqhGBXfCqNGHKiCQNf3kfoVusa583dkLqghkXA. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "HCj1uHJVUoEqLM8i7zVZuCUakFtB79AD9MrTzbCowSG7",
+        "fee_yocto": "166502449406000000000",
+        "payer": "relayer.sandbox",
+        "charged": false,
+        "fee_note": "paid by relayer.sandbox, not the owner: recorded, not charged"
+      },
+      "wrong-key": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "wrong key: transaction signed with ed25519:FEsvNhgtoedpzASNxnbK4WVvoQ59XVydskAKqMy51inm, the approved key is ed25519:3iZGtBJqhGBXfCqNGHKiCQNf3kfoVusa583dkLqghkXA"
+        ],
+        "message": "step 1: handoff 5WwXuZTV9VxkS32ywqDopsCDJswYpnGe617tZsXEMug1 refused: wrong key: transaction signed with ed25519:FEsvNhgtoedpzASNxnbK4WVvoQ59XVydskAKqMy51inm, the approved key is ed25519:3iZGtBJqhGBXfCqNGHKiCQNf3kfoVusa583dkLqghkXA. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "5WwXuZTV9VxkS32ywqDopsCDJswYpnGe617tZsXEMug1",
+        "fee_yocto": "671257904521500000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "wrong-receiver": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "wrong receiver: transaction sent to relayer.sandbox, intent requires mr.sandbox"
+        ],
+        "message": "step 1: handoff HuZH3d3MZU89f1u74peLca19e1DP5WMikxkUgCYMjw7b refused: wrong receiver: transaction sent to relayer.sandbox, intent requires mr.sandbox. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "HuZH3d3MZU89f1u74peLca19e1DP5WMikxkUgCYMjw7b",
+        "fee_yocto": "119726715192700000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "wrong-method": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "wrong method: action 1 calls get_recovery, intent requires recover"
+        ],
+        "message": "step 1: handoff 3eeQ7e2edHbKBsJ3DDFzbPJgm18b9TBQm4hSpjVbKFcH refused: wrong method: action 1 calls get_recovery, intent requires recover. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "3eeQ7e2edHbKBsJ3DDFzbPJgm18b9TBQm4hSpjVbKFcH",
+        "fee_yocto": "165126590037200000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "altered-args": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "altered args: action 1 arguments {\"asset\":\"usdc\",\"gas_tgas\":60} differ from {\"asset\":\"usdc\"}"
+        ],
+        "message": "step 1: handoff J8rLEv1B3f3QJjoeQYZhYFmmC8VJeETMBLjNETT3nkGv refused: altered args: action 1 arguments {\"asset\":\"usdc\",\"gas_tgas\":60} differ from {\"asset\":\"usdc\"}. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "J8rLEv1B3f3QJjoeQYZhYFmmC8VJeETMBLjNETT3nkGv",
+        "fee_yocto": "167111155389500000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "gas-below-bounds": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "gas out of bounds: action 1 attaches 20000000000000 gas, bounds [80000000000000, 100000000000000]"
+        ],
+        "message": "step 1: handoff A3LCEYk2jorxYHG4YodpYVUSV7u7oAuv2XMwoZ7BAG6B refused: gas out of bounds: action 1 attaches 20000000000000 gas, bounds [80000000000000, 100000000000000]. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "A3LCEYk2jorxYHG4YodpYVUSV7u7oAuv2XMwoZ7BAG6B",
+        "fee_yocto": "166887575021300000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "gas-above-bounds": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "gas out of bounds: action 1 attaches 300000000000000 gas, bounds [80000000000000, 100000000000000]"
+        ],
+        "message": "step 1: handoff CybSGd3QUTh1SS6pPmcUKQUECCM5GNyX2fybFMYT6GjK refused: gas out of bounds: action 1 attaches 300000000000000 gas, bounds [80000000000000, 100000000000000]. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "CybSGd3QUTh1SS6pPmcUKQUECCM5GNyX2fybFMYT6GjK",
+        "fee_yocto": "671257904521500000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "deposit-out-of-bounds": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "deposit out of bounds: action 1 attaches 1 yocto, bounds [0, 0]"
+        ],
+        "message": "step 1: handoff xSvuhvzrfQaVMsbfPrTyPrb5Sfufs3rMoxTaApeNMCc refused: deposit out of bounds: action 1 attaches 1 yocto, bounds [0, 0]. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "xSvuhvzrfQaVMsbfPrTyPrb5Sfufs3rMoxTaApeNMCc",
+        "fee_yocto": "155482481977900000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "extra-action": {
+        "path": "looked up and found final on this chain, then refused by the transaction check; recorded as external-refused",
+        "problems": [
+          "extra or missing action: transaction has 2 actions, intent has 1"
+        ],
+        "message": "step 1: handoff 4JzyYq2EMuBQSMaAEtdhRhEDif3JbL8zwNMS79JtgvJU refused: extra or missing action: transaction has 2 actions, intent has 1. Nothing was imported; nothing is resubmitted.",
+        "tx_hash": "4JzyYq2EMuBQSMaAEtdhRhEDif3JbL8zwNMS79JtgvJU",
+        "fee_yocto": "694282517021500000000",
+        "payer": "ownerr.sandbox",
+        "charged": true,
+        "fee_note": "paid by the owner: charged once against max_fee_yocto"
+      },
+      "wrong-chain-status": {
+        "path": "RPC status reports another chain: stopped before any lookup, nothing recorded",
+        "message": "step 1 recover_external: wrong chain: the RPC serves other-chain/11111111111111111111111111111111, the intent is for test-chain-V7kEC/4d46fmEw9xkjg3FBXXUtCYannZTheCbkHBh76kRGhBYg; handoff 9b9okCtKjm8dLG6ikEx2RsBQ9GCMe8K6iMedNYWeajZ3 not looked up, nothing recorded.",
+        "fee": "not recorded at the refusal (nothing is looked up through an RPC that reports another chain); the same handoff then imports against the intent's chain and its fee is charged once there"
+      }
+    }
+  }
+}
