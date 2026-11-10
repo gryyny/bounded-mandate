@@ -63,3 +63,5 @@ What it does not show (`CHALLENGE_DOES_NOT_SHOW`):
 - Whoever holds the agent key can exhaust the agent's gas allowance and the grant's proposal budget; the challenge then accepts no further proposals.
 - The cost is bounded by the challenge deposit and the agent's remaining gas allowance.
 - An unknown contract defect could lose the deposit.
+
+On mainnet the earlier run's withheld order expires 60 to 120 s after it was signed, long before a challenge opens. There, "stays rejected" rests on the earlier grant's key being absent from the verifier (`earlier_grants[].registered` is false in the challenge record), not on a fresh rejection attributable to revocation. Only the sandbox case, whose primary grant uses an 1800 s order lifetime and oracle age for this purpose, relays the unexpired withheld order while the challenge grant is live.
