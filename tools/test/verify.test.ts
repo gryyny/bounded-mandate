@@ -1,5 +1,5 @@
 // verify.mjs offline: the committed bundle, a SYNTHETIC certified repository and negative controls. No network.
-import { appendFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { REQUIRED_CASES, SEPARATE_CASES } from "../src/evidence/required.js";
@@ -71,7 +71,9 @@ describe("verify.mjs against the committed certified bundle", () => {
     expect(r.out).not.toMatch(/^FAIL /m);
     const listed = new Set((JSON.parse(readFileSync(join(dir, bundle, "acceptance.json"), "utf8")) as { cases: { id: string }[] }).cases.map((c) => c.id));
     const current = Object.entries(REQUIRED_CASES).flatMap(([g, cs]) => cs.map((c) => `${g}.${c}`));
-    expect(r.out).toMatch(new RegExp(`^VERIFIED under the bundle's own required list \\(${String(current.filter((id) => listed.has(id)).length)} of ${String(current.length)} current cases\\): `, "m"));
+    const covered = current.filter((id) => listed.has(id)).length;
+    const lacks = covered === current.length ? "it lacks none of the currently required cases" : `it lacks ${String(current.length - covered)} of the currently required cases`;
+    expect(r.out).toMatch(new RegExp(`^VERIFIED under the bundle's own required list \\(${String(covered)} of ${String(current.length)} current cases; ${lacks}\\): `, "m"));
     expect(r.code).toBe(0);
   });
 
@@ -145,6 +147,9 @@ describe("verify.mjs on a SYNTHETIC certified repository", () => {
     ["a failed case", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "tests/T1.pending-sign.json"), (v) => { v.passed = false; }); }, "gate T1"],
     ["a report from another run", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "tests/WITHDRAW.both-assets.json"), (v) => { v.run_id = "other"; }); }, "gate WITHDRAW"],
     ["a report bound to other WASM", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "tests/LIVE.agent-template.json"), (v) => { v.wasm_sha256 = { bounded_mandate: "0".repeat(64) }; }); }, "gate LIVE"],
+    ["a report relabelled to a mode the certifier does not accept", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "tests/T3.breaker.json"), (v) => { v.mode = "mainnet"; }); }, "gate T3"],
+    ["a sandbox report relabelled as unit, which needs no WASM binding", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "tests/T3.breaker.json"), (v) => { v.mode = "unit"; v.wasm_sha256 = {}; }); }, "gate T3"],
+    ["a sandbox report that binds no WASM", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "tests/T3.breaker.json"), (v) => { v.wasm_sha256 = {}; }); }, "gate T3"],
     ["a required case missing from the report", (d) => { editJson(join(d, SYNTHETIC_BUNDLE, "acceptance.json"), (v) => { v.cases = (v.cases as { id: string }[]).filter((c) => c.id !== "COMPARE.revocation-alternatives"); }); }, "acceptance.cases"],
     ["a superseded index entry", (d) => { editJson(join(d, "evidence/index.json"), (v) => { (v.bundles as { status: string }[]).forEach((b) => { b.status = "superseded"; }); }); }, "bundle.index"],
   ];
@@ -155,6 +160,51 @@ describe("verify.mjs on a SYNTHETIC certified repository", () => {
     const r = await runVerify(["--root", dir, "--bundle", SYNTHETIC_BUNDLE]);
     expect(lineOf(r.out, gate)).toMatch(/^FAIL /);
     expect(r.code).toBe(1);
+  });
+
+  it("accepts each mode the certifier accepts when acceptance.json records the same one", async () => {
+    const dir = await synthetic();
+    for (const [id, mode] of [["T3.breaker", "unit-vm"], ["T3.concession", "unit"]] as const) {
+      editJson(join(dir, SYNTHETIC_BUNDLE, `tests/${id}.json`), (v) => { v.mode = mode; v.wasm_sha256 = {}; });
+      editJson(join(dir, SYNTHETIC_BUNDLE, "acceptance.json"), (v) => { (v.cases as { id: string; mode: string }[]).filter((c) => c.id === id).forEach((c) => { c.mode = mode; }); });
+    }
+    expect((await runVerify(["--root", dir, "--write-manifest", SYNTHETIC_BUNDLE])).code).toBe(0);
+    const r = await runVerify(["--root", dir]);
+    expect(lineOf(r.out, "gate T3")).toMatch(/^PASS /);
+    expect(r.code).toBe(0);
+  });
+
+  it("does not skip a directory named like an ignored file", async () => {
+    const dir = await synthetic();
+    mkdirSync(join(dir, SYNTHETIC_BUNDLE, ".DS_Store"));
+    writeFileSync(join(dir, SYNTHETIC_BUNDLE, ".DS_Store/hidden.json"), "{}\n");
+    writeFileSync(join(dir, SYNTHETIC_BUNDLE, "page/.DS_Store"), "ignored regular file\n");
+    const r = await runVerify(["--root", dir]);
+    expect(lineOf(r.out, "bundle.files")).toMatch(/^FAIL /);
+    expect(r.out).toContain(".DS_Store/hidden.json is not listed");
+    expect(r.out).not.toContain("page/.DS_Store");
+    expect(r.code).toBe(1);
+  });
+
+  it.each([["cases"], ["separate"]])("fails with a normal summary on a malformed %s entry", async (list) => {
+    const dir = await synthetic();
+    editJson(join(dir, SYNTHETIC_BUNDLE, "acceptance.json"), (v) => { (v[list] as unknown[]).push(null); });
+    expect((await runVerify(["--root", dir, "--write-manifest", SYNTHETIC_BUNDLE])).code).toBe(0);
+    const r = await runVerify(["--root", dir]);
+    expect(r.out).not.toContain("TypeError");
+    expect(lineOf(r.out, "acceptance.cases")).toMatch(/^FAIL /);
+    expect(r.out).toContain(`acceptance.json ${list}[${String(list === "cases" ? Object.values(REQUIRED_CASES).flat().length : Object.values(SEPARATE_CASES).flat().length)}] is null, not a case entry`);
+    expect(r.out).toMatch(/^NOT VERIFIED: .* failed, /m);
+    expect(r.code).toBe(1);
+  });
+
+  it("states what the check does not prove, in the output and in --help", async () => {
+    const sentence = "What this does not prove: SHA256SUMS is unsigned, so this check detects accidental or partial change, not a self-consistent rewritten bundle. Trust comes from the commit history and from rerunning `make test`.";
+    const dir = await synthetic();
+    const r = await runVerify(["--root", dir]);
+    expect(r.out.trimEnd().split("\n").at(-2)).toBe(sentence);
+    expect(r.out.trimEnd().split("\n").at(-1)).toMatch(/^VERIFIED: /);
+    expect((await runVerify(["--help"])).out).toContain(sentence);
   });
 
   it("never passes a case required now that a bundle certified under an earlier list lacks", async () => {
@@ -194,7 +244,7 @@ describe("verify.mjs on a SYNTHETIC certified repository", () => {
 
     const own = await runVerify(["--root", dir, "--rules", "bundle"]);
     expect(lineOf(own.out, `gate ${gate}`)).toMatch(new RegExp(`^PASS +gate ${gate} {2}1 of 1 under the bundle's list, .*: ${kept.join(", ")}; ${dropped.join(", ")} required now, not in this bundle$`));
-    expect(own.out).toMatch(new RegExp(`^VERIFIED under the bundle's own required list \\(${String(total - dropped.length)} of ${String(total)} current cases\\): `, "m"));
+    expect(own.out).toMatch(new RegExp(`^VERIFIED under the bundle's own required list \\(${String(total - dropped.length)} of ${String(total)} current cases; it lacks ${String(dropped.length)} of the currently required cases\\): `, "m"));
     expect(own.code).toBe(0);
 
     // Default rules: unchanged wording, and the gate fails.

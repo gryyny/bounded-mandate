@@ -33,8 +33,31 @@ const MANIFEST = "SHA256SUMS";
 const LIVE_FILE = "live-mainnet.json";
 const DEFAULT_RPC = "https://archival-rpc.mainnet.fastnear.com";
 const MAINNET_GENESIS = "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H";
-// Token accounts pinned in tools/src/live/manifest.live-agent.example.json; used only when the evidence names none.
+// Mainnet accounts pinned here, equal to MAINNET in tools/src/live/network.ts. Evidence cannot override them: a mainnet
+// record naming another verifier, signer or token contract fails.
+const MAINNET_ACCOUNTS = { verifier: "intents.near", signer: "v1.signer" };
 const MAINNET_TOKENS = { usdc: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", wnear: "wrap.near" };
+// The contract method each step kind of the live runner calls (tools/src/live/main.ts), and the receiver of each method.
+const STEP_METHOD = {
+  grant: "grant",
+  propose: "propose_order",
+  refused_proposal: "propose_order",
+  fill: "execute_intents",
+  relay_withheld: "execute_intents",
+  settle: "settle_order",
+  revoke: "revoke",
+  revoke_external: "revoke",
+  reconcile_registration: "reconcile_registration",
+  recover: "recover",
+  recover_external: "recover",
+  withdraw: "ft_withdraw",
+  withdraw_external: "ft_withdraw",
+  register_storage: "storage_deposit",
+};
+const MANDATE_METHODS = ["grant", "propose_order", "settle_order", "revoke", "reconcile_registration", "recover"];
+const VERIFIER_METHODS = ["execute_intents", "ft_withdraw"];
+const MODES = ["sandbox", "unit-vm", "unit"];
+const NOT_PROVED = "What this does not prove: SHA256SUMS is unsigned, so this check detects accidental or partial change, not a self-consistent rewritten bundle. Trust comes from the commit history and from rerunning `make test`.";
 const IGNORED_NAMES = new Set([".DS_Store"]);
 const HEX64 = /^[0-9a-f]{64}$/;
 
@@ -60,13 +83,14 @@ function base58(bytes) {
   return out;
 }
 
+/** Every file under dir. Only a regular file with an ignored name is left out, never a directory of that name. */
 function listFiles(dir) {
-  return readdirSync(dir)
-    .filter((name) => !IGNORED_NAMES.has(name))
-    .flatMap((name) => {
-      const path = join(dir, name);
-      return statSync(path).isDirectory() ? listFiles(path) : [path];
-    });
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    const stat = statSync(path);
+    if (stat.isDirectory()) return listFiles(path);
+    return stat.isFile() && IGNORED_NAMES.has(name) ? [] : [path];
+  });
 }
 
 /** Lines "<sha256>  <path>" sorted by path, paths relative to the bundle, readable by `shasum -a 256 -c`. */
@@ -101,7 +125,7 @@ class Report {
 
 function defaultBundle(root) {
   const index = readJson(join(root, "evidence/index.json"));
-  const certified = (index.bundles ?? []).filter((b) => b.status === "certified");
+  const certified = (Array.isArray(index?.bundles) ? index.bundles : []).filter((b) => isObject(b) && b.status === "certified");
   if (certified.length !== 1) throw new Error(`evidence/index.json lists ${certified.length} certified bundles; pass --bundle <path>`);
   return certified[0].path;
 }
@@ -160,7 +184,13 @@ function readReports(testsDir, problems) {
     problems.push("tests/ is missing");
     return reports;
   }
-  for (const file of readdirSync(testsDir).filter((f) => !IGNORED_NAMES.has(f)).sort()) {
+  for (const file of readdirSync(testsDir).sort()) {
+    const stat = statSync(join(testsDir, file));
+    if (stat.isFile() && IGNORED_NAMES.has(file)) continue;
+    if (!stat.isFile()) {
+      problems.push(`tests/${file} is not a regular file`);
+      continue;
+    }
     let report;
     try {
       report = readJson(join(testsDir, file));
@@ -177,7 +207,7 @@ function readReports(testsDir, problems) {
   return reports;
 }
 
-function reportProblems({ file, report }, run, acc, fixtureStems) {
+function reportProblems({ file, report }, run, acc, fixtureStems, statedMode) {
   const out = [];
   const id = `${report.gate}.${report.case}`;
   if (file !== `${id}.json`) out.push(`${file}: file name is not ${id}.json`);
@@ -188,6 +218,10 @@ function reportProblems({ file, report }, run, acc, fixtureStems) {
   if (report.spec_sha256 !== run.spec_sha256) out.push(`${id}: spec_sha256 differs from the run`);
   if (report.fixture_manifest_sha256 !== run.fixture_manifest_sha256) out.push(`${id}: fixture_manifest_sha256 differs from the run`);
   if (typeof report.command !== "string" || report.command.split(" ").some((a) => a.startsWith("/"))) out.push(`${id}: command records a machine-local path`);
+  // The modes the certifier accepts (GateReportV2 in tools/src/evidence/schema.ts); sandbox execution must bind its WASM.
+  if (!MODES.includes(report.mode)) out.push(`${id}: mode ${JSON.stringify(report.mode ?? null)} is not one of ${MODES.join(", ")}`);
+  if (statedMode !== report.mode) out.push(`${id}: acceptance.json records mode ${JSON.stringify(statedMode ?? null)}, the report says ${JSON.stringify(report.mode ?? null)}`);
+  if (!isObject(report.wasm_sha256)) out.push(`${id}: wasm_sha256 is not an object`);
   const wasm = isObject(report.wasm_sha256) ? report.wasm_sha256 : {};
   if (report.mode === "sandbox" && Object.keys(wasm).length === 0) out.push(`${id}: sandbox report binds no WASM hash`);
   for (const [stem, hash] of Object.entries(wasm)) {
@@ -198,11 +232,15 @@ function reportProblems({ file, report }, run, acc, fixtureStems) {
   return out;
 }
 
+/** The object entries of a list in the evidence; anything else in it is reported by malformed(). */
+const entries = (list) => (Array.isArray(list) ? list.filter(isObject) : []);
+const malformed = (list, name) => (Array.isArray(list) ? list.flatMap((c, i) => (isObject(c) ? [] : [`${name}[${i}] is ${JSON.stringify(c)}, not a case entry`])) : [`${name} is not a list`]);
+
 /** The bundle's own required list, from the cases its acceptance report lists, grouped by gate. */
 function recordedRegistry(acc) {
   const out = {};
-  for (const c of Array.isArray(acc.cases) ? acc.cases : []) {
-    if (typeof c?.gate !== "string" || typeof c?.case !== "string") continue;
+  for (const c of entries(acc.cases)) {
+    if (typeof c.gate !== "string" || typeof c.case !== "string") continue;
     out[c.gate] = [...new Set([...(out[c.gate] ?? []), c.case])];
   }
   return out;
@@ -213,12 +251,13 @@ function checkEvidence(r, root, bundleDir, bundle, rules) {
   const run = loadJson(join(bundleDir, "run.json"), problems, "run.json");
   const acc = loadJson(join(bundleDir, "acceptance.json"), problems, "acceptance.json");
   const index = loadJson(join(root, "evidence/index.json"), problems, "evidence/index.json");
-  if (run === null || acc === null) {
+  if (!isObject(run) || !isObject(acc)) {
+    if (problems.length === 0) problems.push("run.json or acceptance.json is not a JSON object");
     r.line("FAIL", "acceptance.report", "cannot be checked", problems);
     return null;
   }
 
-  const entry = (index?.bundles ?? []).find((b) => b.path === bundle);
+  const entry = (Array.isArray(index?.bundles) ? index.bundles : []).find((b) => isObject(b) && b.path === bundle);
   const indexProblems = [];
   if (entry === undefined) indexProblems.push(`evidence/index.json has no entry for ${bundle}`);
   else {
@@ -259,14 +298,16 @@ function checkEvidence(r, root, bundleDir, bundle, rules) {
   const current = caseIds(REQUIRED_CASES);
   const known = new Set([...required, ...current, ...caseIds(SEPARATE_CASES)]);
   for (const id of byId.keys()) if (!known.has(id)) reportsProblems.push(`tests/ holds a report for unknown case ${id}`);
-  const statusOf = new Map((Array.isArray(acc.cases) ? acc.cases : []).map((c) => [c.id, c]));
-  const listedIds = (Array.isArray(acc.cases) ? acc.cases : []).map((c) => c.id);
+  const statusOf = new Map(entries(acc.cases).map((c) => [c.id, c]));
+  const listedIds = entries(acc.cases).map((c) => c.id);
   const missingFromAcc = required.filter((id) => !listedIds.includes(id));
   const extraInAcc = listedIds.filter((id) => !required.includes(id));
   const dupInAcc = listedIds.filter((id, i) => listedIds.indexOf(id) !== i);
   const notNow = caseIds(recorded).filter((id) => !current.includes(id));
   const earlier = missingFromAcc.length > 0 && extraInAcc.length === 0 && dupInAcc.length === 0 && rules === "current";
   const listProblems = [
+    ...malformed(acc.cases, "acceptance.json cases"),
+    ...malformed(acc.separate ?? [], "acceptance.json separate"),
     ...(required.length === 0 ? ["no required case to judge: the report lists none"] : []),
     ...(earlier ? [`certified under an earlier required list: it lists ${listedIds.length} cases, the current list has ${current.length}; judge it under its own list with --rules bundle`] : []),
     ...missingFromAcc.map((id) => `acceptance.json does not list required case ${id}`),
@@ -290,8 +331,8 @@ function checkEvidence(r, root, bundleDir, bundle, rules) {
         const found = byId.get(id) ?? [];
         if (found.length === 0) problems.push(`${id}: no report in tests/`);
         else if (found.length > 1) problems.push(`${id}: ${found.length} reports (${found.map((f) => f.file).join(", ")})`);
-        else problems.push(...reportProblems(found[0], run, acc, fixtureStems));
         const stated = statusList.get(id);
+        if (found.length === 1) problems.push(...reportProblems(found[0], run, acc, fixtureStems, stated?.mode));
         if (stated?.status !== "passed") problems.push(`${id}: acceptance.json states ${JSON.stringify(stated?.status ?? "nothing")}`);
       }
       // Under --rules bundle a gate the current list extends must not read as fully covered.
@@ -302,7 +343,7 @@ function checkEvidence(r, root, bundleDir, bundle, rules) {
     }
   };
   caseLines(registry, "gate", statusOf);
-  caseLines(SEPARATE_CASES, "separate", new Map((Array.isArray(acc.separate) ? acc.separate : []).map((c) => [c.id, c])));
+  caseLines(SEPARATE_CASES, "separate", new Map(entries(acc.separate).map((c) => [c.id, c])));
   return { run, acc, byId, coverage: { covered: current.filter((id) => required.includes(id)).length, current: current.length } };
 }
 
@@ -310,11 +351,11 @@ function checkCheckout(r, root, ev, skip) {
   const gates = ["checkout.spec", "checkout.fixtures", "checkout.deploy-candidate"];
   if (skip) {
     for (const g of gates) r.line("SKIP", g, "not checked (--no-checkout): this checkout is not compared with the bundle");
-    return;
+    return null;
   }
   if (ev === null) {
     for (const g of gates) r.line("FAIL", g, "not checked: the bundle's run record is unreadable");
-    return;
+    return null;
   }
   const { run, acc, byId } = ev;
   const specPath = join(root, "SPEC.md");
@@ -326,7 +367,13 @@ function checkCheckout(r, root, ev, skip) {
   const manifestHash = existsSync(manifestPath) ? sha256File(manifestPath) : null;
   if (manifestHash !== run.fixture_manifest_sha256) fixProblems.push(`fixtures/manifest.json sha256 ${manifestHash ?? "(missing)"} != certified ${run.fixture_manifest_sha256}`);
   const recorded = isObject(acc.hashes?.fixtures) ? acc.hashes.fixtures : {};
-  const manifest = manifestHash === null ? { files: {} } : readJson(manifestPath);
+  let manifest = { files: {} };
+  try {
+    if (manifestHash !== null) manifest = readJson(manifestPath);
+  } catch {
+    fixProblems.push("fixtures/manifest.json is not valid JSON");
+  }
+  if (!isObject(manifest) || !isObject(manifest.files)) manifest = { files: {} };
   for (const [file, hash] of Object.entries(recorded)) {
     const path = join(root, "fixtures", file);
     const actual = existsSync(path) ? sha256File(path) : null;
@@ -338,9 +385,10 @@ function checkCheckout(r, root, ev, skip) {
 
   // The deployment candidate is a committed fixture, so its hash is recomputable here; locally built WASM is not.
   const candProblems = [];
-  const candidates = Object.entries(manifest.files ?? {}).filter(([, e]) => e.kind === "deployment-candidate");
+  const candidates = Object.entries(manifest.files ?? {}).filter(([, e]) => e?.kind === "deployment-candidate");
   if (candidates.length !== 1) candProblems.push(`fixtures/manifest.json lists ${candidates.length} deployment candidates, expected 1`);
   let candidateText = "";
+  let candidate = null;
   for (const [file, entry] of candidates) {
     const path = join(root, "fixtures", file);
     if (!existsSync(path)) {
@@ -360,12 +408,15 @@ function checkCheckout(r, root, ev, skip) {
       if (deploy.data?.candidate_sha256 !== undefined && deploy.data.candidate_sha256 !== hash) candProblems.push(`DEPLOY.candidate records candidate_sha256 ${deploy.data.candidate_sha256}`);
       if (deploy.data?.deployed_code_hash !== undefined && deploy.data.deployed_code_hash !== codeHash) candProblems.push(`DEPLOY.candidate records code hash ${deploy.data.deployed_code_hash}, the file's is ${codeHash}`);
     }
+    candidate = { file, sha256: hash, codeHash };
     candidateText = `fixtures/${file} sha256 ${hash}, NEAR code hash ${codeHash}, deployed in sandbox by DEPLOY.candidate`;
   }
-  r.check("checkout.deploy-candidate", candProblems, candidateText, "the deployment candidate does not match");
+  const candidateOk = r.check("checkout.deploy-candidate", candProblems, candidateText, "the deployment candidate does not match");
 
   const built = Object.keys(acc.hashes?.wasm ?? {});
   r.line("INFO", "wasm.local-builds", `not recomputed: ${built.join(", ")} were built by the run with the Rust toolchain; reports are checked only for consistency with those recorded hashes`);
+  // The deployment candidate of this checkout, for the mainnet code-hash checks; null when it does not match.
+  return candidateOk ? candidate : null;
 }
 
 // ---------------------------------------------------------------------------------------------- mainnet checks
@@ -404,6 +455,12 @@ class Rpc {
     } catch {
       return { ok: false, error: `${method} returned no JSON result` };
     }
+  }
+  async codeHash(account, block) {
+    const at = block === "final" ? { finality: "final" } : { block_id: block };
+    const r = await this.call("query", { request_type: "view_account", account_id: account, ...at });
+    if (!r.ok) return r;
+    return typeof r.result.code_hash === "string" ? { ok: true, value: r.result.code_hash } : { ok: false, error: "view_account returned no code_hash" };
   }
   async height(blockHash) {
     const r = await this.call("block", { block_id: blockHash });
@@ -451,49 +508,116 @@ function expectedBalances(assertions) {
   return out;
 }
 
-async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
-  const path = livePath ?? join(bundleDir, LIVE_FILE);
-  if (!existsSync(path)) {
-    r.line("NOT VERIFIED", "mainnet", `no mainnet receipts: ${livePath ?? `${bundle}/${LIVE_FILE}`} does not exist. No mainnet run is recorded in this bundle, so nothing on mainnet is verified.`);
-    return;
-  }
-  let ev;
+/** The step kind a receipt label of the live runner names ("step 3 revoke", "import step 3 revoke_external", "reconcile revoke"). */
+const kindOf = (label) => /(?:^|\s)(?:step \d+|reconcile) ([a-z_]+)$/.exec(String(label))?.[1] ?? null;
+
+/** Problems with where a transaction went, judged from the chain's own receiver and method and the pinned accounts. */
+function targetProblems(label, v, mandate) {
+  const p = [];
+  const actions = Array.isArray(v.t.actions) ? v.t.actions : [];
+  if (actions.length !== 1 || v.method === null) p.push(`carries ${actions.length} actions, expected one function call`);
+  const kind = kindOf(label);
+  if (kind !== null && !(kind in STEP_METHOD)) p.push(`step kind ${kind} is not a transaction step of the live runner`);
+  else if (kind !== null && v.method !== STEP_METHOD[kind]) p.push(`a ${kind} step calls ${STEP_METHOD[kind]}, the chain shows ${v.method}`);
+  const receivers = MANDATE_METHODS.includes(v.method) ? [mandate] : VERIFIER_METHODS.includes(v.method) ? [MAINNET_ACCOUNTS.verifier] : v.method === "storage_deposit" ? Object.values(MAINNET_TOKENS) : null;
+  if (receivers === null) p.push(`method ${v.method} is not one the live runner calls`);
+  else if (!receivers.includes(v.t.receiver_id)) p.push(`${v.method} must be called on ${receivers.join(" or ")}, the chain shows receiver ${v.t.receiver_id}`);
+  return p;
+}
+
+/**
+ * The recorded mainnet run, judged without the network: the file's place in the hashed bundle, the pinned accounts,
+ * its source binding and its own verdict. Returns null when there is nothing a chain read could be compared with.
+ */
+function checkRecordedRun(r, bundleDir, bundle, livePath, ev, candidate, mainnet) {
+  const own = join(bundleDir, LIVE_FILE);
+  const path = livePath ?? own;
+  const shown = livePath ?? `${bundle}/${LIVE_FILE}`;
+  if (!existsSync(path)) return null;
+  if (resolve(path) !== resolve(own)) r.line("NOT VERIFIED", "mainnet.evidence-file", `${shown} is not ${bundle}/${LIVE_FILE}: it is outside the hashed bundle, so its bytes are bound to nothing. Its checks below are informative only.`);
+  let live;
   try {
-    ev = readJson(path);
+    live = readJson(path);
   } catch {
-    r.line("FAIL", "mainnet.evidence", `${path} is not valid JSON`);
-    return;
+    r.line("FAIL", "mainnet.evidence", `${shown} is not valid JSON`);
+    return { usable: false };
   }
-  const receipts = Array.isArray(ev.receipts) ? ev.receipts : [];
-  const assertions = Array.isArray(ev.assertions) ? ev.assertions : [];
-  const ids = isObject(ev.identifiers) ? ev.identifiers : {};
+  if (!isObject(live)) {
+    r.line("FAIL", "mainnet.evidence", `${shown} is not a JSON object`);
+    return { usable: false };
+  }
+  const receipts = Array.isArray(live.receipts) ? live.receipts.filter(isObject) : [];
+  const assertions = Array.isArray(live.assertions) ? live.assertions.filter(isObject) : [];
+  const ids = isObject(live.identifiers) ? live.identifiers : {};
   const evProblems = [];
-  if (ev.mode !== "mainnet") evProblems.push(`evidence mode is ${JSON.stringify(ev.mode)}, not "mainnet"`);
-  if (ev.environment?.chain_id !== "mainnet") evProblems.push(`evidence chain id is ${JSON.stringify(ev.environment?.chain_id)}, not "mainnet"`);
+  if (live.mode !== "mainnet") evProblems.push(`evidence mode is ${JSON.stringify(live.mode)}, not "mainnet"`);
+  if (live.environment?.chain_id !== "mainnet") evProblems.push(`evidence chain id is ${JSON.stringify(live.environment?.chain_id)}, not "mainnet"`);
   if (receipts.length === 0) evProblems.push("evidence has no receipts");
+  if (Array.isArray(live.receipts) && receipts.length !== live.receipts.length) evProblems.push("a receipt entry is not an object");
+  if (Array.isArray(live.assertions) && assertions.length !== live.assertions.length) evProblems.push("an assertion entry is not an object");
   for (const rc of receipts) {
     if (typeof rc.tx_hash !== "string" || typeof rc.detail?.signer_id !== "string") evProblems.push(`receipt ${JSON.stringify(rc.label)} has no transaction hash or signer`);
   }
-  if (typeof ids.mandate !== "string" || typeof ids.verifier !== "string") evProblems.push("evidence names no mandate or verifier account");
-  if (!r.check("mainnet.evidence", evProblems, `${receipts.length} receipts recorded in mode mainnet (${livePath ?? `${bundle}/${LIVE_FILE}`})`, "not mainnet evidence")) return;
+  if (typeof ids.mandate !== "string") evProblems.push("evidence names no mandate account");
+  let usable = r.check("mainnet.evidence", evProblems, `${receipts.length} receipts recorded in mode mainnet (${shown})`, "not mainnet evidence");
+  if (!usable) return { usable };
 
-  // The run's own record of completion, read before any chain data. A failure the evidence itself states is a FAIL, not
-  // NOT VERIFIED: nothing is left to read, the record already says the run did not succeed. Only the latest attempt of a
-  // step counts, since a retried attempt (`-attempt-N`) supersedes the one before it.
+  // Pinned accounts: the evidence may not choose the verifier, the signer or a token contract.
+  const pinProblems = [];
+  for (const [role, pinned] of Object.entries(MAINNET_ACCOUNTS)) if (ids[role] !== pinned) pinProblems.push(`evidence names ${role} ${JSON.stringify(ids[role] ?? null)}; on mainnet it is ${pinned}`);
+  const exp = expectedBalances(assertions);
+  for (const [asset, token] of Object.entries(exp.tokens)) {
+    if (!(asset in MAINNET_TOKENS)) pinProblems.push(`evidence names an unknown asset ${asset}`);
+    else if (token !== MAINNET_TOKENS[asset]) pinProblems.push(`evidence names token ${token} for ${asset}; on mainnet it is ${MAINNET_TOKENS[asset]}`);
+  }
+  for (const side of [exp.mandate, exp.ownerIntents, exp.ownerTokens]) for (const asset of Object.keys(side ?? {})) if (!(asset in MAINNET_TOKENS)) pinProblems.push(`evidence records a balance of an unknown asset ${asset}`);
+  usable = r.check("mainnet.pinned", [...new Set(pinProblems)], `verifier ${MAINNET_ACCOUNTS.verifier}, signer ${MAINNET_ACCOUNTS.signer}, USDC ${MAINNET_TOKENS.usdc} and wNEAR ${MAINNET_TOKENS.wnear} are the constants pinned in this script`, "the evidence names accounts other than the pinned mainnet ones; nothing on chain is read");
+
+  // Source binding: the run was made from the bundle's revision and names the deployment candidate.
+  const src = isObject(live.source) ? live.source : {};
+  if (ev === null) r.line("FAIL", "mainnet.source", "not checked: the bundle's run record is unreadable");
+  else {
+    const p = [];
+    if (src.product_commit !== ev.run.revision) p.push(`source.product_commit ${JSON.stringify(src.product_commit ?? null)} != bundle revision ${ev.run.revision}`);
+    if (src.dirty !== false) p.push("recorded from a dirty tree");
+    if (src.spec_sha256 !== ev.run.spec_sha256) p.push(`source.spec_sha256 ${JSON.stringify(src.spec_sha256 ?? null)} != the certified run's ${ev.run.spec_sha256}`);
+    if (src.fixture_manifest_sha256 !== undefined && src.fixture_manifest_sha256 !== ev.run.fixture_manifest_sha256) p.push(`source.fixture_manifest_sha256 ${JSON.stringify(src.fixture_manifest_sha256)} != the certified run's ${ev.run.fixture_manifest_sha256}`);
+    r.check("mainnet.source", p, `recorded at the bundle's revision ${ev.run.revision}, clean tree, same SPEC.md hash`, "the mainnet run is not bound to this bundle");
+  }
+  // The live runner writes the mandate's NEAR code hash into source.contract_wasm_sha256; a hex sha256 is accepted too.
+  if (candidate === null) r.line(mainnet ? "NOT VERIFIED" : "SKIP", "mainnet.candidate", "the recorded mandate code hash is not compared with the deployment candidate: this checkout's candidate was not read (--no-checkout or a failed checkout check)");
+  else {
+    const p = [];
+    const named = src.contract_wasm_sha256;
+    if (named !== candidate.sha256 && named !== candidate.codeHash) p.push(`source.contract_wasm_sha256 ${JSON.stringify(named ?? null)} is neither the candidate's sha256 ${candidate.sha256} nor its code hash ${candidate.codeHash}`);
+    if (ids.mandate_code_hash !== undefined && ids.mandate_code_hash !== candidate.codeHash) p.push(`identifiers.mandate_code_hash ${JSON.stringify(ids.mandate_code_hash)} != the candidate's code hash ${candidate.codeHash}`);
+    r.check("mainnet.candidate", p, `the run records the deployment candidate fixtures/${candidate.file} (code hash ${candidate.codeHash})`, "the run does not record this checkout's deployment candidate");
+  }
+
+  // The run's own record of completion. A failure the evidence itself states is a FAIL, not NOT VERIFIED: the record
+  // already says the run did not succeed. Only the latest attempt of a step counts, since a retried attempt
+  // (`-attempt-N`) supersedes the one before it; the same id twice is ambiguous and fails.
   const runProblems = [];
-  if (!Array.isArray(ev.unknowns)) runProblems.push("evidence has no unknowns list");
-  else for (const u of ev.unknowns) runProblems.push(`unknown: ${typeof u === "string" ? u : JSON.stringify(u)}`);
+  if (!Array.isArray(live.unknowns)) runProblems.push("evidence has no unknowns list");
+  else for (const u of live.unknowns) runProblems.push(`unknown: ${typeof u === "string" ? u : JSON.stringify(u)}`);
   if (assertions.length === 0) runProblems.push("evidence has no assertions");
+  const idList = assertions.map((a) => String(a.id));
+  for (const id of new Set(idList.filter((id, i) => idList.indexOf(id) !== i))) runProblems.push(`assertion id ${id} appears ${idList.filter((x) => x === id).length} times`);
   const latest = new Map();
   for (const a of assertions) {
-    const id = String(a?.id);
+    const id = String(a.id);
     const m = /^(.*)-attempt-(\d+)$/.exec(id);
     const [base, attempt] = m === null ? [id, 1] : [m[1], Number(m[2])];
     if (!latest.has(base) || latest.get(base).attempt <= attempt) latest.set(base, { a, attempt });
   }
-  for (const { a } of latest.values()) if (a?.passed !== true) runProblems.push(`assertion ${a?.id} passed ${JSON.stringify(a?.passed ?? null)}: ${a?.description ?? ""}`);
-  r.check("mainnet.run", runProblems, `the run records no unknowns and ${latest.size} of ${latest.size} assertions passed`, "the evidence records an incomplete or failed run");
+  for (const { a } of latest.values()) if (a.passed !== true) runProblems.push(`assertion ${a.id} passed ${JSON.stringify(a.passed ?? null)}: ${a.description ?? ""}`);
+  const complete = r.check("mainnet.run", runProblems, `the run records no unknowns and ${latest.size} of ${latest.size} assertions passed`, "the evidence records an incomplete or failed run");
+  return { usable, complete, receipts, assertions, ids, exp };
+}
 
+async function checkMainnet(r, rec, rpc, candidate) {
+  const { receipts, assertions, ids, exp } = rec;
+  const verifier = MAINNET_ACCOUNTS.verifier;
   r.out(`             querying ${rpc.url} (read-only; nothing is signed or sent)`);
   const status = await rpc.call("status", []);
   if (!status.ok) {
@@ -505,7 +629,8 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
   if (status.result.genesis_hash !== MAINNET_GENESIS) chainProblems.push(`RPC genesis hash is ${JSON.stringify(status.result.genesis_hash)}, expected ${MAINNET_GENESIS}`);
   if (!r.check("mainnet.chain", chainProblems, `RPC serves NEAR mainnet (genesis ${MAINNET_GENESIS})`, "wrong chain; nothing else is checked")) return;
 
-  // Each recorded transaction: final, same signer, receiver, method, block and outcome, and the same receipt tree.
+  // Each recorded transaction: final, same signer, block and outcome, the same receipt tree, and the receiver and
+  // method its step is supposed to call (from the pinned accounts and the mandate id, not the evidence's receiver field).
   const fetched = [];
   for (const rc of receipts) {
     const gate = `mainnet.tx ${rc.label}`;
@@ -522,11 +647,13 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
     if (v.t.signer_id !== d.signer_id) p.push(`signer ${v.t.signer_id} != recorded ${d.signer_id}`);
     if (v.t.receiver_id !== d.receiver_id) p.push(`receiver ${v.t.receiver_id} != recorded ${d.receiver_id}`);
     if (v.method !== d.method) p.push(`method ${v.method} != recorded ${d.method}`);
+    p.push(...targetProblems(rc.label, v, ids.mandate));
+    if (d.withheld_relay === true && v.method !== "execute_intents") p.push(`marked as the withheld-order relay but calls ${v.method}`);
     if (v.outcome === "unknown") p.push("a status on chain is neither success nor failure");
     else if (v.outcome !== rc.outcome) p.push(`chain outcome ${v.outcome} != recorded ${rc.outcome}`);
     if (Array.isArray(d.receipts)) {
       const chainIds = v.receipts.map((x) => `${x.id}@${x.executor_id}:${x.kind}`).sort();
-      const recIds = d.receipts.map((x) => `${x.id}@${x.executor_id}:${x.success ? "success" : "failure"}`).sort();
+      const recIds = d.receipts.map((x) => `${x?.id}@${x?.executor_id}:${x?.success ? "success" : "failure"}`).sort();
       if (chainIds.join() !== recIds.join()) p.push(`receipt tree differs from the recorded one (${recIds.length} recorded, ${chainIds.length} on chain)`);
     }
     const h = await rpc.height(t.result.transaction_outcome?.block_hash);
@@ -536,7 +663,7 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
     }
     if (rc.block_height !== undefined && h.value !== rc.block_height) p.push(`included in block ${h.value}, recorded ${rc.block_height}`);
     fetched.push({ rc, v, height: h.value });
-    r.check(gate, p, `${rc.tx_hash} final, ${v.outcome}${d.expected_error !== undefined || d.withheld_relay === true ? " (expected failure)" : ""}, ${d.signer_id} -> ${d.receiver_id}.${d.method}, block ${h.value}`, `${rc.tx_hash} does not match the evidence`);
+    r.check(gate, p, `${rc.tx_hash} final, ${v.outcome}${d.expected_error !== undefined || d.withheld_relay === true ? " (expected failure)" : ""}, ${v.t.signer_id} -> ${v.t.receiver_id}.${v.method}, block ${h.value}`, `${rc.tx_hash} does not match the evidence or its step`);
   }
   if (fetched.length !== receipts.length) {
     r.line("NOT VERIFIED", "mainnet.state", "not checked: not every recorded transaction could be read");
@@ -556,9 +683,26 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
   }
   r.line("INFO", "mainnet.final-block", `${finalBlock}: last receipt of ${last.rc.label} (${last.rc.tx_hash}); end state is read at this block, so later activity (an open challenge grant or deposit) is not compared`);
 
-  // Grant keys: registered before revocation, removed by the run's final block, absent now.
-  const grants = fetched.filter((x) => x.rc.detail?.method === "grant" && x.rc.outcome === "success").sort((a, b) => a.height - b.height);
-  const revokes = fetched.filter((x) => x.rc.detail?.method === "revoke").sort((a, b) => a.height - b.height);
+  // The mandate account runs the deployment candidate of this checkout, at the run's final block and now.
+  if (candidate === null) r.line("NOT VERIFIED", "mainnet.code", `the code of ${ids.mandate} is not compared with the deployment candidate: this checkout's candidate was not read (--no-checkout or a failed checkout check)`);
+  else {
+    const then = await rpc.codeHash(ids.mandate, finalBlock);
+    const now = await rpc.codeHash(ids.mandate, "final");
+    const errors = [then, now].filter((x) => !x.ok).map((x) => x.error);
+    if (errors.length > 0) r.line("NOT VERIFIED", "mainnet.code", `the code hash of ${ids.mandate} could not be read`, errors);
+    else {
+      const p = [];
+      if (then.value !== candidate.codeHash) p.push(`code hash at block ${finalBlock} is ${then.value}, the candidate's is ${candidate.codeHash}`);
+      if (now.value !== candidate.codeHash) p.push(`code hash now is ${now.value}, the candidate's is ${candidate.codeHash}`);
+      r.check("mainnet.code", p, `${ids.mandate} runs code ${candidate.codeHash} at block ${finalBlock} and now: fixtures/${candidate.file} of this checkout`, `${ids.mandate} does not run this checkout's deployment candidate`);
+    }
+  }
+
+  // Grant keys: registered before a successful revoke that removed them on the verifier, gone by the run's final block,
+  // absent now. `revoked` collects the keys the chain shows through that whole lifecycle, with the revoke's block.
+  const revoked = new Map();
+  const grants = fetched.filter((x) => x.v.method === "grant" && x.v.outcome === "success").sort((a, b) => a.height - b.height);
+  const revokes = fetched.filter((x) => x.v.method === "revoke").sort((a, b) => a.height - b.height);
   const grantKeys = assertions
     .filter((a) => /^step-\d+-grant(-attempt-\d+)?$/.test(a.id) && a.passed === true && typeof a.observed?.public_key === "string")
     .sort((a, b) => stepOf(a.id)[0] - stepOf(b.id)[0])
@@ -573,43 +717,62 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
       r.line("NOT VERIFIED", gate, "the evidence records no revoke transaction after the grant");
       continue;
     }
-    const at = async (block) => rpc.view(ids.verifier, "has_public_key", { account_id: ids.mandate, public_key: key }, block);
+    const at = async (block) => rpc.view(verifier, "has_public_key", { account_id: ids.mandate, public_key: key }, block);
     const before = await at(revoke.height);
     const after = await at(finalBlock);
     const now = await at("final");
-    const errors = [before, after, now].filter((x) => !x.ok).map((x) => x.error);
+    const full = await rpc.call("EXPERIMENTAL_tx_status", { tx_hash: revoke.rc.tx_hash, sender_account_id: revoke.v.t.signer_id, wait_until: "FINAL" });
+    const errors = [before, after, now, full].filter((x) => !x.ok).map((x) => x.error);
     if (errors.length > 0) {
-      r.line("NOT VERIFIED", gate, "key registration could not be read", errors);
+      r.line("NOT VERIFIED", gate, "key registration or the revoke transaction's receipts could not be read", errors);
       continue;
     }
     const p = [];
-    if (before.value !== true) p.push(`not registered on ${ids.verifier} at block ${revoke.height} (revoke transaction included)`);
+    if (revoke.v.outcome !== "success") p.push(`the revoke transaction ${revoke.rc.tx_hash} did not succeed on chain (${revoke.v.outcome})`);
+    // The removal itself: a receipt from the mandate to the pinned verifier calling remove_public_key for this key.
+    const removal = (Array.isArray(full.result.receipts) ? full.result.receipts : []).find((x) => {
+      const call = (x?.receipt?.Action?.actions ?? []).map((a) => a?.FunctionCall).find(isObject);
+      if (x?.predecessor_id !== ids.mandate || x?.receiver_id !== verifier || call?.method_name !== "remove_public_key") return false;
+      try {
+        return JSON.parse(Buffer.from(String(call.args), "base64").toString("utf8")).public_key === key;
+      } catch {
+        return false;
+      }
+    });
+    if (removal === undefined) p.push(`the revoke transaction has no receipt ${ids.mandate} -> ${verifier}.remove_public_key for this key`);
+    else if (revoke.v.receipts.find((x) => x.id === removal.receipt_id)?.kind !== "success") p.push(`the ${verifier}.remove_public_key receipt ${removal.receipt_id} did not succeed`);
+    if (before.value !== true) p.push(`not registered on ${verifier} at block ${revoke.height} (revoke transaction included)`);
     if (after.value !== false) p.push(`still registered at the run's final block ${finalBlock}`);
     if (now.value !== false) p.push("registered now");
-    r.check(gate, p, `registered on ${ids.verifier} for ${ids.mandate} at block ${revoke.height}, removed by block ${finalBlock}, absent now`);
+    if (r.check(gate, p, `registered on ${verifier} for ${ids.mandate} at block ${revoke.height}, removed by ${verifier}.remove_public_key in the successful revoke ${revoke.rc.tx_hash}, gone by block ${finalBlock}, absent now`)) revoked.set(key, revoke.height);
   }
 
-  // The withheld order's relay failed on the verifier because the revoked key did not exist.
+  // The withheld order's relay failed on the verifier because a key of that lifecycle did not exist. The key is read
+  // from the chain's own error, and must be a grant key shown above as registered before its revoke and absent after.
   const relays = fetched.filter((f) => f.rc.detail?.withheld_relay === true);
   if (relays.length === 0) r.line("NOT VERIFIED", "mainnet.relay", "the evidence records no withheld-order relay transaction, so rejection of a signed order after revocation is not shown");
+  const relayAssertions = assertions.filter((a) => /-relay_withheld(-attempt-\d+)?$/.test(a.id));
   for (const x of relays) {
-    const relay = assertions.find((a) => /-relay_withheld(-attempt-\d+)?$/.test(a.id));
-    const key = relay?.observed?.revoked_key ?? grantKeys[0];
-    const expected = `public key '${key}' doesn't exist for account '${ids.mandate}'`;
-    const failure = x.v.receipts.find((y) => y.executor_id === ids.verifier && y.kind === "failure");
+    const failure = x.v.receipts.find((y) => y.executor_id === verifier && y.kind === "failure");
+    const m = failure === undefined ? null : /public key '([^'\\]+)' doesn't exist for account '([^'\\]+)'/.exec(failure.error);
     const p = [];
-    if (failure === undefined) p.push(`no failed receipt on ${ids.verifier}`);
-    else if (!failure.error.includes(expected)) p.push(`verifier error is not the removed-key rejection (${expected})`);
-    if (x.v.receipts.some((y) => y.kind === "failure" && y.executor_id !== ids.verifier)) p.push("a receipt outside the verifier failed");
-    r.check(`mainnet.relay ${x.rc.label}`, p, `${x.rc.tx_hash} rejected by ${ids.verifier}: removed key ${key}`);
+    if (failure === undefined) p.push(`no failed receipt on ${verifier}`);
+    else if (m === null || m[2] !== ids.mandate) p.push(`verifier error is not the removed-key rejection for ${ids.mandate}`);
+    else {
+      const key = m[1];
+      if (!revoked.has(key)) p.push(`the rejected key ${key} is not a grant key the chain shows registered before its revoke and absent after`);
+      else if (x.height <= revoked.get(key)) p.push(`relayed in block ${x.height}, not after the revoke in block ${revoked.get(key)}`);
+      for (const a of relayAssertions) if (a.observed?.revoked_key !== undefined && a.observed.revoked_key !== key) p.push(`evidence ${a.id} names revoked key ${a.observed.revoked_key}, the chain rejected ${key}`);
+    }
+    if (x.v.receipts.some((y) => y.kind === "failure" && y.executor_id !== verifier)) p.push("a receipt outside the verifier failed");
+    r.check(`mainnet.relay ${x.rc.label}`, p, `${x.rc.tx_hash} rejected by ${verifier} after the revoke: removed grant key ${m?.[1]}`);
   }
 
-  // End balances at the run's final block, against the last balances the run recorded.
-  const exp = expectedBalances(assertions);
-  const tokens = { ...MAINNET_TOKENS, ...exp.tokens };
+  // End balances at the run's final block, against the last balances the run recorded. Token ids are the pinned ones.
+  const tokens = MAINNET_TOKENS;
   const checks = [];
-  if (isObject(exp.mandate)) for (const [asset, v] of Object.entries(exp.mandate)) checks.push({ what: `${ids.mandate} Intents ${asset}`, account: ids.verifier, method: "mt_balance_of", args: { account_id: ids.mandate, token_id: `nep141:${tokens[asset]}` }, want: v });
-  if (isObject(exp.ownerIntents) && typeof ids.owner === "string") for (const [asset, v] of Object.entries(exp.ownerIntents)) checks.push({ what: `${ids.owner} Intents ${asset}`, account: ids.verifier, method: "mt_balance_of", args: { account_id: ids.owner, token_id: `nep141:${tokens[asset]}` }, want: v });
+  if (isObject(exp.mandate)) for (const [asset, v] of Object.entries(exp.mandate)) checks.push({ what: `${ids.mandate} Intents ${asset}`, account: verifier, method: "mt_balance_of", args: { account_id: ids.mandate, token_id: `nep141:${tokens[asset]}` }, want: v });
+  if (isObject(exp.ownerIntents) && typeof ids.owner === "string") for (const [asset, v] of Object.entries(exp.ownerIntents)) checks.push({ what: `${ids.owner} Intents ${asset}`, account: verifier, method: "mt_balance_of", args: { account_id: ids.owner, token_id: `nep141:${tokens[asset]}` }, want: v });
   for (const [asset, v] of Object.entries(exp.ownerTokens)) if (typeof ids.owner === "string") checks.push({ what: `${ids.owner} ${tokens[asset]} ${asset}`, account: tokens[asset], method: "ft_balance_of", args: { account_id: ids.owner }, want: v });
   if (checks.length === 0) {
     r.line("NOT VERIFIED", "mainnet.balances", "the evidence records no end balances");
@@ -641,11 +804,14 @@ evidence; it does not run the tests. Offline unless --mainnet.
   --no-checkout          do not compare SPEC.md, fixtures and the deployment candidate in this checkout
   --rules current        judge the cases against this checkout's required list (default)
   --rules bundle         judge them against the list the bundle records it was certified under, stated as such
-  --mainnet              also read every recorded mainnet transaction from a public archival RPC (read-only)
+  --mainnet              also read every recorded mainnet transaction from a public archival RPC (read-only); the
+                         verifier (${MAINNET_ACCOUNTS.verifier}), signer (${MAINNET_ACCOUNTS.signer}) and token contracts are pinned in this script
   --rpc <url>            RPC URL (default $MANDATE_VERIFY_RPC or ${DEFAULT_RPC})
-  --live <file>          mainnet evidence file (default <bundle>/${LIVE_FILE})
+  --live <file>          mainnet evidence file (default <bundle>/${LIVE_FILE}); any other file is outside the hashed
+                         bundle, so the result is NOT VERIFIED whatever its checks say
   --write-manifest <dir> write <dir>/${MANIFEST} for a curated bundle and exit
-Exit status: 0 every check passed; 1 a check failed or could not be verified; 2 usage error.`;
+Exit status: 0 every check passed; 1 a check failed or could not be verified; 2 usage error.
+${NOT_PROVED}`;
 
 function parseArgs(argv) {
   const opts = { root: dirname(fileURLToPath(import.meta.url)), bundle: null, checkout: true, rules: "current", mainnet: false, rpc: process.env.MANDATE_VERIFY_RPC || DEFAULT_RPC, live: null, timeoutMs: 20_000, writeManifest: null, printRequired: false, help: false };
@@ -718,19 +884,39 @@ export async function main(argv, out = console.log) {
   const r = new Report(out);
   out(`Checking the committed evidence bundle ${bundle}${opts.checkout ? " against this checkout" : ""}.`);
   out("This checks recorded evidence: file hashes, the certified acceptance report and its gate reports. It does not run the tests.");
-  checkFiles(r, bundleDir, bundle);
-  const ev = checkEvidence(r, opts.root, bundleDir, bundle, opts.rules);
-  checkCheckout(r, opts.root, ev, !opts.checkout);
-  if (opts.mainnet) await checkMainnet(r, bundleDir, bundle, new Rpc(opts.rpc, opts.timeoutMs), opts.live);
-  else {
-    const hasLive = existsSync(join(bundleDir, LIVE_FILE));
-    r.line("SKIP", "mainnet", hasLive ? `not checked offline; run node verify.mjs --mainnet to read the recorded transactions from ${opts.rpc}` : "this bundle records no mainnet run (sandbox evidence only); nothing on mainnet is claimed or checked");
+  let ev = null;
+  // "": no mainnet run is recorded. Otherwise the sentence the summary ends with, so it never reads as mainnet verified
+  // unless the chain was read.
+  let mainnetNote = "";
+  try {
+    checkFiles(r, bundleDir, bundle);
+    ev = checkEvidence(r, opts.root, bundleDir, bundle, opts.rules);
+    const candidate = checkCheckout(r, opts.root, ev, !opts.checkout);
+    const rec = checkRecordedRun(r, bundleDir, bundle, opts.live, ev, candidate, opts.mainnet);
+    if (rec === null) {
+      if (opts.mainnet) r.line("NOT VERIFIED", "mainnet", `no mainnet receipts: ${opts.live ?? `${bundle}/${LIVE_FILE}`} does not exist. No mainnet run is recorded in this bundle, so nothing on mainnet is verified.`);
+      else r.line("SKIP", "mainnet", "this bundle records no mainnet run (sandbox evidence only); nothing on mainnet is claimed or checked");
+    } else if (opts.mainnet) {
+      mainnetNote = ` Mainnet transactions and state were read from ${opts.rpc}${opts.rpc === DEFAULT_RPC ? "" : " (not this script's default RPC; the result is only as good as that endpoint)"}.`;
+      if (rec.usable) await checkMainnet(r, rec, new Rpc(opts.rpc, opts.timeoutMs), candidate);
+    } else {
+      // Offline, a recorded run is judged by its own record only. A complete record is a SKIP, not NOT VERIFIED: the
+      // offline run claims nothing about mainnet and says so in its summary, and the build's offline gate must not
+      // need a network. A failed or incomplete record is already a FAIL above.
+      mainnetNote = " Mainnet: NOT CHECKED. The bundle records a mainnet run, but the chain was not consulted; run node verify.mjs --mainnet.";
+      if (rec.usable && rec.complete) r.line("SKIP", "mainnet", `the bundle records a mainnet run whose own record is complete, but the chain was not consulted, so nothing on mainnet is verified here; run node verify.mjs --mainnet to read the recorded transactions from ${opts.rpc}`);
+      else r.line("NOT VERIFIED", "mainnet", "the bundle records a mainnet run that its own record shows failed, incomplete or inconsistent (see the mainnet lines above); the chain was not consulted");
+    }
+  } catch (e) {
+    r.line("FAIL", "internal", `the check stopped on unexpected evidence content: ${e?.message ?? String(e)}`);
   }
   const c = r.counts;
   const summary = `${c.PASS} passed, ${c.FAIL} failed, ${c["NOT VERIFIED"]} not verified, ${c.SKIP} skipped`;
   const cov = ev?.coverage;
-  const rules = opts.rules === "bundle" ? ` under the bundle's own required list${cov === undefined ? "" : ` (${cov.covered} of ${cov.current} current cases)`}` : "";
-  out(r.bad === 0 ? `VERIFIED${rules}: ${bundle} (${summary}). Recorded evidence only; the tests were not rerun.` : `NOT VERIFIED${rules}: ${bundle} (${summary}).`);
+  const lacks = cov === undefined ? 0 : cov.current - cov.covered;
+  const rules = opts.rules === "bundle" ? ` under the bundle's own required list${cov === undefined ? "" : ` (${cov.covered} of ${cov.current} current cases; ${lacks === 0 ? "it lacks none of the currently required cases" : `it lacks ${lacks} of the currently required cases`})`}` : "";
+  out(NOT_PROVED);
+  out(r.bad === 0 ? `VERIFIED${rules}: ${bundle} (${summary}). Recorded evidence only; the tests were not rerun.${mainnetNote}` : `NOT VERIFIED${rules}: ${bundle} (${summary}).${mainnetNote}`);
   return r.bad === 0 ? 0 : 1;
 }
 
