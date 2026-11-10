@@ -276,7 +276,9 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
     const e = m.expected_nonces;
     // A distinct external key must have its approval-time nonce too: its earlier use would otherwise go unnoticed.
     const extOk = extNonce === null || extNonce.toString() === e.owner_external;
-    check("keys.unused_since_approval", nonces.owner.toString() === e.owner && nonces.agent.toString() === e.agent && nonces.filler.toString() === e.filler && extOk, {
+    // A published agent key may be used by anyone after approval; the run never signs with it.
+    const agentOk = m.agent_key_published === true || nonces.agent.toString() === e.agent;
+    check("keys.unused_since_approval", nonces.owner.toString() === e.owner && agentOk && nonces.filler.toString() === e.filler && extOk, {
       chain: { owner: nonces.owner.toString(), agent: nonces.agent.toString(), filler: nonces.filler.toString(), ...(extNonce === null ? {} : { owner_external: extNonce.toString() }) },
       manifest: e,
     });
@@ -297,8 +299,11 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   }
   const orders: OrderView[] = await mandate.allOrders();
   const open = orders.filter((o) => OPEN_ORDER_STATES.includes(o.state.state)).map((o) => ({ id: o.id, state: o.state.state, epoch: o.epoch, sell: o.sell, sell_amount: o.sell_amount }));
-  const unlisted = open.filter((o) => !m.fillable_preexisting_orders.includes(o.id) && !input.createdOrders.includes(o.id));
-  check("orders.no_unlisted_open", unlisted.length === 0, { open, unlisted: unlisted.map((o) => o.id) });
+  // With a published agent key, anyone may have opened orders of the current grant; such a manifest never acts on an
+  // order (publishedKeyProblems), and confirmed revocation releases them.
+  const byKeyHolder = (o: { epoch: number }) => m.agent_key_published === true && grant !== null && grant.status !== "revoked" && o.epoch === grant.epoch;
+  const unlisted = open.filter((o) => !m.fillable_preexisting_orders.includes(o.id) && !input.createdOrders.includes(o.id) && !byKeyHolder(o));
+  check("orders.no_unlisted_open", unlisted.length === 0, { open, unlisted: unlisted.map((o) => o.id), ...(m.agent_key_published === true ? { agent_key_published: true } : {}) });
 
   // Dependencies needed by the pending steps (recovery alone needs neither oracle nor MPC).
   if (has("grant") || has("propose")) {

@@ -1129,9 +1129,11 @@ const StartNonces = z.object({ owner: z.string(), agent: z.string(), filler: z.s
 function expectedNonces(rt: Runtime): { account: string; key: string; nonce: bigint }[] {
   const start = StartNonces.parse(rt.ledger.entries[0]?.data.nonces);
   const { m } = rt;
+  // A published agent key is used by others; its nonce says nothing about this run (which never signs with it).
+  const agent: [string, { account: string; nonce: bigint }][] = m.agent_key_published === true ? [] : [[m.keys.agent.public_key, { account: m.accounts.agent, nonce: BigInt(start.agent) }]];
   const keys = new Map<string, { account: string; nonce: bigint }>([
     [m.keys.owner.public_key, { account: m.accounts.owner, nonce: BigInt(start.owner) }],
-    [m.keys.agent.public_key, { account: m.accounts.agent, nonce: BigInt(start.agent) }],
+    ...agent,
     [m.keys.filler.public_key, { account: m.accounts.filler, nonce: BigInt(start.filler) }],
   ]);
   const ext = externalOwnerKey(m);

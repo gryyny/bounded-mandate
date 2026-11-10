@@ -22,7 +22,7 @@ export const REQUIRED_CASES = {
   AGENT: ["budget-bounds", "rehearsal"],
   HANDOFF: ["import-verified", "import-refusals", "lost-response-resume", "unrecorded-owner-tx"],
   WITHDRAW: ["both-assets", "unregistered-owner", "failed-receipt-retry"],
-  LIVE: ["agent-template"],
+  LIVE: ["agent-template", "open-challenge"],
   CONSOLE: ["browser-sandbox", "access-controls", "wallet-sandbox"],
   COMPARE: ["revocation-alternatives"],
   SIGNER: ["conformance"],

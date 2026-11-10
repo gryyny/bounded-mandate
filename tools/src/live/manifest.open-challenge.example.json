@@ -1,0 +1,176 @@
+{
+  "schema_version": 2,
+  "notes": [
+    "OPEN CHALLENGE TEMPLATE (optional; SPEC.md \"Open challenge grant (optional)\"). Not approved. Building it commits to nothing: running it needs the owner's separate approval of the challenge deposit and of publishing the agent key, and only after a completed primary run (gate 3). The primary templates (manifest.live-agent.example.json, manifest.example.json) are unchanged. Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is.",
+    "Run with the challenge runner, which keeps the challenge apart from the completed run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make challenge (tools/src/live/challenge.ts). Its ledger goes to out/challenge/live/<sha256>/ and its evidence to out/challenge/evidence/ (live-mainnet.json of the runner and the challenge record challenge-mainnet.json, schema bounded-mandate/open-challenge@1), never to out/live or out/evidence of the completed run. Verification of the completed run does not treat the challenge's later activity as a failure of that run.",
+    "Sequence: check; a fresh grant (epoch = last epoch + 1, derivation path mandate/v1/<epoch>, a new MPC-derived key; the previous grant stays revoked and its key absent from the verifier); check. The run ends with the challenge grant ACTIVE. Close it after judging with manifest.open-challenge-close.example.json (revoke, recovery and withdrawal through the console).",
+    "Before this run, outside the runner and under the owner's separate approval: a new owner deposit of both assets into the mandate's Intents account (ft_transfer_call to intents.near with msg = the mandate account), within budget.owner_inventory_max. This runner never funds, deposits or deploys. The mandate, agent and filler accounts are those of the completed run; the mandate's code hash is unchanged.",
+    "Agent key: keys.agent.public_key is the agent account's only key (function-call, propose_order on the mandate, finite allowance). The mandate's agent_id is fixed at deployment and the agent account has no full-access key, so the challenge publishes that key; no new agent key can be added. Only its public key is recorded here and in the evidence. The private key is published outside every repository and evidence bundle by the lead (the X thread and a pinned repository issue); the README and the page link there. Publish it only after this run completed and the challenge record shows the grant active.",
+    "agent_key_published true: the runner never signs with the agent key and does not track its nonce (anyone may use it); the manifest may hold no propose, refused_proposal, fill, withhold, relay_withheld or settle step; at preflight, open orders of the current grant are the key holders' and are not refused.",
+    "What it shows: whoever holds the agent key cannot withdraw, transfer to another account, change keys or policy, or exceed the per-order and outstanding caps, the concession bound, the turnover cap and the loss breaker; the earlier grant's withheld order stays rejected while the challenge grant is live (its signing key stays absent from the verifier).",
+    "What it does NOT show: It does not show that the deposit is safe from poor trades. Whoever holds the agent key can make permitted trades at up to the concession bound on each order and up to the grant's turnover cap.",
+    "What it does NOT show: Whoever holds the agent key can exhaust the agent's gas allowance and the grant's proposal budget; the challenge then accepts no further proposals.",
+    "What it does NOT show: The cost is bounded by the challenge deposit and the agent's remaining gas allowance.",
+    "What it does NOT show: An unknown contract defect could lose the deposit. The owner weighs that before approving, and after judging revokes, recovers and withdraws (the close template).",
+    "Grant policy (PROPOSED, not approved): the spec's demonstration thresholds (20% per order and outstanding, 50 bps concession, 60 s oracle age, 50 bps confidence, 2% breaker, 100% turnover, 60 s order lifetime) with proposal_charge_bps 1000 instead of the proposed default 50. Each proposal then charges at least 10% of the initial value, so the grant accepts at most 10 proposals: this bounds the order records a stranger can create (10 x 1000 bytes, covered by the mandate's existing storage funding without a top-up) and the allowance-funded proposals per challenge. The 120 s / 120 s deviation of the primary run is not needed: the challenge has no timed relay.",
+    "Budget (proposed, not approved): one grant transaction, worst case (250 + 5) TGas x gas price = 0.0255 NEAR at 1e8 yocto/gas; max_fee_yocto 0.03 NEAR, max_transactions 1, no deposits. The runner sells nothing (sale and filler caps 0). Inventory cap 5 USDC + 1.25 wNEAR, the primary run's scale.",
+    "Nonces: expected_nonces.agent is not compared (agent_key_published); owner, owner_external and filler nonces and expected_owner_keys are read at approval as for the primary run."
+  ],
+  "network": {
+    "name": "mainnet",
+    "chain_id": "mainnet",
+    "genesis_hash": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
+    "rpc_url": "https://free.rpc.fastnear.com"
+  },
+  "approval": {
+    "approved_by": "REPLACE_ME: approver name",
+    "reference": "REPLACE_ME: approval message/date reference"
+  },
+  "accounts": {
+    "mandate": "REPLACE_ME: mandate contract account (e.g. <name>.near)",
+    "owner": "REPLACE_ME: owner account",
+    "agent": "REPLACE_ME: agent account (only key: function-call propose_order)",
+    "filler": "REPLACE_ME: filler account",
+    "verifier": "intents.near",
+    "signer": "v1.signer",
+    "oracle": "aggregate-oracle.near"
+  },
+  "code_hashes": {
+    "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
+    "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
+    "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+    "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+    "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
+  },
+  "versions": {
+    "verifier": "0.4.5",
+    "signer": "3.17.0",
+    "oracle": "0.4.1"
+  },
+  "verifier_fee_pips": 1,
+  "mandate_config": {
+    "owner_id": "REPLACE_ME: same as accounts.owner",
+    "agent_id": "REPLACE_ME: same as accounts.agent",
+    "verifier_id": "intents.near",
+    "signer_id": "v1.signer",
+    "oracle_id": "aggregate-oracle.near",
+    "usdc": {
+      "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "decimals": 6,
+      "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    },
+    "wnear": {
+      "token": "wrap.near",
+      "decimals": 24,
+      "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750"
+    }
+  },
+  "keys": {
+    "mandate_full_access": [
+      "REPLACE_ME: each full-access key the approved upgrade-key policy allows on the mandate account; use [] for a locked account"
+    ],
+    "agent": {
+      "public_key": "REPLACE_ME: ed25519 public key of the agent's function-call key (the key the lead publishes for the challenge; only this public part is recorded)",
+      "max_allowance_yocto": "250000000000000000000000"
+    },
+    "owner": {
+      "public_key": "REPLACE_ME: ed25519 public key of the owner's full-access key used here"
+    },
+    "owner_external": {
+      "public_key": "REPLACE_ME: ed25519 public key the owner signs console actions with (a full-access key of accounts.owner); omit this object to use keys.owner"
+    },
+    "filler": {
+      "public_key": "REPLACE_ME: ed25519 public key of the filler's full-access key",
+      "intents_public_key": "REPLACE_ME: ed25519 key the filler registered on intents.near (add_public_key)"
+    }
+  },
+  "credentials": {
+    "owner": "REPLACE_ME: absolute path to the owner credential JSON (chmod 600, outside the repo)",
+    "agent": "REPLACE_ME: absolute path to the agent credential JSON, outside every repository (the preflight reads its public key; the runner never signs with it)",
+    "filler": "REPLACE_ME: absolute path to the filler account credential JSON",
+    "filler_intents": "REPLACE_ME: absolute path to the filler Intents signing key JSON"
+  },
+  "budget": {
+    "max_fee_yocto": "30000000000000000000000",
+    "max_deposit_yocto": "0",
+    "max_transactions": 1,
+    "owner_inventory_max": {
+      "usdc": "5000000",
+      "wnear": "1250000000000000000000000"
+    },
+    "max_order_sell": {
+      "usdc": "0",
+      "wnear": "0"
+    },
+    "max_total_sell": {
+      "usdc": "0",
+      "wnear": "0"
+    },
+    "filler_spend_max": {
+      "usdc": "0",
+      "wnear": "0"
+    },
+    "owner_recovery_reserve_yocto": "500000000000000000000000"
+  },
+  "gas_tgas": {
+    "grant": 250,
+    "propose": 150,
+    "fill": 100,
+    "settle": 50,
+    "revoke": 150,
+    "reconcile_registration": 200,
+    "recover": 80,
+    "withdraw": 100,
+    "storage_deposit": 30
+  },
+  "storage": {
+    "order_record_bytes": 1000,
+    "grant_state_bytes": 2000
+  },
+  "expect_existing_grant": false,
+  "fillable_preexisting_orders": [],
+  "expected_nonces": {
+    "owner": "REPLACE_ME: owner key nonce read at approval time",
+    "agent": "REPLACE_ME: agent key nonce read at approval time (not compared: agent_key_published)",
+    "filler": "REPLACE_ME: filler key nonce read at approval time",
+    "owner_external": "REPLACE_ME: nonce of keys.owner_external read at approval time (omit with keys.owner_external)"
+  },
+  "expected_owner_keys": [
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner read at approval time"
+    },
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner_external",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner_external read at approval time"
+    }
+  ],
+  "agent_key_published": true,
+  "steps": [
+    {
+      "kind": "check"
+    },
+    {
+      "kind": "grant",
+      "policy": {
+        "per_order_cap_bps": 2000,
+        "outstanding_cap_bps": 2000,
+        "max_concession_bps": 50,
+        "oracle_max_age_sec": 60,
+        "max_confidence_bps": 50,
+        "breaker_drawdown_bps": 200,
+        "turnover_cap_bps": 10000,
+        "order_ttl_sec": 60,
+        "min_remaining_sec": 15,
+        "max_pricing_delay_sec": 30,
+        "proposal_charge_bps": 1000
+      }
+    },
+    {
+      "kind": "check"
+    }
+  ]
+}

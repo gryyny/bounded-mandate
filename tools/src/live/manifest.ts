@@ -233,6 +233,11 @@ export const LiveManifest = z
      * way the run stops on any added or removed key, or any nonce change of a key the ledger does not track.
      */
     expected_owner_keys: z.array(OwnerKey).optional(),
+    /**
+     * The agent's key is (or will be) published (the optional open challenge): the runner never signs with it and does
+     * not track its nonce, and the manifest may hold no step that proposes or acts on an order (see publishedKeyProblems).
+     */
+    agent_key_published: z.boolean().optional(),
     steps: z.array(Step).min(1),
   })
   .strict();
@@ -267,6 +272,14 @@ export function ownerKeyDeclarationProblems(m: LiveManifest): string[] {
   return p;
 }
 
+/** Steps that sign with the agent key or act on orders; a manifest whose agent key is published holds none of them. */
+const PUBLISHED_KEY_FORBIDDEN: readonly StepKind[] = ["propose", "refused_proposal", "fill", "withhold", "relay_withheld", "settle"];
+
+export function publishedKeyProblems(m: LiveManifest): string[] {
+  if (m.agent_key_published !== true) return [];
+  return m.steps.flatMap((s, i) => (PUBLISHED_KEY_FORBIDDEN.includes(s.kind) ? [`step ${i + 1} ${s.kind} is not allowed when agent_key_published is set`] : []));
+}
+
 export interface LoadedManifest {
   manifest: LiveManifest;
   sha256: string;
@@ -294,6 +307,8 @@ export function loadManifest(env: NodeJS.ProcessEnv): LoadedManifest {
   if (!result.success) throw new Refusal(`live: invalid manifest: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   const sequence = sequenceProblems(result.data.steps);
   if (sequence.length > 0) throw new Refusal(`live: invalid step sequence: ${sequence.join("; ")}`);
+  const published = publishedKeyProblems(result.data);
+  if (published.length > 0) throw new Refusal(`live: invalid step sequence: ${published.join("; ")}`);
   const ownerKeys = ownerKeyDeclarationProblems(result.data);
   if (ownerKeys.length > 0) throw new Refusal(`live: invalid owner key declarations: ${ownerKeys.join("; ")}`);
   const shape = networkProblems(result.data);

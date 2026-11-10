@@ -1,8 +1,8 @@
-# Public targets: test, demo, quick, page, live, verify. Everything else is an implementation detail.
+# Public targets: test, demo, quick, page, live, challenge, verify. Everything else is an implementation detail.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := test
-.PHONY: test demo quick page live verify
+.PHONY: test demo quick page live challenge verify
 
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
@@ -68,3 +68,10 @@ live:
 	$(NPM_CI)
 	$(call build_wasm)
 	$(TSX) src/live/main.ts
+
+# The optional open challenge (open, or close after judging) against a separately approved challenge manifest.
+challenge:
+	@if [ "$${MANDATE_LIVE:-}" != "1" ]; then echo "challenge: set MANDATE_LIVE=1 and MANDATE_LIVE_MANIFEST=<approved challenge manifest>; the flag is not spending approval" >&2; exit 2; fi
+	$(NPM_CI)
+	$(call build_wasm)
+	$(TSX) src/live/challenge.ts

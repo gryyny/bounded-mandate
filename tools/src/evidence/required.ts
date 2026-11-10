@@ -21,7 +21,8 @@ export const REQUIRED_CASES = {
   /** The owner's ft_withdraw of both assets after recovery, outside recovery claims. */
   WITHDRAW: ["both-assets", "unregistered-owner", "failed-receipt-retry"],
   /** The primary live-agent template's full sequence in live-sandbox on the exact deployment binary (synthetic provider). */
-  LIVE: ["agent-template"],
+  /** And the optional open challenge: open and close templates after a completed run, adversary holding the agent key (sandbox). */
+  LIVE: ["agent-template", "open-challenge"],
   /**
    * The owner console in headless Chromium against sandbox: through the labelled local test signer, and through NEAR
    * Connect with the labelled sandbox test wallet. Neither is a real wallet provider.

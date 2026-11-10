@@ -1,0 +1,181 @@
+{
+  "schema_version": 2,
+  "notes": [
+    "OPEN CHALLENGE CLOSE TEMPLATE (optional; SPEC.md \"Open challenge grant (optional)\"). Not approved; prepared and approved after judging, with nonces and the owner key list read then. It ends the challenge opened with manifest.open-challenge.example.json: the owner revokes, recovers and withdraws through the console. Every value starting with REPLACE_ME must be filled in.",
+    "Agent key: keys.agent.public_key is the challenge's published agent key (only its public part is recorded). The private key stays published outside every repository and evidence bundle by the lead; credentials.agent points to a file outside every repository, which the preflight reads only for its public key.",
+    "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make challenge; resume after each console signature with MANDATE_LIVE_RESUME=1. Ledger and evidence go to out/challenge/ (the challenge record challenge-mainnet.json is updated to status closed), apart from the completed run's evidence.",
+    "Sequence: revocation signed by the owner in the console (revoke_external); recovery of both assets to the owner's Intents account (recover_external); the owner's storage registration on each token only where missing (register_storage, runner-signed); the owner's withdrawal of each asset from its Intents account to its NEAR account (withdraw_external); check. External steps follow the same intent, handoff and import rules as the primary live-agent template.",
+    "The close works whatever the key holders did: with the agent's gas allowance and the grant's proposal budget exhausted, after the loss breaker tripped, and with key holders' signed orders still open (confirmed key removal releases them; revocation verification requires none open afterwards). The runner never signs with the published agent key and does not track its nonce (agent_key_published), so key holders' calls during the close neither stop nor alter it. expect_existing_grant is true: the challenge grant is active.",
+    "What it does NOT show: It does not show that the deposit is safe from poor trades. Whoever holds the agent key can make permitted trades at up to the concession bound on each order and up to the grant's turnover cap.",
+    "What it does NOT show: Whoever holds the agent key can exhaust the agent's gas allowance and the grant's proposal budget; the challenge then accepts no further proposals.",
+    "What it does NOT show: The cost is bounded by the challenge deposit and the agent's remaining gas allowance.",
+    "What it does NOT show: An unknown contract defect could lose the deposit. The owner weighs that before approving, and after judging revokes, recovers and withdraws (the close template).",
+    "Budget (proposed, not approved): revoke (150 + 20 + 5), two recoveries (80 + 20 + 5 each) and two withdrawals (100 + 20 + 5 each) = 635 TGas = 0.0635 NEAR at 1e8 yocto/gas in 5 transactions; one retried withdrawal per asset adds 250 TGas and 2 transactions. max_fee_yocto 0.1 NEAR, max_transactions 7, max_deposit_yocto 4 (1 yocto per ft_withdraw attempt). The owner is expected to be registered on both tokens from the primary run, so the registration steps send nothing.",
+    "Inventory cap 20 USDC + 10 wNEAR: key holders' permitted trades shift the mix of the challenge deposit, so this cap only bounds what the close may find in the mandate; it is not a deposit."
+  ],
+  "network": {
+    "name": "mainnet",
+    "chain_id": "mainnet",
+    "genesis_hash": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
+    "rpc_url": "https://free.rpc.fastnear.com"
+  },
+  "approval": {
+    "approved_by": "REPLACE_ME: approver name",
+    "reference": "REPLACE_ME: approval message/date reference"
+  },
+  "accounts": {
+    "mandate": "REPLACE_ME: mandate contract account (e.g. <name>.near)",
+    "owner": "REPLACE_ME: owner account",
+    "agent": "REPLACE_ME: agent account (only key: function-call propose_order)",
+    "filler": "REPLACE_ME: filler account",
+    "verifier": "intents.near",
+    "signer": "v1.signer",
+    "oracle": "aggregate-oracle.near"
+  },
+  "code_hashes": {
+    "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
+    "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
+    "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+    "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+    "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
+  },
+  "versions": {
+    "verifier": "0.4.5",
+    "signer": "3.17.0",
+    "oracle": "0.4.1"
+  },
+  "verifier_fee_pips": 1,
+  "mandate_config": {
+    "owner_id": "REPLACE_ME: same as accounts.owner",
+    "agent_id": "REPLACE_ME: same as accounts.agent",
+    "verifier_id": "intents.near",
+    "signer_id": "v1.signer",
+    "oracle_id": "aggregate-oracle.near",
+    "usdc": {
+      "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "decimals": 6,
+      "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    },
+    "wnear": {
+      "token": "wrap.near",
+      "decimals": 24,
+      "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750"
+    }
+  },
+  "keys": {
+    "mandate_full_access": [
+      "REPLACE_ME: each full-access key the approved upgrade-key policy allows on the mandate account; use [] for a locked account"
+    ],
+    "agent": {
+      "public_key": "REPLACE_ME: ed25519 public key of the agent's function-call key (the key the lead publishes for the challenge; only this public part is recorded)",
+      "max_allowance_yocto": "250000000000000000000000"
+    },
+    "owner": {
+      "public_key": "REPLACE_ME: ed25519 public key of the owner's full-access key used here"
+    },
+    "owner_external": {
+      "public_key": "REPLACE_ME: ed25519 public key the owner signs console actions with (a full-access key of accounts.owner); omit this object to use keys.owner"
+    },
+    "filler": {
+      "public_key": "REPLACE_ME: ed25519 public key of the filler's full-access key",
+      "intents_public_key": "REPLACE_ME: ed25519 key the filler registered on intents.near (add_public_key)"
+    }
+  },
+  "credentials": {
+    "owner": "REPLACE_ME: absolute path to the owner credential JSON (chmod 600, outside the repo)",
+    "agent": "REPLACE_ME: absolute path to the agent credential JSON, outside every repository (the preflight reads its public key; the runner never signs with it)",
+    "filler": "REPLACE_ME: absolute path to the filler account credential JSON",
+    "filler_intents": "REPLACE_ME: absolute path to the filler Intents signing key JSON"
+  },
+  "budget": {
+    "max_fee_yocto": "100000000000000000000000",
+    "max_deposit_yocto": "4",
+    "max_transactions": 7,
+    "owner_inventory_max": {
+      "usdc": "20000000",
+      "wnear": "10000000000000000000000000"
+    },
+    "max_order_sell": {
+      "usdc": "0",
+      "wnear": "0"
+    },
+    "max_total_sell": {
+      "usdc": "0",
+      "wnear": "0"
+    },
+    "filler_spend_max": {
+      "usdc": "0",
+      "wnear": "0"
+    },
+    "owner_recovery_reserve_yocto": "500000000000000000000000"
+  },
+  "gas_tgas": {
+    "grant": 250,
+    "propose": 150,
+    "fill": 100,
+    "settle": 50,
+    "revoke": 150,
+    "reconcile_registration": 200,
+    "recover": 80,
+    "withdraw": 100,
+    "storage_deposit": 30
+  },
+  "storage": {
+    "order_record_bytes": 1000,
+    "grant_state_bytes": 2000
+  },
+  "expect_existing_grant": true,
+  "fillable_preexisting_orders": [],
+  "expected_nonces": {
+    "owner": "REPLACE_ME: owner key nonce read at approval time",
+    "agent": "REPLACE_ME: agent key nonce read at approval time (not compared: agent_key_published)",
+    "filler": "REPLACE_ME: filler key nonce read at approval time",
+    "owner_external": "REPLACE_ME: nonce of keys.owner_external read at approval time (omit with keys.owner_external)"
+  },
+  "expected_owner_keys": [
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner read at approval time"
+    },
+    {
+      "public_key": "REPLACE_ME: ed25519 public key of keys.owner_external",
+      "permission": "full_access",
+      "nonce": "REPLACE_ME: nonce of keys.owner_external read at approval time"
+    }
+  ],
+  "agent_key_published": true,
+  "steps": [
+    {
+      "kind": "revoke_external"
+    },
+    {
+      "kind": "recover_external",
+      "asset": "usdc"
+    },
+    {
+      "kind": "recover_external",
+      "asset": "wnear"
+    },
+    {
+      "kind": "register_storage",
+      "asset": "usdc"
+    },
+    {
+      "kind": "register_storage",
+      "asset": "wnear"
+    },
+    {
+      "kind": "withdraw_external",
+      "asset": "usdc"
+    },
+    {
+      "kind": "withdraw_external",
+      "asset": "wnear"
+    },
+    {
+      "kind": "check"
+    }
+  ]
+}
