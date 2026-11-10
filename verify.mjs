@@ -484,7 +484,8 @@ function chainView(tx) {
   const all = [tx.transaction_outcome, ...(Array.isArray(tx.receipts_outcome) ? tx.receipts_outcome : [])].filter(isObject);
   const receipts = all.map((o) => {
     const kind = statusKind(o.outcome?.status);
-    return { id: o.id, executor_id: o.outcome?.executor_id, block_hash: o.block_hash, kind, error: kind === "failure" ? JSON.stringify(o.outcome.status.Failure) : null };
+    const logs = Array.isArray(o.outcome?.logs) ? o.outcome.logs.filter((l) => typeof l === "string") : [];
+    return { id: o.id, executor_id: o.outcome?.executor_id, block_hash: o.block_hash, kind, error: kind === "failure" ? JSON.stringify(o.outcome.status.Failure) : null, logs };
   });
   const top = statusKind(tx.status);
   const outcome = top === "unknown" || receipts.some((x) => x.kind === "unknown") ? "unknown" : top === "success" && !receipts.some((x) => x.kind === "failure") ? "success" : "failure";
@@ -496,6 +497,70 @@ function chainView(tx) {
     // Not JSON arguments: nothing is read from them.
   }
   return { receipts, outcome, method: call?.method_name ?? null, args: isObject(args) ? args : {}, t: tx.transaction ?? {} };
+}
+
+/** The orders the mandate signed in a transaction: the `multi_payload` of each order_signed event it logged there. */
+function signedOrders(v, mandate) {
+  const out = [];
+  for (const x of v.receipts.filter((y) => y.executor_id === mandate && y.kind === "success")) {
+    for (const log of x.logs) {
+      if (!log.startsWith("EVENT_JSON:")) continue;
+      try {
+        const e = JSON.parse(log.slice("EVENT_JSON:".length));
+        if (e?.standard !== "bounded_mandate" || e?.event !== "order_signed") continue;
+        const mp = typeof e.data?.multi_payload === "string" ? JSON.parse(e.data.multi_payload) : e.data?.multi_payload;
+        if (isObject(mp) && isObject(mp.payload)) out.push(mp);
+      } catch {
+        // Not an event of the mandate: nothing is read from it.
+      }
+    }
+  }
+  return out;
+}
+
+const messageOf = (entry) => {
+  try {
+    const m = JSON.parse(entry?.payload?.message);
+    return isObject(m) ? m : null;
+  } catch {
+    return null;
+  }
+};
+
+const sameSigned = (a, b) =>
+  a.standard === b.standard && a.public_key === b.public_key && a.signature === b.signature && a.payload.message === b.payload.message && a.payload.nonce === b.payload.nonce && a.payload.recipient === b.payload.recipient;
+
+/**
+ * Whether a fill executed the mandate's proposed order, from the chain's own transactions (RPC `tx` results): the
+ * bundle passed to execute_intents carries exactly one payload signed for the mandate, that payload is, field for
+ * field, one the mandate logged as signed (order_signed) in one of the successful proposal transactions, and it is one
+ * token_diff that sells a nonzero amount of one of `tokenIds` for a nonzero amount of the other. An empty bundle or a
+ * bundle of other accounts' intents has no such payload. Returns the problems and, without any, the order's trade.
+ */
+export function fillBinding(fillTx, proposalTxs, mandate, verifier, tokenIds) {
+  const signed = chainView(fillTx).args.signed;
+  if (!Array.isArray(signed) || signed.length === 0) return { problems: ["the execute_intents call carries no signed intents (an empty bundle executes nothing)"], trade: null };
+  const mine = signed.filter((e) => isObject(e) && isObject(e.payload) && messageOf(e)?.signer_id === mandate);
+  if (mine.length !== 1) return { problems: [`the bundle of ${signed.length} signed intents carries ${mine.length} signed for ${mandate}, expected exactly one`], trade: null };
+  const [entry] = mine;
+  const p = [];
+  const proposed = proposalTxs.flatMap((tx) => signedOrders(chainView(tx), mandate));
+  if (!proposed.some((o) => sameSigned(o, entry))) p.push(`the bundle's payload for ${mandate} is not an order the mandate logged as signed in a successful proposal transaction of the run (${proposed.length} such orders)`);
+  if (entry.standard !== "nep413") p.push(`the payload's standard is ${JSON.stringify(entry.standard ?? null)}, expected nep413`);
+  if (entry.payload.recipient !== verifier) p.push(`the payload's recipient is ${JSON.stringify(entry.payload.recipient ?? null)}, not ${verifier}`);
+  const intents = messageOf(entry).intents;
+  const diff = Array.isArray(intents) && intents.length === 1 && intents[0]?.intent === "token_diff" && isObject(intents[0].diff) ? intents[0].diff : null;
+  const deltas = diff === null ? [] : Object.entries(diff);
+  let trade = null;
+  if (diff === null) p.push("the payload is not exactly one token_diff intent");
+  else if (deltas.length !== 2 || deltas.some(([token, d]) => !tokenIds.includes(token) || typeof d !== "string" || !/^-?[0-9]+$/.test(d))) p.push(`the token_diff is not over exactly the two tokens ${tokenIds.join(" and ")}`);
+  else {
+    const sell = deltas.find(([, d]) => BigInt(d) < 0n);
+    const buy = deltas.find(([, d]) => BigInt(d) > 0n);
+    if (sell === undefined || buy === undefined) p.push("the token_diff does not sell a nonzero amount of one token for a nonzero amount of the other");
+    else trade = { nonce: entry.payload.nonce, publicKey: entry.public_key, diff: Object.fromEntries(deltas.map(([token, d]) => [token, BigInt(d)])) };
+  }
+  return { problems: p, trade: p.length === 0 ? trade : null };
 }
 
 const stepOf = (id) => {
@@ -754,7 +819,7 @@ async function checkMainnet(r, rec, rpc, candidate) {
       continue;
     }
     if (rc.block_height !== undefined && h.value !== rc.block_height) p.push(`included in block ${h.value}, recorded ${rc.block_height}`);
-    fetched.push({ rc, v, height: h.value, kind: kindOf(rc.label), step: stepNumberOf(rc) });
+    fetched.push({ rc, v, tx: t.result, height: h.value, kind: kindOf(rc.label), step: stepNumberOf(rc) });
     r.check(gate, p, `${rc.tx_hash} final, ${v.outcome}${FAILURE_STEPS.includes(kindOf(rc.label)) ? " (a step that must fail)" : ""}, ${v.t.signer_id} -> ${v.t.receiver_id}.${v.method}, block ${h.value}`, `${rc.tx_hash} does not match the evidence or its step`);
   }
   if (fetched.length !== receipts.length) {
@@ -915,13 +980,67 @@ async function checkMainnet(r, rec, rpc, candidate) {
     if (r.check(`mainnet.relay ${x.rc.label}`, p, `${x.rc.tx_hash} rejected by ${verifier} after the revoke: removed grant key ${m?.[1]}`)) rejectedRelays += 1;
   }
 
+  // A fill counts as a trade only if it executed the mandate's proposed order and moved tokens: the bundle on chain is
+  // bound to an order the mandate logged as signed, and the mandate's Intents balances and the order's nonce are read
+  // on both sides of the blocks in which the verifier executed the fill.
+  const traded = new Set();
+  const tokenIds = Object.values(MAINNET_TOKENS).map((t) => `nep141:${t}`);
+  const proposals = fetched.filter((f) => f.kind === "propose" && f.v.outcome === "success" && targetProblems(f.rc.label, f.v, ids.mandate).length === 0);
+  for (const f of fetched.filter((x) => x.kind === "fill" && x.v.outcome === "success")) {
+    const gate = `mainnet.trade ${f.rc.label}`;
+    const bound = fillBinding(f.tx, proposals.map((x) => x.tx), ids.mandate, verifier, tokenIds);
+    if (bound.trade === null) {
+      r.check(gate, bound.problems, "", `${f.rc.tx_hash} is not shown to have executed the mandate's proposed order`);
+      continue;
+    }
+    const errors = [];
+    const at = [];
+    for (const x of f.v.receipts.filter((y) => y.executor_id === verifier)) {
+      const h = await heightOf(x.block_hash);
+      if (h.ok) at.push(h.value);
+      else errors.push(`block of receipt ${x.id}: ${h.error}`);
+    }
+    const p = [];
+    const moved = [];
+    const [before, after] = [Math.min(...at) - 1, Math.max(...at) + 1];
+    if (at.length === 0) p.push(`no receipt of the transaction was executed by ${verifier}`);
+    else if (errors.length === 0) {
+      for (const [token, delta] of Object.entries(bound.trade.diff)) {
+        const a = await rpc.view(verifier, "mt_balance_of", { account_id: ids.mandate, token_id: token }, before);
+        const b = await rpc.view(verifier, "mt_balance_of", { account_id: ids.mandate, token_id: token }, after);
+        if (!a.ok || !b.ok) errors.push(`${token}: ${a.ok ? b.error : a.error}`);
+        else if (!/^[0-9]+$/.test(String(a.value)) || !/^[0-9]+$/.test(String(b.value))) errors.push(`${token}: balance is not a decimal amount`);
+        else if (BigInt(b.value) - BigInt(a.value) !== delta) p.push(`${ids.mandate} ${token} changed by ${BigInt(b.value) - BigInt(a.value)} between blocks ${before} and ${after}, the signed order moves ${delta}`);
+        else moved.push(`${token} ${delta > 0n ? "+" : ""}${delta}`);
+      }
+      const nonce = { account_id: ids.mandate, nonce: bound.trade.nonce };
+      const unused = await rpc.view(verifier, "is_nonce_used", nonce, before);
+      const used = await rpc.view(verifier, "is_nonce_used", nonce, after);
+      if (!unused.ok || !used.ok) errors.push(`order nonce: ${unused.ok ? used.error : unused.error}`);
+      else {
+        if (unused.value !== false) p.push(`the order's nonce was already used at block ${before}, before the fill`);
+        if (used.value !== true) p.push(`the order's nonce is not used at block ${after}, after the fill`);
+      }
+    }
+    if (errors.length > 0) r.line("NOT VERIFIED", gate, "the token movement of the fill could not be read", [...errors, ...p]);
+    else if (
+      r.check(
+        gate,
+        p,
+        `${f.rc.tx_hash} executed the order the mandate signed with ${bound.trade.publicKey} in a proposal of the run; between blocks ${before} and ${after} the mandate's balances on ${verifier} moved by exactly the signed amounts (${moved.join(", ")}) and the order's nonce became used. Any other movement of these tokens in those blocks would fail this check`,
+        `${f.rc.tx_hash} did not move the signed order's amounts`,
+      )
+    )
+      traded.add(f);
+  }
+
   // Completeness, pinned here: a whole-run pass needs each of these shown on chain, whatever the manifest or the record
   // lists. A transaction counts only if it succeeded and went to the receiver and method its step kind calls.
   const done = (kinds, also = () => true) => fetched.some((f) => kinds.includes(f.kind) && f.v.outcome === "success" && targetProblems(f.rc.label, f.v, ids.mandate).length === 0 && also(f));
   const missing = [];
   if (!done(["grant"])) missing.push("no successful grant transaction");
   if (!done(["propose"])) missing.push("no successful propose transaction (a signed proposal)");
-  if (!done(["fill"])) missing.push("no successful fill transaction");
+  if (!done(["fill"], (f) => traded.has(f))) missing.push("no successful fill transaction that executed the mandate's proposed order and moved its amounts");
   if (!done(["revoke", "revoke_external"])) missing.push("no successful revoke transaction");
   if (rejectedRelays === 0) missing.push("no withheld-order relay shown rejected after the revoke");
   for (const asset of Object.keys(MAINNET_TOKENS)) if (!done(["recover", "recover_external"], (f) => f.v.args.asset === asset)) missing.push(`no successful recover transaction for ${asset}`);

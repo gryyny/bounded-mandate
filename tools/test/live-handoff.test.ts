@@ -175,6 +175,12 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/** verify.mjs's binding of a fill to the mandate's proposed order, on raw RPC `tx` results. */
+async function fillBinding(fillTx: unknown, proposalTxs: unknown[], mandate: string, verifier: string, tokenIds: string[]): Promise<{ problems: string[]; trade: { diff: Record<string, bigint> } | null }> {
+  const mod = (await import(pathToFileURL(join(import.meta.dirname, "../../verify.mjs")).href)) as { fillBinding: (...args: unknown[]) => { problems: string[]; trade: { diff: Record<string, bigint> } | null } };
+  return mod.fillBinding(fillTx, proposalTxs, mandate, verifier, tokenIds);
+}
+
 /** verify.mjs's mainnet.manifest check (the script is dependency-free JavaScript outside the package). */
 async function coverageProblems(evidence: unknown): Promise<string[]> {
   const mod = (await import(pathToFileURL(join(import.meta.dirname, "../../verify.mjs")).href)) as { manifestCoverageProblems: (live: unknown) => string[] };
@@ -1109,6 +1115,42 @@ describe("primary template (live agent, console-signed owner actions, withdrawal
       expect(r.evidence?.environment.manifest_steps).toBe(steps.map((s) => s.kind).join(","));
       expect(await coverageProblems(r.evidence)).toEqual([]);
       expect(await coverageProblems({ ...r.evidence, receipts: r.evidence?.receipts.filter((x) => (x.detail as { method?: string }).method !== "revoke") })).toEqual([expect.stringMatching(/^step \d+ revoke_external: 1 of 1 without a transaction among the receipts$/)]);
+      // The verifier's fill check accepts the real fill of this run (the pinned verifier's execute_intents, the
+      // mandate's own order_signed event) and names the agent's 0.5 USDC sale; without the proposals it does not.
+      const rawTx = (label: RegExp): Promise<unknown[]> =>
+        Promise.all(
+          (r.evidence?.receipts ?? [])
+            .filter((x) => label.test(x.label))
+            .map(async (x) => {
+              const params = { tx_hash: x.tx_hash, sender_account_id: (x.detail as { signer_id: string }).signer_id, wait_until: "FINAL" };
+              const reply = await fetch(world.client.rpcUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: "test", method: "tx", params }) });
+              return ((await reply.json()) as { result: unknown }).result;
+            }),
+        );
+      const [fillTx] = await rawTx(/ fill$/);
+      const proposalTxs = await rawTx(/ propose$/);
+      expect(proposalTxs).toHaveLength(2);
+      const tokenIds = (["usdc", "wnear"] as const).map((asset) => `nep141:${world.tokens[asset]}`);
+      const bound = await fillBinding(fillTx, proposalTxs, mt.id, world.verifier.id, tokenIds);
+      expect(bound.problems).toEqual([]);
+      expect(bound.trade?.diff[tokenIds[0] ?? ""]).toBe(-500_000n);
+      expect((bound.trade?.diff[tokenIds[1] ?? ""] ?? 0n) > 0n).toBe(true);
+      expect((await fillBinding(fillTx, [], mt.id, world.verifier.id, tokenIds)).problems).toEqual([expect.stringMatching(/is not an order the mandate logged as signed/)]);
+      // The block window the verifier reads on mainnet, on this chain: one block before and one after the blocks in
+      // which the verifier executed the fill, the mandate's balances differ by exactly the signed amounts.
+      const rpc = async (method: string, params: unknown): Promise<unknown> => {
+        const reply = await fetch(world.client.rpcUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: "test", method, params }) });
+        return ((await reply.json()) as { result: unknown }).result;
+      };
+      const executed = (fillTx as { receipts_outcome: { block_hash: string; outcome: { executor_id: string } }[] }).receipts_outcome.filter((x) => x.outcome.executor_id === world.verifier.id);
+      const at = await Promise.all(executed.map(async (x) => ((await rpc("block", { block_id: x.block_hash })) as { header: { height: number } }).header.height));
+      expect(at.length).toBeGreaterThan(0);
+      const balanceAt = async (token: string, block: number): Promise<bigint> => {
+        const args = Buffer.from(JSON.stringify({ account_id: mt.id, token_id: token })).toString("base64");
+        const got = (await rpc("query", { request_type: "call_function", account_id: world.verifier.id, method_name: "mt_balance_of", args_base64: args, block_id: block })) as { result: number[] };
+        return BigInt(JSON.parse(Buffer.from(got.result).toString("utf8")) as string);
+      };
+      for (const token of tokenIds) expect((await balanceAt(token, Math.max(...at) + 1)) - (await balanceAt(token, Math.min(...at) - 1))).toBe(bound.trade?.diff[token]);
       expect(provider.calls).toBe(1);
       const l = ledgerOf(path);
       expect(kinds(l, "tx-intent")).toEqual(["grant", "refused_proposal", "propose", "fill", "settle", "propose", "relay_withheld"]);

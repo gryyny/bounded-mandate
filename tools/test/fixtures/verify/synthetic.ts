@@ -163,9 +163,22 @@ interface TxModel {
   args: Record<string, unknown>;
   height: number;
   /** One receipt per block after inclusion, each a function call (default: the transaction's method, then a callback). */
-  receipts: { executor: string; error?: string; method?: string; args?: Record<string, unknown> }[];
+  receipts: { executor: string; error?: string; method?: string; args?: Record<string, unknown>; logs?: string[] }[];
   detail: Record<string, unknown>;
 }
+
+/** The order the synthetic mandate signs and the filler fills: 1 USDC for 0.2 wNEAR. */
+const SOLD_USDC = "1000000";
+const BOUGHT_WNEAR = "200000000000000000000000";
+const nep413 = (signer: string, key: string, diff: Record<string, string>, salt: string) => ({
+  standard: "nep413",
+  payload: { message: JSON.stringify({ signer_id: signer, deadline: "2099-01-01T00:00:00.000Z", intents: [{ intent: "token_diff", diff }] }), nonce: Buffer.from(`SYNTHETIC nonce ${salt}`.padEnd(32, ".")).toString("base64"), recipient: VERIFIER },
+  public_key: key,
+  signature: `ed25519:SYNTHETICsignature${salt}`,
+});
+export const MANDATE_ORDER = nep413(MANDATE, GRANT_KEY, { [USDC]: `-${SOLD_USDC}`, [WNEAR]: BOUGHT_WNEAR }, "order1");
+const FILLER_ORDER = nep413(FILLER, "ed25519:SyntheticFillerKey44444444444444444444444444", { [USDC]: SOLD_USDC, [WNEAR]: `-${BOUGHT_WNEAR}` }, "filler1");
+const orderSigned = (multiPayload: unknown): string => `EVENT_JSON:${JSON.stringify({ standard: "bounded_mandate", version: "1.0.0", event: "order_signed", data: { order_id: "1", epoch: 1, signature: MANDATE_ORDER.signature, multi_payload: JSON.stringify(multiPayload) } })}`;
 
 const txHash = (label: string): string => base58(createHash("sha256").update(`SYNTHETIC ${label}`).digest());
 
@@ -196,6 +209,14 @@ export interface RunOptions {
    * the retry is "step <n> withdraw" with attempt 2, every earlier transaction is "reconcile <kind>" without a step.
    */
   withdrawRetried?: boolean;
+  /**
+   * What the successful fill transaction carries on chain instead of the mandate's order and the filler's counter order:
+   * "empty" no signed intents at all, "unrelated" two intents of other accounts, "unproposed" a payload naming the
+   * mandate that the mandate never logged as signed.
+   */
+  fillBundle?: "empty" | "unrelated" | "unproposed";
+  /** The proposal transaction logs no order_signed event. */
+  proposalNotSigned?: boolean;
 }
 
 type TxSpec = Pick<TxModel, "signer" | "receiver" | "method" | "height" | "receipts"> & { name: string; args?: Record<string, unknown>; detail?: Record<string, unknown> };
@@ -211,6 +232,7 @@ const panic = (text: string): string => `{"ActionError":{"index":0,"kind":{"Func
 /** Block in which the USDC recovery reaches the owner. */
 const usdcRecoveredAt = (o: RunOptions): number => (o.recoverFails === true ? Number.POSITIVE_INFINITY : o.recoverRetried === true ? 157 : 152);
 const WITHDRAWN_AT = 181;
+const FILLED_AT = 121;
 
 /** The steps of the synthetic manifest, in order, with the transactions and verifications of each. */
 function steps(o: RunOptions = {}): StepModel[] {
@@ -233,6 +255,15 @@ function steps(o: RunOptions = {}): StepModel[] {
             attempts: [{ observed: { refused: true } }],
           },
         ];
+  const stranger = (name: string, diff: Record<string, string>) => nep413(`${name}.synthetic.near`, STRANGER_KEY, diff, name);
+  const bundle =
+    o.fillBundle === "empty"
+      ? []
+      : o.fillBundle === "unrelated"
+        ? [stranger("alice", { [USDC]: `-${SOLD_USDC}`, [WNEAR]: BOUGHT_WNEAR }), stranger("bob", { [USDC]: SOLD_USDC, [WNEAR]: `-${BOUGHT_WNEAR}` })]
+        : o.fillBundle === "unproposed"
+          ? [{ ...MANDATE_ORDER, signature: "ed25519:SYNTHETICsignatureNeverLogged" }, FILLER_ORDER]
+          : [MANDATE_ORDER, FILLER_ORDER];
   const withdrawal = { token: USDC_TOKEN, receiver_id: OWNER, amount: "5000000" };
   const withdraw: StepModel[] =
     o.withdrawRetried !== true
@@ -252,9 +283,9 @@ function steps(o: RunOptions = {}): StepModel[] {
         ];
   return [
     { kind: "grant", txs: [{ name: "grant", signer: OWNER, receiver: MANDATE, method: "grant", height: 100, receipts: [{ executor: MANDATE }, { executor: VERIFIER, method: "add_public_key", args: { public_key: GRANT_KEY } }] }], attempts: [{ observed: { epoch: 1, public_key: GRANT_KEY } }] },
-    { kind: "propose", txs: [{ name: "propose", signer: AGENT, receiver: MANDATE, method: "propose_order", height: 110, receipts: [{ executor: MANDATE }] }], attempts: [{ observed: { order_id: "1" } }] },
+    { kind: "propose", txs: [{ name: "propose", signer: AGENT, receiver: MANDATE, method: "propose_order", height: 110, receipts: [{ executor: MANDATE }, { executor: "v1.signer", method: "sign" }, { executor: MANDATE, method: "on_signed", logs: o.proposalNotSigned === true ? [] : [orderSigned(MANDATE_ORDER)] }] }], attempts: [{ observed: { order_id: "1" } }] },
     ...refused,
-    { kind: "fill", txs: [{ name: "fill", signer: FILLER, receiver: VERIFIER, method: "execute_intents", height: 120, receipts: [{ executor: VERIFIER }] }], attempts: [{ observed: { order_id: "1" } }] },
+    { kind: "fill", txs: [{ name: "fill", signer: FILLER, receiver: VERIFIER, method: "execute_intents", args: { signed: bundle }, height: 120, receipts: [{ executor: VERIFIER }] }], attempts: [{ observed: { order_id: "1" } }] },
     { kind: "revoke", txs: [{ name: "revoke", signer: OWNER, receiver: o.revokeReceiver ?? MANDATE, method: "revoke", height: 130, receipts: revoke, detail: { imported: true } }], attempts: [{ observed: { status: "revoked", key_absent: true } }] },
     {
       kind: "relay_withheld",
@@ -304,7 +335,7 @@ function rpcTx(t: TxModel, full = false): Record<string, unknown> {
     receipts_outcome: t.receipts.map((r, i) => ({
       id: receiptId(t, i + 1),
       block_hash: `block-${String(t.height + i + 1)}`,
-      outcome: { executor_id: r.executor, status: r.error === undefined ? { SuccessValue: "" } : { Failure: JSON.parse(r.error) as unknown } },
+      outcome: { executor_id: r.executor, logs: r.logs ?? [], status: r.error === undefined ? { SuccessValue: "" } : { Failure: JSON.parse(r.error) as unknown } },
     })),
   };
 }
@@ -367,6 +398,8 @@ export interface ChainOptions extends RunOptions {
   keyNeverRemoved?: boolean;
   /** The mandate still holds USDC at the run's final block. */
   usdcLeftInMandate?: boolean;
+  /** The fill moved nothing: the mandate's balances and the order's nonce are the same before and after it. */
+  fillMovesNothing?: boolean;
   /** Never answers (to test the timeout). */
   hang?: boolean;
 }
@@ -382,12 +415,15 @@ function view(account: string, method: string, args: Record<string, unknown>, h:
     const [holder, token] = [args.account_id, args.token_id];
     const usdcAt = usdcRecoveredAt(o);
     const wnearAt = o.recoverFails === true ? Number.POSITIVE_INFINITY : 162;
-    if (holder === MANDATE && token === USDC) return h >= 200 ? "1000000" : h >= usdcAt && o.usdcLeftInMandate !== true ? "0" : "5000000";
-    if (holder === MANDATE && token === WNEAR) return h >= wnearAt ? "0" : ONE_NEAR;
+    // The verifier executes the fill in block 121: before it the mandate holds what it sells, after it what it bought.
+    const filled = h >= FILLED_AT || o.fillMovesNothing === true;
+    if (holder === MANDATE && token === USDC) return h >= 200 ? "1000000" : h >= usdcAt && o.usdcLeftInMandate !== true ? "0" : filled ? "5000000" : (5000000n + BigInt(SOLD_USDC)).toString();
+    if (holder === MANDATE && token === WNEAR) return h >= wnearAt ? "0" : filled ? ONE_NEAR : (BigInt(ONE_NEAR) - BigInt(BOUGHT_WNEAR)).toString();
     if (holder === OWNER && token === USDC) return h >= usdcAt && !(o.withdrawRetried === true && h >= WITHDRAWN_AT) ? "5000000" : "0";
     if (holder === OWNER && token === WNEAR) return h >= wnearAt ? ONE_NEAR : "0";
     return "0";
   }
+  if (method === "is_nonce_used" && args.account_id === MANDATE) return args.nonce === MANDATE_ORDER.payload.nonce && h >= FILLED_AT && o.fillMovesNothing !== true;
   if (method === "ft_balance_of" && account === USDC_TOKEN && args.account_id === OWNER) return o.withdrawRetried === true && h >= WITHDRAWN_AT + 1 ? "5000000" : "0";
   throw new Error(`SYNTHETIC chain has no view ${method}`);
 }

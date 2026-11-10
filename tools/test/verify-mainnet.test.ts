@@ -11,6 +11,7 @@ afterEach(async () => {
 });
 
 const lineOf = (out: string, gate: string): string => out.split("\n").find((l) => l.slice(13).startsWith(`${gate}  `)) ?? `(no line for ${gate})`;
+const tradeLine = (out: string): string => out.split("\n").find((l) => l.slice(13).startsWith("mainnet.trade ")) ?? "(no mainnet.trade line)";
 const lines = (out: string, status: string): string[] => out.split("\n").filter((l) => l.startsWith(status));
 
 /** A synthetic repository whose bundle carries `evidence` as live-mainnet.json, re-hashed into SHA256SUMS. */
@@ -439,6 +440,59 @@ describe("verify.mjs --mainnet does not verify a failed, incomplete or different
     for (const gate of NEW_GATES) expect(lineOf(r.out, gate)).toMatch(/^PASS /);
     expect(r.out).toMatch(/^VERIFIED: /m);
     expect(r.code).toBe(0);
+  });
+
+  // gate: LIVE
+  it("control: the fill is bound to the mandate's signed order and its token movement", async () => {
+    const r = await mainnet(syntheticLiveEvidence());
+    expect(tradeLine(r.out)).toMatch(/^PASS .*executed the order the mandate signed with ed25519:SyntheticGrantKey.*moved by exactly the signed amounts \(nep141:\S+ -1000000, nep141:wrap\.near \+200000000000000000000000\)/);
+    expect(r.code).toBe(0);
+  });
+
+  // gate: LIVE
+  // The reviewer's counterexample: the pinned verifier accepts execute_intents with no signed intents and moves nothing.
+  it("a successful fill with an empty bundle is not a trade, although the transaction succeeded and the record passed", async () => {
+    const o = { fillBundle: "empty", fillMovesNothing: true } as const;
+    const r = await mainnet(syntheticLiveEvidence(o), o);
+    expect(lineOf(r.out, "mainnet.tx step 3 fill")).toMatch(/^PASS /);
+    expect(lineOf(r.out, "mainnet.run")).toMatch(/^PASS /);
+    expect(tradeLine(r.out)).toMatch(/^FAIL /);
+    expect(r.out).toContain("the execute_intents call carries no signed intents");
+    expect(lineOf(r.out, "mainnet.complete")).toMatch(/^FAIL /);
+    expect(r.out).toContain("no successful fill transaction that executed the mandate's proposed order");
+    expect(r.out).toMatch(/^NOT VERIFIED: /m);
+    expect(r.code).toBe(1);
+  });
+
+  // gate: LIVE
+  it("a nonempty bundle of other accounts' intents is not the mandate's trade", async () => {
+    const o = { fillBundle: "unrelated", fillMovesNothing: true } as const;
+    const r = await mainnet(syntheticLiveEvidence(o), o);
+    expect(tradeLine(r.out)).toMatch(/^FAIL /);
+    expect(r.out).toContain("carries 0 signed for mandate.synthetic.near, expected exactly one");
+    expect(lineOf(r.out, "mainnet.complete")).toMatch(/^FAIL /);
+    expect(r.code).toBe(1);
+  });
+
+  // gate: LIVE
+  it("a payload naming the mandate that the mandate never logged as signed is not its proposed order", async () => {
+    for (const o of [{ fillBundle: "unproposed" }, { proposalNotSigned: true }] as const) {
+      const r = await mainnet(syntheticLiveEvidence(o), o);
+      expect(tradeLine(r.out)).toMatch(/^FAIL /);
+      expect(r.out).toContain("is not an order the mandate logged as signed in a successful proposal transaction of the run");
+      expect(lineOf(r.out, "mainnet.complete")).toMatch(/^FAIL /);
+      expect(r.code).toBe(1);
+    }
+  });
+
+  // gate: LIVE
+  it("the proposed order in the bundle is not a trade when the mandate's balances and the order's nonce did not move", async () => {
+    const r = await mainnet(syntheticLiveEvidence(), { fillMovesNothing: true });
+    expect(tradeLine(r.out)).toMatch(/^FAIL /);
+    expect(r.out).toContain("changed by 0 between blocks 120 and 122, the signed order moves -1000000");
+    expect(r.out).toContain("the order's nonce is not used at block 122, after the fill");
+    expect(lineOf(r.out, "mainnet.complete")).toMatch(/^FAIL /);
+    expect(r.code).toBe(1);
   });
 
   // gate: LIVE
