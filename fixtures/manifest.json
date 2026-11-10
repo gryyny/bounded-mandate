@@ -76,30 +76,30 @@
       "license": "MIT (this repository)"
     },
     "prebuilt/mock_ft.wasm": {
-      "sha256": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+      "sha256": "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89",
       "kind": "prebuilt-test-double",
-      "source": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-ft/Cargo.toml at product commit d653c6a44d99ce9e0520795932b241c593a5322c (stubs/ unchanged since 9491d9a), rustc 1.97.1 per rust-toolchain.toml, cargo-near 0.22.0, host aarch64-apple-darwin. NOT a reproducible build: pins these bytes only. Test double used only by make quick (prebuilt, uncertified); provenance in prebuilt/provenance.json",
-      "reproduced_from_source": false,
+      "source": "cargo near build reproducible-wasm --manifest-path stubs/mock-ft/Cargo.toml in the pinned image sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234 (container command: cargo near build non-reproducible-wasm --locked), from a clean clone at product commit b089162e3b39c5aa607a93ded837a1993fdd1ab6 (stubs/ unchanged since 9491d9a); a second build from an independent clean clone gave identical bytes. No machine-local path embedded. Test double used only by make quick (prebuilt, uncertified; make quick checks this hash and never rebuilds); provenance in prebuilt/provenance.json",
+      "reproduced_from_source": true,
       "license": "MIT (this repository)"
     },
     "prebuilt/mock_oracle.wasm": {
-      "sha256": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+      "sha256": "672e95e0e5c6daaa31b62a77e86c7c7e48f375469339ada758ebc71773ecfa8c",
       "kind": "prebuilt-test-double",
-      "source": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-oracle/Cargo.toml at product commit d653c6a44d99ce9e0520795932b241c593a5322c (stubs/ unchanged since 9491d9a), rustc 1.97.1 per rust-toolchain.toml, cargo-near 0.22.0, host aarch64-apple-darwin. NOT a reproducible build: pins these bytes only. Test double used only by make quick (prebuilt, uncertified); provenance in prebuilt/provenance.json",
-      "reproduced_from_source": false,
+      "source": "cargo near build reproducible-wasm --manifest-path stubs/mock-oracle/Cargo.toml in the pinned image sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234 (container command: cargo near build non-reproducible-wasm --locked), from a clean clone at product commit b089162e3b39c5aa607a93ded837a1993fdd1ab6 (stubs/ unchanged since 9491d9a); a second build from an independent clean clone gave identical bytes. No machine-local path embedded. Test double used only by make quick (prebuilt, uncertified; make quick checks this hash and never rebuilds); provenance in prebuilt/provenance.json",
+      "reproduced_from_source": true,
       "license": "MIT (this repository)"
     },
     "prebuilt/mock_mpc.wasm": {
-      "sha256": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+      "sha256": "ada6f78437be156625696480b4a209a9d8d92b8931791a10712bed7b22dd5694",
       "kind": "prebuilt-test-double",
-      "source": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-mpc/Cargo.toml at product commit d653c6a44d99ce9e0520795932b241c593a5322c (stubs/ unchanged since 9491d9a), rustc 1.97.1 per rust-toolchain.toml, cargo-near 0.22.0, host aarch64-apple-darwin. NOT a reproducible build: pins these bytes only. Test double used only by make quick (prebuilt, uncertified); provenance in prebuilt/provenance.json",
-      "reproduced_from_source": false,
+      "source": "cargo near build reproducible-wasm --manifest-path stubs/mock-mpc/Cargo.toml in the pinned image sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234 (container command: cargo near build non-reproducible-wasm --locked), from a clean clone at product commit b089162e3b39c5aa607a93ded837a1993fdd1ab6 (stubs/ unchanged since 9491d9a); a second build from an independent clean clone gave identical bytes. No machine-local path embedded. Test double used only by make quick (prebuilt, uncertified; make quick checks this hash and never rebuilds); provenance in prebuilt/provenance.json",
+      "reproduced_from_source": true,
       "license": "MIT (this repository)"
     },
     "prebuilt/provenance.json": {
-      "sha256": "ba91e1684b2355bef6f956f5fabca67a3f65b91c240530928dc8c921e3059a84",
+      "sha256": "134c722a5aacfb3f863a6eb3c41820c868a7c6142cbde53314762f5b7f826a0b",
       "kind": "provenance-record",
-      "source": "Build record of the prebuilt test doubles in prebuilt/: source revision, stubs tree, Cargo.lock and rust-toolchain.toml hashes, toolchain, exact build command, per-file sha256; states that the build is not reproducible",
+      "source": "Build record of the prebuilt test doubles in prebuilt/: source revision, stubs tree, Cargo.lock and rust-toolchain.toml hashes, pinned build image, exact build command, per-file sha256 and the two-build reproduction result",
       "license": "MIT (this repository)"
     }
   }

@@ -49,7 +49,7 @@ describe("make quick prebuilt pins", () => {
       expect(w.path).toBe(`fixtures/${rel}`);
       expect(w.sha256).toBe(sha256(join(root, "fixtures", rel)));
     }
-    expect(set.provenance.reproducible).toBe(false);
+    expect(set.provenance.reproducible).toBe(true);
     expect(set.provenance_sha256).toBe(sha256(join(root, "fixtures", PROVENANCE)));
     // Every prebuilt file is a stub crate's build output, named after the crate.
     for (const [name, f] of Object.entries(set.provenance.files)) {
@@ -84,7 +84,7 @@ describe("make quick prebuilt pins", () => {
   it("fails closed when the provenance record is altered or a pin is missing", () => {
     const altered = copyRoot();
     const prov = join(altered, "fixtures", PROVENANCE);
-    writeFileSync(prov, readFileSync(prov, "utf8").replace('"reproducible": false', '"reproducible": false '));
+    writeFileSync(prov, readFileSync(prov, "utf8").replace('"reproducible": true', '"reproducible": true '));
     expect(() => loadPrebuilt(altered)).toThrow(/fixtures\/prebuilt\/provenance\.json: sha256 [0-9a-f]{64} != manifest/);
 
     const unpinned = copyRoot();
@@ -106,6 +106,7 @@ describe("make quick run", () => {
     expect(run.command).toContain("uncertified");
     expect(run.labels[0]?.startsWith(QUICK_LABEL)).toBe(true);
     expect(run.page.acceptance).toBeNull();
+    expect(run.page.challenge).toBeNull();
     const html = run.decorate("<!doctype html><html><head></head><body class=x><h1>t</h1></body></html>");
     expect(html).toMatch(/<body class=x>\n<p role="note" id="quick-label"><strong>PREBUILT, UNCERTIFIED: make quick deployed the deployment candidate/);
     expect(() => labelHtml("<html></html>", "x")).toThrow();

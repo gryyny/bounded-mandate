@@ -124,18 +124,21 @@ describe("NOTICE coverage of fixtures", () => {
           "model/m.json": { kind: "recorded-genuine-model-interaction" },
           "vectors/own.json": { kind: "generated-vectors" },
           "x/x.provenance.json": { kind: "provenance-record" },
+          "prebuilt/p.wasm": { kind: "prebuilt-test-double" },
         },
       }),
       "fixtures/verifier/v.wasm": "w",
       "fixtures/model/m.json": "{}",
       "fixtures/vectors/own.json": "{}",
       "fixtures/x/x.provenance.json": "{}",
+      "fixtures/prebuilt/p.wasm": "w",
       "fixtures/new/unlisted.wasm": "w",
       NOTICE: "fixtures/verifier/v.wasm\n  MIT\n",
     });
     expect(fixtureDisclosures(root).map((f) => [f.path, f.external, f.in_notice, f.in_manifest])).toEqual([
       ["fixtures/model/m.json", true, false, true],
       ["fixtures/new/unlisted.wasm", true, false, false],
+      ["fixtures/prebuilt/p.wasm", true, false, true],
       ["fixtures/vectors/own.json", false, false, true],
       ["fixtures/verifier/v.wasm", true, true, true],
       ["fixtures/x/x.provenance.json", false, false, true],
@@ -144,6 +147,19 @@ describe("NOTICE coverage of fixtures", () => {
       "fixtures/new/unlisted.wasm: not listed in fixtures/manifest.json (provenance and hash missing)",
       "fixtures/model/m.json: external fixture (recorded-genuine-model-interaction) not named in NOTICE",
       "fixtures/new/unlisted.wasm: external fixture (unlisted) not named in NOTICE",
+      "fixtures/prebuilt/p.wasm: external fixture (prebuilt-test-double) not named in NOTICE",
+    ]);
+  });
+
+  it("requires NOTICE to name every crate compiled into a prebuilt WASM, and rejects strong copyleft there", () => {
+    const root = tree({ "fixtures/manifest.json": JSON.stringify({ files: {} }), NOTICE: "    dalek 2.2.0: BSD-3-Clause\n" });
+    const dep = (name: string, license: string) => ({ ecosystem: "cargo" as const, name, version: "2.2.0", license, class: classify(license), dev: false, in_contract_wasm: false, source: "registry" });
+    const deps = [dep("dalek", "BSD-3-Clause"), dep("gpl", "GPL-3.0-only"), dep("unused", "MIT")];
+    const report = licenseReport(root, deps, new Set(["dalek 2.2.0", "gpl 2.2.0"]));
+    expect(report.prebuilt_wasm.map((d) => d.name)).toEqual(["dalek", "gpl"]);
+    expect(report.problems).toEqual([
+      "cargo gpl@2.2.0: GPL-3.0-only is strong copyleft and is distributed",
+      "cargo gpl@2.2.0: compiled into fixtures/prebuilt WASM but not named in NOTICE",
     ]);
   });
 });

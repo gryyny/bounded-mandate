@@ -15,7 +15,7 @@ const escapeHtml = (s: string): string => s.replaceAll("&", "&amp;").replaceAll(
 
 export function quickStatement(set: PrebuiltSet): string {
   const p = set.provenance;
-  return `${QUICK_LABEL}: make quick deployed the deployment candidate fixtures/${QUICK_WASM.mandate} and prebuilt test doubles from fixtures/prebuilt (built by "${p.build_command}" at revision ${p.source.revision.slice(0, 12)} with ${p.toolchain.cargo_near} on ${p.toolchain.host}; not a reproducible build). This run is not bound to any acceptance run and certifies nothing; make test and make demo are the certified path.`;
+  return `${QUICK_LABEL}: make quick deployed the deployment candidate fixtures/${QUICK_WASM.mandate} and prebuilt test doubles from fixtures/prebuilt (built by cargo-near reproducible-wasm in ${p.toolchain.host} at revision ${p.source.revision.slice(0, 12)}; make quick checks their pinned hashes and does not rebuild them). This run is not bound to any acceptance run and certifies nothing; make test and make demo are the certified path.`;
 }
 
 /** Adds a visible label right after <body> so a quick page or console cannot be mistaken for the certified demo. */
@@ -49,7 +49,7 @@ export function quickRun(set: PrebuiltSet): DemoRun {
         observed: { provenance: `fixtures/${PROVENANCE}`, provenance_sha256: set.provenance_sha256, wasm: Object.fromEntries(Object.entries(set.wasm).map(([role, w]) => [role, { path: w.path, sha256: w.sha256 }])) },
       },
     ],
-    page: { acceptance: null, latestRunId: null, live: null, reports: [] },
+    page: { acceptance: null, latestRunId: null, live: null, reports: [], challenge: null },
     decorate: (html) => labelHtml(html, statement),
   };
 }

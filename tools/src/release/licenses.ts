@@ -1,7 +1,7 @@
 // Offline license and disclosure check. Enumerates npm packages from tools/package-lock.json (license from
 // the lockfile, else the installed package.json) and Cargo packages from `cargo metadata --offline`, flags
 // copyleft and unknown licenses, marks the crates linked into the contract WASM, and checks that NOTICE
-// names every external fixture.
+// names every external fixture and every crate compiled into the prebuilt test-double WASMs.
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -222,7 +222,21 @@ export function cargoDependencies(meta: CargoMeta, wasm: ReadonlySet<string>): D
 const Manifest = z.object({ files: z.record(z.string(), z.looseObject({ kind: z.string(), license: z.string().optional() })) });
 
 /** Kinds produced by this repository; everything else in fixtures/ is external and must be named in NOTICE. */
-const OWN_KINDS = new Set(["generated-vectors", "deployment-candidate", "provenance-record", "prebuilt-test-double"]);
+const OWN_KINDS = new Set(["generated-vectors", "deployment-candidate", "provenance-record"]);
+
+export const PREBUILT_PROVENANCE = "fixtures/prebuilt/provenance.json";
+const PrebuiltProvenance = z.looseObject({ files: z.record(z.string(), z.looseObject({ crate: z.string() })) });
+
+/**
+ * `name version` of every third-party crate linked into the prebuilt test-double WASMs (fixtures/prebuilt), from
+ * `cargo tree` per crate named in their provenance record, as for the contract WASM. Empty without that record.
+ */
+export function prebuiltWasmCrates(root: string): Set<string> {
+  const path = join(root, PREBUILT_PROVENANCE);
+  if (!existsSync(path)) return new Set();
+  const crates = new Set(Object.values(PrebuiltProvenance.parse(JSON.parse(readFileSync(path, "utf8"))).files).map((f) => f.crate));
+  return new Set([...crates].flatMap((c) => [...contractWasmCrates(root, c)]).filter((p) => !crates.has(p.split(" ")[0] ?? "")));
+}
 
 export interface FixtureDisclosure {
   path: string;
@@ -254,12 +268,14 @@ export interface LicenseReport {
   counts: Record<string, number>;
   flagged: Dependency[];
   contract_wasm: Dependency[];
+  /** Third-party crates compiled into fixtures/prebuilt/*.wasm, each of which NOTICE must name. */
+  prebuilt_wasm: Dependency[];
   fixtures: FixtureDisclosure[];
   problems: string[];
   open_items: string[];
 }
 
-export function licenseReport(root: string, deps: Dependency[]): LicenseReport {
+export function licenseReport(root: string, deps: Dependency[], prebuilt: ReadonlySet<string> = prebuiltWasmCrates(root)): LicenseReport {
   const counts: Record<string, number> = {};
   for (const d of deps) {
     const key = `${d.ecosystem}:${d.class}`;
@@ -268,17 +284,21 @@ export function licenseReport(root: string, deps: Dependency[]): LicenseReport {
   }
   const flagged = deps.filter((d) => d.class !== "permissive");
   const fixtures = fixtureDisclosures(root);
+  const notice = readFileSync(join(root, "NOTICE"), "utf8");
+  const inPrebuilt = (d: Dependency): boolean => d.ecosystem === "cargo" && prebuilt.has(`${d.name} ${d.version}`);
   const problems: string[] = [
-    ...flagged.filter((d) => d.class === "strong-copyleft" && (d.in_contract_wasm || (d.ecosystem === "npm" && !d.dev))).map((d) => `${d.ecosystem} ${d.name}@${d.version}: ${d.license ?? "no license"} is strong copyleft and is distributed`),
+    ...flagged.filter((d) => d.class === "strong-copyleft" && (d.in_contract_wasm || inPrebuilt(d) || (d.ecosystem === "npm" && !d.dev))).map((d) => `${d.ecosystem} ${d.name}@${d.version}: ${d.license ?? "no license"} is strong copyleft and is distributed`),
     ...flagged.filter((d) => d.class === "unknown").map((d) => `${d.ecosystem} ${d.name}@${d.version}: license unknown (${d.license ?? "none declared"}); confirm by hand`),
     ...fixtures.filter((f) => !f.in_manifest).map((f) => `${f.path}: not listed in fixtures/manifest.json (provenance and hash missing)`),
     ...fixtures.filter((f) => f.external && !f.in_notice).map((f) => `${f.path}: external fixture (${f.kind}) not named in NOTICE`),
+    ...[...prebuilt].sort().filter((c) => !notice.includes(c)).map((c) => `cargo ${c.replace(" ", "@")}: compiled into fixtures/prebuilt WASM but not named in NOTICE`),
   ];
   return {
     schema: "bounded-mandate/license-check/v1",
     counts,
     flagged,
     contract_wasm: deps.filter((d) => d.in_contract_wasm),
+    prebuilt_wasm: deps.filter(inPrebuilt),
     fixtures,
     problems,
     open_items: ["Owner confirmation of the README AI-tools disclosure (rule Q-005) and of NOTICE authorship remains open."],

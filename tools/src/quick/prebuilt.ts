@@ -21,7 +21,7 @@ const Sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 export const Provenance = z.object({
   schema: z.literal("bounded-mandate/prebuilt-test-doubles/v1"),
   label: z.string(),
-  reproducible: z.literal(false),
+  reproducible: z.literal(true),
   statement: z.string(),
   source: z.object({ revision: z.string().regex(/^[0-9a-f]{40}$/), stubs_tree: z.string(), cargo_lock_sha256: Sha256, dirty: z.literal(false) }),
   toolchain: z.object({ rust_toolchain_toml_sha256: Sha256, channel: z.string(), rustc: z.string(), cargo_near: z.string(), host: z.string() }),

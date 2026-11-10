@@ -454,7 +454,7 @@ export interface DemoRun {
   /** Checks established before the story (e.g. pinned hashes); recorded in the evidence. */
   preChecks: readonly { id: string; gate: string; description: string; passed: boolean; observed: unknown }[];
   /** Rendering of the evidence page; default: bound to out/evidence/acceptance.json. */
-  page: Pick<RenderExtras, "acceptance" | "latestRunId" | "live" | "reports">;
+  page: Pick<RenderExtras, "acceptance" | "latestRunId" | "live" | "reports" | "challenge">;
   /** Applied to the written page and console HTML. */
   decorate: (html: string) => string;
 }

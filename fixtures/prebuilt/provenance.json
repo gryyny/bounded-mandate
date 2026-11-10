@@ -1,10 +1,10 @@
 {
   "schema": "bounded-mandate/prebuilt-test-doubles/v1",
-  "label": "PREBUILT TEST DOUBLES, UNCERTIFIED, NOT A REPRODUCIBLE BUILD",
-  "reproducible": false,
-  "statement": "These are test doubles for external protocols, used only by make quick so the sandbox story runs without Rust. They were built with the repository's normal non-reproducible build, so a rebuild on another host or toolchain install may produce different bytes; their hashes pin these exact bytes, not a build recipe. make test and make demo build the stubs from source and are the certified path. The mandate make quick deploys is the reproducible deployment candidate fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, not a file in this directory.",
+  "label": "PREBUILT TEST DOUBLES, UNCERTIFIED",
+  "reproducible": true,
+  "statement": "These are test doubles for external protocols, used only by make quick so the sandbox story runs without Rust. They were built with cargo-near's reproducible-wasm command inside the pinned image named in toolchain.image, from a clean clone at source.revision, so they embed no path of the building machine (only the image's /home/near paths and the repository URL in the NEP-330 metadata). Two builds from two independent clean clones at that revision produced identical bytes (reproduction). make quick never rebuilds them: it checks these pinned hashes only, so a quick run certifies nothing. make test and make demo build the stubs from source and are the certified path. The mandate make quick deploys is the reproducible deployment candidate fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, not a file in this directory.",
   "source": {
-    "revision": "d653c6a44d99ce9e0520795932b241c593a5322c",
+    "revision": "b089162e3b39c5aa607a93ded837a1993fdd1ab6",
     "stubs_tree": "d9d6aa4319b3e6e9d70462053e203cd974d0f5dc",
     "cargo_lock_sha256": "10c4629a53da9db7f797ddd5db1ed280afcdd1b925b70c77811b4447a48088e1",
     "dirty": false
@@ -14,31 +14,44 @@
     "channel": "1.97.1",
     "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
     "cargo_near": "cargo-near 0.22.0",
-    "host": "aarch64-apple-darwin"
+    "host": "docker image sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234 (linux/amd64)",
+    "image": "sourcescan/cargo-near:0.22.0-rust-1.97.1@sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234",
+    "container_build_command": "cargo near build non-reproducible-wasm --locked"
   },
-  "build_command": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/<crate>/Cargo.toml",
-  "built_at": "2026-11-09T23:47:00Z",
+  "build_command": "cargo near build reproducible-wasm --manifest-path stubs/<crate>/Cargo.toml --out-dir <dir> (host cargo-near 0.22.0, Docker 29.9.2, clean git clone at source.revision)",
+  "built_at": "2026-11-10T00:45:05Z",
   "files": {
     "mock_ft.wasm": {
       "crate": "mock-ft",
       "manifest_path": "stubs/mock-ft/Cargo.toml",
       "role": "Test double NEP-141 token; deployed twice as the USDC and wNEAR test tokens",
-      "bytes": 156415,
-      "sha256": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0"
+      "bytes": 156600,
+      "sha256": "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89"
     },
     "mock_oracle.wasm": {
       "crate": "mock-oracle",
       "manifest_path": "stubs/mock-oracle/Cargo.toml",
       "role": "Test double of aggregate-oracle.near: operator-set prices; never oracle output",
-      "bytes": 126377,
-      "sha256": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+      "bytes": 126443,
+      "sha256": "672e95e0e5c6daaa31b62a77e86c7c7e48f375469339ada758ebc71773ecfa8c"
     },
     "mock_mpc.wasm": {
       "crate": "mock-mpc",
       "manifest_path": "stubs/mock-mpc/Cargo.toml",
       "role": "Test double of the MPC signer v1.signer: signs with deterministic Ed25519 TEST keys anyone can recompute; never MPC output",
-      "bytes": 237504,
-      "sha256": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+      "bytes": 237546,
+      "sha256": "ada6f78437be156625696480b4a209a9d8d92b8931791a10712bed7b22dd5694"
     }
+  },
+  "reproduction": {
+    "builds": 2,
+    "identical": true,
+    "method": "two independent `git clone` copies of the product repository checked out at source.revision; each crate built once per clone with build_command; sha256 compared",
+    "sha256": {
+      "mock_ft.wasm": "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89",
+      "mock_oracle.wasm": "672e95e0e5c6daaa31b62a77e86c7c7e48f375469339ada758ebc71773ecfa8c",
+      "mock_mpc.wasm": "ada6f78437be156625696480b4a209a9d8d92b8931791a10712bed7b22dd5694"
+    },
+    "no_machine_paths": "strings(1) over each WASM finds no /Users/ path and no absolute path of the building checkout; the only absolute paths are /home/near/... from the image"
   }
 }
