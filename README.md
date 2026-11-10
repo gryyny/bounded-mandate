@@ -24,8 +24,8 @@ An AI agent trades your treasury on NEAR Intents without holding a signing key. 
 
 | Do | Needs | See |
 | --- | --- | --- |
-| `make verify` (same as `node verify.mjs`) | Node 20 or later; no install, no network | One line per gate and a non-zero exit on any mismatch. It checks the committed evidence bundle's hashes and certification; it does not show that the tests ran. <!-- REFRESH: exact last line and time from WS3 --> |
-| `make quick` | Node 24; network for npm, the NEAR sandbox binary and Chromium; no Rust | The demo story on the exact deployment candidate with pinned prebuilt test doubles, labelled prebuilt and uncertified. Cold time: not yet measured. <!-- REFRESH: last line and cold time from WS4 --> |
+| `make verify` (same as `node verify.mjs`) | Node 20 or later; no install; offline by default | Checks the bundle marked certified in [evidence/index.json](evidence/index.json): every file against its `SHA256SUMS`, each required case from its own report, and this checkout's `SPEC.md`, fixtures and deployment candidate. One line per gate, ending `VERIFIED: …` or `NOT VERIFIED: …`, non-zero exit on any mismatch. It checks recorded evidence and does not rerun the tests. `--mainnet` reads a run's receipts from a public archival RPC; none exist yet, so it says so and exits 1. <!-- REFRESH: exact final line and time after certification --> |
+| `make quick` | Node 24; network for npm, the NEAR sandbox binary and Chromium; no Rust. On Linux, Chromium's system libraries: `cd tools && npx playwright install-deps chromium` (root) | The demo story on the exact deployment candidate with prebuilt test doubles pinned in [fixtures/prebuilt](fixtures/prebuilt/provenance.json) with provenance (not a reproducible build). Writes only `out/quick/`; labelled prebuilt and uncertified. 60/60 checks (59 demo checks and the prebuilt pin check). Cold 138 s in a fresh linux/amd64 `ubuntu:24.04` container under emulation on an arm64 Mac (apt, Node 24, `npm ci`, Chromium libraries, sandbox and story); 44 s warm on macOS. |
 | `make test && make demo` | Rust, `cargo-near` 0.22.0, Node 24, Chromium ([platform needs](docs/reviewers.md#platform-needs)) | `CERTIFIED: run …`, then `… 59/59 assertions passed …`. At 51d2532 on macOS arm64: `make test` 1500 s cold, `make demo` 60 s warm. <!-- REFRESH: times at the new certified revision --> |
 
 Or open the [committed evidence page](evidence/51d2532/page/index.html) offline. Outputs and timings: [reviewer guide](docs/reviewers.md#running-the-demo-and-the-gates).
@@ -81,6 +81,10 @@ The claim, certified in sandbox (T1, T4): after removal of the grant's signing k
 - **Recovery and withdrawal.** `recover` moves assets to the owner's Intents account; withdrawing to the owner's NEAR account is the owner's own later step, outside every recovery claim. In the demo the console's Revoke is signed by the labelled local sandbox test signer, not a wallet.
 
 More: [known limits](docs/reviewers.md#known-limits), [status by area](docs/reviewers.md#status), [review findings fixed](docs/reviewers.md#found-and-fixed).
+
+## Open challenge (optional, not run)
+
+After a mainnet run, and only with a separate owner approval, a fresh grant could let anyone act as the agent against a small deposit (`make challenge`, sandbox case LIVE.open-challenge). The agent's private key is never committed. What it shows and does not show: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
 
 ## Mainnet runner (opt-in, not run)
 

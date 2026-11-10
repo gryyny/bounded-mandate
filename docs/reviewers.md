@@ -170,7 +170,7 @@ Certified results are committed under [evidence/](../evidence/) and indexed by s
 
 ## Required gates
 
-A gate passes only when every one of its required cases ([tools/src/evidence/required.ts](../tools/src/evidence/required.ts)) passed in one run of a clean revision. T1 to DEPLOY were first certified at f60f999; DAO to CONSOLE were added, and all required cases were first certified together at f01b496 (33 then). CONSOLE.wallet-sandbox was added at 4fec11b, where all 34 passed; COMPARE was added at 958d411, where all 35 passed; 72bf8c7 passed the same 35 with stricter T1 and COMPARE assertions.
+A gate passes only when every one of its required cases ([tools/src/evidence/required.ts](../tools/src/evidence/required.ts)) passed in one run of a clean revision. T1 to DEPLOY were first certified at f60f999; DAO to CONSOLE were added, and all required cases were first certified together at f01b496 (33 then). CONSOLE.wallet-sandbox was added at 4fec11b, where all 34 passed; COMPARE was added at 958d411, where all 35 passed; 72bf8c7 passed the same 35 with stricter T1 and COMPARE assertions. SIGNER.conformance and LIVE.open-challenge were added after 51d2532, so 37 cases of 17 gates are now required; the 51d2532 bundle predates them.
 
 - **T1**: a withheld signed order relayed after revocation, after regrant, during pending signing and activation, and after failed removal and retry.
 - **T2**: seeded randomized interleavings, in unit tests and in sandbox, with no cap violation and no double release.
@@ -185,8 +185,10 @@ A gate passes only when every one of its required cases ([tools/src/evidence/req
 - **AGENT**: the runner's sale budgets in the agent's snapshot, prompt and validation, and the no-transaction provider rehearsal with stub providers (on an observed grant, and on the planned grant before one exists).
 - **HANDOFF**: external owner actions persisted as intents and imported by transaction hash; refusals of altered, unrelated and duplicate imports; lost-response resume; an unrecorded owner transaction stops the run.
 - **WITHDRAW**: the owner's `ft_withdraw` of both assets after recovery, with an unregistered owner and a failed receipt retried, outside recovery claims.
-- **LIVE**: the primary live-agent template's full sequence in sandbox on the exact deployment binary, with a synthetic provider answer.
+- **LIVE**: the primary live-agent template's full sequence in sandbox on the exact deployment binary, with a synthetic provider answer; and the optional open challenge (LIVE.open-challenge): the open and close templates after a completed run, with an adversary holding the agent key, in sandbox.
 - **CONSOLE**: the owner console in headless Chromium against sandbox through the labelled local test signer and, through NEAR Connect, the labelled sandbox test wallet; neither is a real wallet provider.
+- **COMPARE**: the matched comparison of the owner's alternatives on the pinned verifier: wait for expiry, cancel recorded nonces, remove the key and resume with a fresh key, remove and re-add the same key.
+- **SIGNER**: the contract's MPC response decoder and key check against a recorded mainnet `v1.signer` EdDSA response (read-only fixture; not our own signing on mainnet).
 
 The owner-key rescue (RESCUE.owner-key) is reported separately and never counts toward a gate.
 

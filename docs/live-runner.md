@@ -43,3 +43,23 @@ Optional live agent, tested in sandbox only with synthetic provider answers; it 
 [tools/src/agent/rehearsal.ts](../tools/src/agent/rehearsal.ts) rehearses the provider path without any transaction: from given observations, the sale budget and the planned inventory (recorded separately from observed balances), it builds the same snapshot and prompt, makes at most one provider call and validates the reply as the runner does. Provider qualification comes before the run that creates the first grant, so before a grant exists it decides on the planned grant: the policy of the approved manifest's grant step and the planned inventory, valued at freshly observed prices. The record labels that basis as planned and not on chain. [tools/src/agent/observe.ts](../tools/src/agent/observe.ts) reads those prices, the mandate's verifier balances and its grant (none) at one final block with view calls only, after checking the RPC's chain id and genesis against the manifest. A rehearsal qualifies a provider only when an approved real call from the requested model produced a final decision the runner would act on: an accepted proposal whose pre-signing checks pass, or a decline. A schema-valid answer that the objective, the sale budget or the pre-signing checks reject does not qualify. The record verifier re-derives the claim from the record's own fields; the provider class, the approval reference and the reported model are recorded by the operator, not proven by the record. The state file is bound to the manifest it was observed for, and the record carries that manifest's sha256. It has run with stub providers only; a real provider call is paid inference and refuses to run without the owner's explicit approval.
 
 The planned deposit is the setup record's, in base units: for the live-agent template, about 60% USDC, for example 5 USDC + 0.91 wNEAR at the 2026-11-07 reading, `5000000` and `910000000000000000000000`, with the wNEAR units recomputed on setup day. The rehearsal refuses to run without it, and refuses a deposit above the manifest's `owner_inventory_max`. That maximum, 5 USDC + 1.25 wNEAR, is a ceiling, not the deposit: near 50/50 it can fall inside the no-call band (51.9% USDC at the 2026-11-06 prices), where the model would not be called.
+
+## Open challenge (optional, not run)
+
+Not run, and not part of the certified mainnet story. Running it needs a separate owner approval after a mainnet run; the flag is not spending approval.
+
+- **Templates.** [tools/src/live/manifest.open-challenge.example.json](../tools/src/live/manifest.open-challenge.example.json) opens the challenge with a small new deposit and a fresh grant; [tools/src/live/manifest.open-challenge-close.example.json](../tools/src/live/manifest.open-challenge-close.example.json) closes it after judging (revoke, recover and withdraw). Both are unapproved.
+- **Command.** `MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved challenge manifest> make challenge`, against a separately approved manifest. Its ledger and evidence stay apart from the completed run's (`out/challenge/`).
+- **Sandbox case.** LIVE.open-challenge runs both templates after a completed run on the exact deployment binary, with an adversary holding the agent key ([tools/src/live/challenge.ts](../tools/src/live/challenge.ts)).
+- **Key.** The agent's private key is never committed to any repository or evidence bundle. Only if the owner approves running the challenge does the lead publish it outside the repository (the X thread and a pinned repository issue); only its public key is recorded here.
+
+What it shows (`CHALLENGE_SHOWS`):
+
+> Whoever holds the agent key cannot withdraw, transfer to another account, change keys or policy, or exceed the per-order and outstanding caps, the concession bound, the turnover cap and the loss breaker; the earlier grant's withheld order stays rejected while the challenge grant is live.
+
+What it does not show (`CHALLENGE_DOES_NOT_SHOW`):
+
+- It does not show that the deposit is safe from poor trades. Whoever holds the agent key can make permitted trades at up to the concession bound on each order and up to the grant's turnover cap.
+- Whoever holds the agent key can exhaust the agent's gas allowance and the grant's proposal budget; the challenge then accepts no further proposals.
+- The cost is bounded by the challenge deposit and the agent's remaining gas allowance.
+- An unknown contract defect could lose the deposit.
