@@ -1,14 +1,17 @@
 // gate: LIVE — offline checks of the open challenge templates and of the published-agent-key manifest rule (no network).
 // The sandbox case is live-challenge.test.ts.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { JsonRpcProvider } from "near-api-js";
 import { afterAll, describe, expect, it } from "vitest";
-import { CHALLENGE_DOES_NOT_SHOW, challengePhase, runChallenge } from "../src/live/challenge.js";
+import { CHALLENGE_DOES_NOT_SHOW, challengePhase, publicationUrl, runChallenge } from "../src/live/challenge.js";
+import { evidenceFile, runLive } from "../src/live/main.js";
 import { LiveManifest, loadManifest, publishedKeyProblems } from "../src/live/manifest.js";
+import { NearClient } from "../src/near/client.js";
 import { DEMO_POLICY } from "../src/demo/market.js";
 import { sandboxKey } from "../src/near/keys.js";
-import { offlineManifest, writeJson } from "./live-helpers.js";
+import { offlineManifest, stubRpc, writeJson } from "./live-helpers.js";
 
 const dirs: string[] = [];
 const tmp = (): string => {
@@ -85,15 +88,43 @@ describe("open challenge templates", () => {
 describe("a published agent key", () => {
   // gate: LIVE
   it.each([
-    ["propose", { kind: "propose", source: { from: "manifest", proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 } } }],
-    ["refused_proposal", { kind: "refused_proposal", proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 }, error: "x" }],
-    ["fill", { kind: "fill" }],
-    ["settle", { kind: "settle" }],
-    ["withhold", { kind: "withhold" }],
-  ])("refuses a %s step in a manifest whose agent key is published", (kind, step) => {
+    ["propose", 2, [{ kind: "propose", source: { from: "manifest", proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 } } }]],
+    ["refused_proposal", 2, [{ kind: "refused_proposal", proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 }, error: "x" }]],
+    ["fill", 2, [{ kind: "fill" }]],
+    ["settle", 2, [{ kind: "settle" }]],
+    ["withhold", 2, [{ kind: "withhold" }]],
+    // A relay is a valid sequence only after its withhold and a revocation.
+    ["relay_withheld", 4, [{ kind: "withhold" }, { kind: "revoke" }, { kind: "relay_withheld" }]],
+  ])("refuses a %s step in a manifest whose agent key is published", (kind, at, steps) => {
     const d = tmp();
-    const r = load(d, { ...offlineManifest(d), agent_key_published: true, steps: [{ kind: "grant", policy: DEMO_POLICY }, step] });
-    expect(r.error).toMatch(new RegExp(`step 2 ${kind} is not allowed when agent_key_published is set`));
+    const r = load(d, { ...offlineManifest(d), agent_key_published: true, steps: [{ kind: "grant", policy: DEMO_POLICY }, ...steps] });
+    expect(r.error).toMatch(/^live: invalid step sequence: /);
+    expect(r.error).toMatch(new RegExp(`step ${at} ${kind} is not allowed when agent_key_published is set`));
+  });
+
+  // gate: LIVE
+  it("forbids exactly the steps that sign with the agent key or act on an order", () => {
+    const d = tmp();
+    const all: LiveManifest["steps"] = [
+      { kind: "check" },
+      { kind: "grant", policy: DEMO_POLICY },
+      { kind: "propose", source: { from: "manifest", proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 } }, expect: "signed" },
+      { kind: "refused_proposal", proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 }, error: "x" },
+      { kind: "fill" },
+      { kind: "withhold" },
+      { kind: "relay_withheld", min_remaining_sec: 10 },
+      { kind: "settle" },
+      { kind: "revoke" },
+      { kind: "reconcile_registration" },
+      { kind: "recover", asset: "usdc" },
+      { kind: "revoke_external" },
+      { kind: "recover_external", asset: "usdc" },
+      { kind: "register_storage", asset: "usdc" },
+      { kind: "withdraw", asset: "usdc" },
+      { kind: "withdraw_external", asset: "usdc" },
+    ];
+    const forbidden = publishedKeyProblems({ ...offlineManifest(d), agent_key_published: true, steps: all }).steps.map((p) => p.split(" ")[2]);
+    expect(forbidden).toEqual(["propose", "refused_proposal", "fill", "withhold", "relay_withheld", "settle"]);
   });
 
   const sandboxPk = (label: string): string => sandboxKey(`challenge-${label}`).getPublicKey().toString();
@@ -131,14 +162,15 @@ describe("a published agent key", () => {
     const d = tmp();
     const m = withAllKeys(d, OPEN);
     const r = load(d, { ...m, keys: { ...m.keys, agent: { ...m.keys.agent, public_key: pick(m) } } });
-    expect(r.error).toMatch(new RegExp(`keys\\.agent\\.public_key equals ${field}: the published key must not be one the run or the owner relies on`));
+    expect(r.error).toMatch(new RegExp(`^live: published agent key collision: keys\\.agent\\.public_key equals ${field}: the published key must not be one the run or the owner relies on`));
+    expect(r.error).not.toMatch(/invalid step sequence/);
   });
 
   // gate: LIVE
   it("without the flag, a shared agent key is not refused by the published-key rule", () => {
     const d = tmp();
     const m = withAllKeys(d, OPEN);
-    expect(publishedKeyProblems({ ...m, agent_key_published: undefined, keys: { ...m.keys, agent: { ...m.keys.agent, public_key: m.keys.owner.public_key } } })).toEqual([]);
+    expect(publishedKeyProblems({ ...m, agent_key_published: undefined, keys: { ...m.keys, agent: { ...m.keys.agent, public_key: m.keys.owner.public_key } } })).toEqual({ steps: [], collisions: [] });
   });
 
   // gate: LIVE
@@ -148,5 +180,59 @@ describe("a published agent key", () => {
     expect(challengePhase({ ...fromTemplate(d, CLOSE), expect_existing_grant: false })).toEqual({ problems: ["the close phase needs expect_existing_grant true"] });
     const other = challengePhase({ ...fromTemplate(d, OPEN), steps: [{ kind: "check" }] });
     expect("problems" in other && other.problems.join(" ")).toMatch(/steps must be/);
+  });
+});
+
+describe("make live and make challenge keep to their own manifests and evidence", () => {
+  const offlineClient = () => {
+    const provider = new JsonRpcProvider({ url: "http://127.0.0.1:9" });
+    const calls = stubRpc(provider, () => {
+      throw new Error("no network in this test");
+    });
+    return { client: new NearClient("http://127.0.0.1:9", provider), calls };
+  };
+
+  // gate: LIVE
+  it.each([OPEN, CLOSE])("make live refuses the challenge manifest %s before any network action and writes nothing", async (name) => {
+    const d = tmp();
+    const { client, calls } = offlineClient();
+    const r = await runLive({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: writeJson(d, "m.json", fromTemplate(d, name)) }, { client, outRoot: join(d, "live") });
+    expect(r.exitCode).toBe(2);
+    expect(r.message).toMatch(/agent_key_published.*runs only with make challenge/);
+    expect(calls).toEqual([]);
+    expect(existsSync(join(d, "live"))).toBe(false);
+    expect(existsSync(join(d, "evidence"))).toBe(false);
+  });
+
+  // gate: LIVE
+  it("make challenge refuses a manifest that is not a challenge manifest before any network action and writes nothing", async () => {
+    const d = tmp();
+    const { client, calls } = offlineClient();
+    const r = await runChallenge({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: writeJson(d, "m.json", offlineManifest(d)) }, { client, outRoot: join(d, "live") });
+    expect(r.exitCode).toBe(2);
+    expect(r.message).toMatch(/not a challenge manifest/);
+    expect(calls).toEqual([]);
+    expect(existsSync(join(d, "evidence"))).toBe(false);
+  });
+
+  // gate: LIVE
+  it("the completed run and each challenge phase write different evidence files, even under one root", () => {
+    const files = [evidenceFile("/x/live", "mainnet"), evidenceFile("/x/live", "mainnet", "open"), evidenceFile("/x/live", "mainnet", "close")];
+    expect(files).toEqual(["/x/evidence/live-mainnet.json", "/x/evidence/live-mainnet-challenge-open.json", "/x/evidence/live-mainnet-challenge-close.json"]);
+    expect(new Set(files).size).toBe(3);
+  });
+
+  // gate: LIVE
+  it("records only an https link to the published key, and refuses anything else before any network action", async () => {
+    expect(publicationUrl({})).toBeNull();
+    expect(publicationUrl({ MANDATE_CHALLENGE_KEY_URL: "" })).toBeNull();
+    expect(publicationUrl({ MANDATE_CHALLENGE_KEY_URL: "https://example.com/key" })).toBe("https://example.com/key");
+    const d = tmp();
+    const { client, calls } = offlineClient();
+    for (const url of ["http://example.com/key", "not a url", "javascript:alert(1)"]) {
+      const r = await runChallenge({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: writeJson(d, "m.json", fromTemplate(d, OPEN)), MANDATE_CHALLENGE_KEY_URL: url }, { client, outRoot: join(d, "live") });
+      expect([r.exitCode, r.message]).toEqual([2, "challenge: MANDATE_CHALLENGE_KEY_URL must be an https URL"]);
+    }
+    expect(calls).toEqual([]);
   });
 });

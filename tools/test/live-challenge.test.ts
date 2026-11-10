@@ -3,8 +3,9 @@
 // live-agent template, a new owner deposit and a fresh grant through the challenge template; then an ADVERSARY SCRIPT
 // that holds only the agent's key (handed over as a credential file in a temp dir, like the published key) and its own
 // account tries every withdrawal, transfer, key and policy route, trades at the limits as its own counterparty, relays
-// the completed run's withheld order, and exhausts the proposal budget and the agent's allowance. The owner then closes
-// the challenge through the close template. Owner console signatures come from the SANDBOX LOCAL SIGNING ADAPTER (a
+// the completed run's withheld order, and exhausts the proposal budget and the agent's allowance. A stranger then
+// deposits more into the mandate than the close template's inventory figure, and the owner closes the challenge with a
+// close manifest started fresh in that exhausted state. Owner console signatures come from the SANDBOX LOCAL SIGNING ADAPTER (a
 // test double); model answers are SYNTHETIC; token contracts, oracle and MPC signer are labelled test doubles; price
 // moves are posted by the test as the oracle keeper. The agent key is generated per run and never written to the
 // repository; evidence records only its public key.
@@ -12,7 +13,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { KeyPair, actions, type Account, type Action } from "near-api-js";
+import { KeyPair, KeyPairSigner, actions, baseDecode, baseEncode, createTransaction, type Account, type Action } from "near-api-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chainAttacks, classify, type Boundary, type Observed } from "../src/attacks/suite.js";
 import { DECIMALS, PRICES } from "../src/demo/market.js";
@@ -59,7 +60,7 @@ const challengeCase = new CaseRecorder("LIVE", "open-challenge", [
   "evidence-separate-and-keyless",
 ]);
 /** Each adversary attempt with its expected and observed boundary (written into the case report). */
-const attempts: { id: string; expected: Boundary; observed: Observed; contained: boolean; error: string }[] = [];
+const attempts: { id: string; expected: Boundary; observed: Observed; contained: boolean; refused_for: string; error: string }[] = [];
 const trades: Record<string, unknown>[] = [];
 const notes: Record<string, unknown> = {};
 
@@ -241,6 +242,28 @@ describe("open challenge on the exact deployment binary", () => {
       expect(rec.earlier_grants.find((e) => e.epoch === primaryEpoch)).toMatchObject({ derived_public_key: old.signing_key, registered: false });
       expect(rec.earlier_unexecuted_orders.find((o) => o.id === old.order_id)).toMatchObject({ nonce_used: false, state: "released:key_removed" });
       expect(rec.opened?.tx_hash).toMatch(/.+/);
+      // Nothing is published yet: the record says so.
+      expect(rec.agent_key.publication_url).toBeNull();
+      expect(rOpen.evidence?.command).toBe("MANDATE_LIVE=1 make challenge");
+    });
+
+    // The order is: open, then publish the key, then record its link. Recording is a resume of the open manifest with
+    // MANDATE_CHALLENGE_KEY_URL: it sends nothing and rewrites the record.
+    const KEY_URL = "https://example.invalid/sandbox-published-agent-key";
+    const openEvidence = join(dir, "challenge", "evidence", "live-sandbox-challenge-open.json");
+    let openEvidenceSha = "";
+    await challengeCase.check("fresh-grant-opened", async () => {
+      const nonces = async () => [await finalClient.accessKeyNonce(owner.id, identity.keys.owner.public_key), await finalClient.accessKeyNonce(owner.id, ext.getPublicKey().toString())];
+      const before = await nonces();
+      const rUrl = await runChallenge(env(pOpen, { MANDATE_LIVE_RESUME: "1", MANDATE_CHALLENGE_KEY_URL: KEY_URL }), challengeDeps());
+      expect([rUrl.exitCode, rUrl.message]).toEqual([0, "completed"]);
+      expect(await nonces()).toEqual(before);
+      const rec = ChallengeRecord.parse(rUrl.record);
+      expect(rec.agent_key.publication_url).toBe(KEY_URL);
+      expect(rec.status).toBe("open");
+      expect(rec.opened).toEqual(ChallengeRecord.parse(rOpen.record).opened);
+      expect(rec.manifests).toEqual({ open: shaOf(pOpen), close: null });
+      openEvidenceSha = shaOf(openEvidence);
     });
 
     // The adversary: only the agent key (read from the handed-over credential file) and its own account.
@@ -273,24 +296,35 @@ describe("open challenge on the exact deployment binary", () => {
       return world.verifier.execute(stranger.account, [forged], "adversary: intent signed with the published agent key");
     };
     const agentCall = (receiver: string, method: string, args: Record<string, unknown>, deposit = 0n) => () => world.client.call(`adversary ${method}`, agent.account, receiver, method, args, { gas: MAX_GAS, deposit });
-    const extras: { id: string; expected: Boundary; attempt: () => Promise<Outcome> }[] = [
-      { id: "agent-ft-withdraw", expected: "near-access-key", attempt: agentCall(world.verifier.id, "ft_withdraw", { token: world.tokens.usdc, receiver_id: stranger.id, amount: "1" }, ONE_YOCTO) },
-      { id: "agent-token-transfer", expected: "near-access-key", attempt: agentCall(world.tokens.usdc, "ft_transfer", { receiver_id: stranger.id, amount: "1" }, ONE_YOCTO) },
-      { id: "agent-remove-grant-key", expected: "near-access-key", attempt: agentCall(world.verifier.id, "remove_public_key", { public_key: newKey }, ONE_YOCTO) },
-      { id: "agent-reconcile-registration", expected: "near-access-key", attempt: agentCall(mandateId, "reconcile_registration", {}) },
-      { id: "agent-delete-own-key", expected: "near-access-key", attempt: () => world.client.send("adversary delete_key", agent.account, agentId, [actions.deleteKey(published.key.getPublicKey())], "delete_key") },
+    // Which rule of the function-call key refused a transaction before inclusion. A call that attaches a deposit is
+    // refused for the deposit before its receiver or method is looked at, so each such call is repeated without one.
+    const KEY_RULES = { deposit: /DepositWithFunctionCall|Deposit is not allowed with function call/i, receiver: /ReceiverMismatch|does not match transaction receiver/i, method: /MethodNameMismatch|does not allow method/i, full_access: /RequiresFullAccess|requires full access/i };
+    type KeyRule = keyof typeof KEY_RULES;
+    const refusedFor = (o: Outcome): string => (o.submitted ? "-" : ((Object.keys(KEY_RULES) as KeyRule[]).find((k) => KEY_RULES[k].test(o.error ?? "")) ?? "other"));
+    const extras: { id: string; expected: Boundary; attempt: () => Promise<Outcome>; rule?: KeyRule }[] = [
+      { id: "agent-ft-withdraw", expected: "near-access-key", rule: "deposit", attempt: agentCall(world.verifier.id, "ft_withdraw", { token: world.tokens.usdc, receiver_id: stranger.id, amount: "1" }, ONE_YOCTO) },
+      { id: "agent-token-transfer", expected: "near-access-key", rule: "deposit", attempt: agentCall(world.tokens.usdc, "ft_transfer", { receiver_id: stranger.id, amount: "1" }, ONE_YOCTO) },
+      { id: "agent-remove-grant-key", expected: "near-access-key", rule: "deposit", attempt: agentCall(world.verifier.id, "remove_public_key", { public_key: newKey }, ONE_YOCTO) },
+      { id: "agent-ft-withdraw-no-deposit", expected: "near-access-key", rule: "receiver", attempt: agentCall(world.verifier.id, "ft_withdraw", { token: world.tokens.usdc, receiver_id: stranger.id, amount: "1" }) },
+      { id: "agent-token-transfer-no-deposit", expected: "near-access-key", rule: "receiver", attempt: agentCall(world.tokens.usdc, "ft_transfer", { receiver_id: stranger.id, amount: "1" }) },
+      { id: "agent-remove-grant-key-no-deposit", expected: "near-access-key", rule: "receiver", attempt: agentCall(world.verifier.id, "remove_public_key", { public_key: newKey }) },
+      { id: "agent-reconcile-registration", expected: "near-access-key", rule: "method", attempt: agentCall(mandateId, "reconcile_registration", {}) },
+      { id: "agent-delete-own-key", expected: "near-access-key", rule: "full_access", attempt: () => world.client.send("adversary delete_key", agent.account, agentId, [actions.deleteKey(published.key.getPublicKey())], "delete_key") },
       { id: "agent-key-signs-transfer-intent", expected: "verifier", attempt: forgedWithAgentKey },
     ];
-    const all = [...chainAttacks().map((a) => ({ id: a.id, expected: a.expected, attempt: () => a.attempt(view) })), ...extras];
+    const all: typeof extras = [...chainAttacks().map((a) => ({ id: a.id, expected: a.expected, attempt: () => a.attempt(view) })), ...extras];
     for (const a of all) {
       const before = await snapshot();
       const outcome = await a.attempt();
       const after = await snapshot();
-      attempts.push({ id: a.id, expected: a.expected, observed: classify(outcome), contained: before === after, error: (outcome.error ?? outcome.receipts.find((r) => !r.success)?.error ?? "").slice(0, 300) });
+      attempts.push({ id: a.id, expected: a.expected, observed: classify(outcome), contained: before === after, refused_for: refusedFor(outcome), error: (outcome.error ?? outcome.receipts.find((r) => !r.success)?.error ?? "").slice(0, 300) });
     }
     await challengeCase.check("forbidden-attempts-fail", () => {
       expect(attempts.length).toBe(all.length);
       for (const a of attempts) expect({ id: a.id, observed: a.observed, contained: a.contained }).toEqual({ id: a.id, observed: a.expected, contained: true });
+      // Each key-level refusal is for the rule named: the receiver and method restrictions, not only the deposit rule.
+      for (const e of extras) if (e.rule !== undefined) expect({ id: e.id, refused_for: attempts.find((a) => a.id === e.id)?.refused_for }).toEqual({ id: e.id, refused_for: e.rule });
+      for (const rule of ["deposit", "receiver", "method", "full_access"]) expect(attempts.map((a) => a.refused_for)).toContain(rule);
       for (const b of ["near-access-key", "contract-role", "contract-schema", "contract-policy", "verifier"]) expect(attempts.map((a) => a.observed)).toContain(b);
     });
 
@@ -407,21 +441,63 @@ describe("open challenge on the exact deployment binary", () => {
       const units = (target * initialUsd) / (initial * unitValue) + 1n;
       const rT = await propose("usdc", units, 0);
       expect(rT.error ?? "").toMatch(/turnover cap exceeded/);
-      // A market drop posted by the oracle keeper: the last allowed proposal trips the breaker at pricing.
+      // A market drop posted by the oracle keeper: the last allowed proposal trips the breaker at pricing. A tripped
+      // breaker refuses every later proposal first, which would hide the exhausted budget. So the adversary signs two
+      // minimum proposals with consecutive nonces and broadcasts them back to back: the first takes the last proposal
+      // charge when it is proposed and trips the breaker only when it is priced, receipts later; the second is
+      // proposed in between and is refused by the budget itself.
       const shock = { price: (PRICES.wnear.price * 3n) / 4n, conf: (PRICES.wnear.conf * 3n) / 4n, expo: PRICES.wnear.expo };
       await postPrices(world, { wnear: shock });
-      const last = await priced(orderIdOf(await propose("usdc", 1n, 0)));
+      const usedBefore = await used();
+      const ordersBefore = (await mandate.allOrders()).length;
+      const agentPk = published.key.getPublicKey();
+      const nonce0 = await world.client.accessKeyNonce(agentId, agentPk.toString());
+      if (nonce0 === null) throw new Error("no agent key nonce");
+      const blockHash = baseDecode((await world.client.provider.viewBlock({ finality: "final" })).header.hash);
+      const signer = new KeyPairSigner(published.key);
+      // The template's proposal gas: the key's allowance must hold both transactions' prepaid gas at once.
+      const pairGas = BigInt(openTpl.gas_tgas.propose) * TGAS;
+      const signed = async (offset: bigint) => {
+        const tx = createTransaction(agentId, agentPk, mandateId, nonce0 + offset, [actions.functionCall("propose_order", { proposal: { sell: "usdc", sell_amount: "1", max_concession_bps: 0 } }, pairGas, 0n)], blockHash);
+        const r = await signer.signTransaction(tx);
+        return { hash: baseEncode(r.txHash), tx: r.signedTransaction };
+      };
+      const lastTx = await signed(1n);
+      const beyondTx = await signed(2n);
+      await world.client.provider.sendTransactionUntil(lastTx.tx, "NONE");
+      await world.client.provider.sendTransactionUntil(beyondTx.tx, "NONE");
+      const lastOutcome = await world.client.resolve("adversary: the last proposal the budget allows", agentId, lastTx.hash, "propose_order");
+      const beyondOutcome = await world.client.resolve("adversary: one proposal beyond the budget", agentId, beyondTx.hash, "propose_order");
+      if (lastOutcome === null || beyondOutcome === null) throw new Error("a proposal of the pair did not resolve");
+      // Observed, not inferred: with less than one proposal charge left, a minimum proposal is refused for the
+      // turnover budget, while the breaker has not tripped (its refusal would read "loss breaker tripped").
+      expect(beyondOutcome.submitted && !beyondOutcome.success).toBe(true);
+      expect(beyondOutcome.error ?? "").toMatch(/turnover cap exceeded/);
+      expect(beyondOutcome.error ?? "").not.toMatch(/loss breaker/);
+      const last = await priced(orderIdOf(lastOutcome));
       expect(last.state).toEqual({ state: "rejected", reason: "loss breaker tripped" });
       const g = await mandate.grant();
       expect(g?.breaker).not.toBeNull();
+      // The refused proposal charged nothing and made no order record; the last one charged exactly the floor.
+      expect(BigInt(g?.turnover_used ?? "0")).toBe(usedBefore + floor);
+      expect((await mandate.allOrders()).length).toBe(ordersBefore + 1);
       expect(cap - BigInt(g?.turnover_used ?? "0") < floor).toBe(true);
       await postPrices(world);
       expect((await propose("usdc", 1n, 0)).error ?? "").toMatch(/loss breaker tripped/);
-      notes.budget = { tiny_proposals: tiny, floor: floor.toString(), turnover_cap: cap.toString(), turnover_used: g?.turnover_used, breaker: g?.breaker };
+      notes.budget = {
+        tiny_proposals: tiny,
+        floor: floor.toString(),
+        turnover_cap: cap.toString(),
+        turnover_used: g?.turnover_used,
+        breaker: g?.breaker,
+        refusal_beyond_budget: { tx_hash: beyondTx.hash, block_height: beyondOutcome.block_height ?? null, error: (beyondOutcome.error ?? "").slice(0, 300) },
+        last_allowed: { tx_hash: lastTx.hash, block_height: lastOutcome.block_height ?? null, order_id: last.id },
+      };
     });
 
-    // 6. The close: the runner stops awaiting the owner's console revocation; meanwhile the adversary burns the agent's
-    // allowance; the resume imports the owner's signatures and completes.
+    // 6. An early close attempt stops awaiting the owner's console revocation and is left there. The adversary then
+    // burns the agent's allowance. The close that completes is a second close manifest started fresh in the exhausted
+    // state, after a stranger's deposit above the close template's inventory figure.
     const closeTpl = template("manifest.open-challenge-close.example.json");
     const mClose: LiveManifest = { ...challengeIdentity, budget: closeTpl.budget, gas_tgas: closeTpl.gas_tgas, expect_existing_grant: true, steps: LiveManifest.shape.steps.parse(closeTpl.steps) };
     const pClose = pathOf(mClose, "challenge-close");
@@ -501,12 +577,27 @@ describe("open challenge on the exact deployment binary", () => {
       const nonceAfter = await world.client.accessKeyNonce(agentId, agent.key.getPublicKey().toString());
       expect((nonceAfter ?? 0n) > (nonceBefore ?? 0n)).toBe(true);
     });
+    // A stranger deposits into the mandate's Intents account: more than the close template's inventory figure.
+    await mintAndDeposit(world, stranger, "usdc", 30n * USDC, mandateId);
+    await settleFinal();
     const ownerNearBefore = { usdc: await new TokenClient(world.client, world.tokens.usdc).balance(owner.id), wnear: await new TokenClient(world.client, world.tokens.wnear).balance(owner.id) };
     const mandateBefore = await balances(world, mandateId);
-    const rClose = await runChallenge(env(pClose, { MANDATE_LIVE_RESUME: "1" }), challengeDeps({ handoff: adapter(consoleAccount) }));
+    // A close manifest of its own (another sha256, so a new ledger), started fresh now: budget and allowance exhausted.
+    const mFresh: LiveManifest = { ...mClose, notes: ["close started fresh after the proposal budget and the allowance were exhausted"] };
+    const pFresh = pathOf(mFresh, "challenge-close-fresh");
+    const rFreshAwait = await runChallenge(env(pFresh), challengeDeps());
+    const rClose = await runChallenge(env(pFresh, { MANDATE_LIVE_RESUME: "1" }), challengeDeps({ handoff: adapter(consoleAccount) }));
     await challengeCase.check("owner-close-after-exhaustion", async () => {
+      // The state the fresh close started in, observed: no proposal charge left, breaker tripped, key refused.
+      expect(mandateBefore.usdc > BigInt(closeTpl.budget.owner_inventory_max.usdc)).toBe(true);
+      expect(shaOf(pFresh)).not.toBe(shaOf(pClose));
+      expect(rFreshAwait.exitCode).toBe(1);
+      expect(rFreshAwait.awaiting?.kind).toBe("revoke_external");
+      expect((rFreshAwait.preflight ?? []).filter((c) => !c.passed)).toEqual([]);
+      expect(rFreshAwait.preflight?.find((c) => c.id === "budget.owner_inventory_listed")?.observed).toMatchObject({ mandate: { usdc: mandateBefore.usdc.toString() }, enforced: false });
+      expect(ledgerOf(join(dir, "challenge", "live"), pFresh).entries[0]?.kind).toBe("start");
       expect([rClose.exitCode, rClose.message]).toEqual([0, "completed"]);
-      const l = ledgerOf(join(dir, "challenge", "live"), pClose);
+      const l = ledgerOf(join(dir, "challenge", "live"), pFresh);
       expect(l.ofKind("external-handoff").map((e) => e.data.kind)).toEqual(["revoke_external", "recover_external", "recover_external", "withdraw_external", "withdraw_external"]);
       expect(l.ofKind("tx-intent")).toEqual([]);
       const g = await mandate.grant();
@@ -519,14 +610,25 @@ describe("open challenge on the exact deployment binary", () => {
       for (const asset of ["usdc", "wnear"] as const) {
         expect((await new TokenClient(world.client, world.tokens[asset]).balance(owner.id)) - ownerNearBefore[asset]).toBe(mandateBefore[asset]);
       }
-      expect(ChallengeRecord.parse(rClose.record).status).toBe("closed");
+      const rec = ChallengeRecord.parse(rClose.record);
+      expect(rec.status).toBe("closed");
+      expect(rec.manifests).toEqual({ open: shaOf(pOpen), close: shaOf(pFresh) });
+      expect(rec.agent_key.publication_url).toBe(KEY_URL);
+      // The early attempt signed nothing: its ledger holds its one intent and no handoff.
+      expect(ledgerOf(join(dir, "challenge", "live"), pClose).ofKind("external-handoff")).toEqual([]);
     });
 
     await challengeCase.check("evidence-separate-and-keyless", () => {
       // The completed run's evidence is untouched; the challenge writes only under its own root.
       expect(shaOf(primaryEvidence)).toBe(primaryEvidenceSha);
       const challengeFiles = filesUnder(join(dir, "challenge", "evidence")).map((p) => p.slice(join(dir, "challenge", "evidence").length + 1)).sort();
-      expect(challengeFiles).toEqual(["challenge-sandbox.json", "live-sandbox.json"]);
+      // Each phase keeps its own runner evidence: the close did not write over the open's.
+      expect(challengeFiles).toEqual(["challenge-sandbox.json", "live-sandbox-challenge-close.json", "live-sandbox-challenge-open.json"]);
+      expect(shaOf(openEvidence)).toBe(openEvidenceSha);
+      const closeEvidence = JSON.parse(readFileSync(join(dir, "challenge", "evidence", "live-sandbox-challenge-close.json"), "utf8")) as { command: string; environment: { manifest_sha256: string } };
+      expect(closeEvidence.command).toBe("MANDATE_LIVE=1 MANDATE_LIVE_RESUME=1 make challenge");
+      expect(closeEvidence.environment.manifest_sha256).toBe(shaOf(pFresh));
+      expect(filesUnder(join(dir, "evidence")).map((p) => p.slice(join(dir, "evidence").length + 1))).toEqual(["live-sandbox.json"]);
       const rec = ChallengeRecord.parse(JSON.parse(readFileSync(join(dir, "challenge", "evidence", "challenge-sandbox.json"), "utf8")));
       expect(rec.status).toBe("closed");
       expect(rec.separate_from_completed_run).toBe(true);

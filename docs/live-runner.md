@@ -8,11 +8,26 @@ make demo   # unfunded sandbox scenario, out/evidence/demo.json, out/page/index.
 MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live   # opt-in; not spending approval
 ```
 
+Run `make live` from a clean checkout at exactly the certified revision (the one named by the bundle in `evidence/index.json`), not at a later evidence or documentation commit: the run records its source commit, and `node verify.mjs --mainnet` fails a run whose recorded commit, spec hash or contract hash differs from the certified bundle it is filed in.
+
 `make live` refuses a manifest that does not match the chain: network, the code hashes of the mandate, verifier, signer, oracle and both token contracts, the verifier, signer and oracle versions, the mandate configuration, keys and allowances. Token decimals are compared with the mandate's configuration, not read from `ft_metadata`; that comparison is a manual pre-approval check. It enforces fee, deposit, inventory and filler caps through a hash-chained ledger that survives restarts. It verifies each step's end state from state and receipts, and stops without any replacement order on an ambiguous outcome. Mainnet also requires `MANDATE_LIVE_CONFIRM=<manifest sha256>`.
 
 A mainnet manifest must list `expected_owner_keys`: the owner account's complete access-key list (public key, permission and nonce) read at approval. A fresh start refuses any difference; a sandbox run without the list snapshots it at preflight. Before every runner-signed transaction and every import, the signing key's chain nonce must equal the ledger's expectation exactly (an imported transaction's nonce must be the next one), and the owner's key list must still match the snapshot. An added or removed key, a changed permission, or a nonce change on a key the ledger does not track stops the run, so an owner transaction the ledger does not record is never absorbed. Resumes check the same.
 
 Preflight also checks each signer's signing float. Before each of its pending transactions, a signer must still hold that transaction's prepaid gas at the purchase price, the higher of the gas price and the runtime's `min_gas_purchase_price`, after the worst-case fees of its earlier steps. This covers the agent's allowance and balance and the filler's and owner's balances. The prepaid gas that is not burnt is refunded later.
+
+**Gas a function-call key must afford.** Read from mainnet on 2026-11-10 (protocol 88, nearcore 2.14.0): `gas_price` is 1e8 yocto per gas and `runtime_config.min_gas_purchase_price` is 1e9. A transaction's cost is its conversion gas at the gas price plus its prepaid gas at the purchase price. The agent key's allowance must cover that cost in full and is reduced by it. When the receipts finish, the unused gas and the difference between the purchase price and the gas price on the burnt gas return to the allowance. For the 150 TGas the runner attaches to `propose_order`:
+
+| | NEAR |
+| --- | --- |
+| Allowance needed to send one proposal, at the runner's (150 + 5) TGas | 0.155 |
+| Net cost of one proposal once refunds have landed, at most (all prepaid gas burnt) | 0.0155 |
+| Allowance the primary templates' three agent transactions need (`float.agent_allowance`) | 0.186 |
+| Allowance cap in every template and in `network.ts` | 0.25 |
+
+So 0.25 NEAR affords the planned proposals, one at a time: the runner awaits each transaction to FINAL, refunds included, before the next. Two 150 TGas proposals cannot be in flight together on that allowance, and once the allowance falls below about 0.151 NEAR the key is refused for a 150 TGas proposal although that much remains. From a full 0.25 NEAR that is at least 7 sequential proposals if each burnt all its gas. The mandate accepts `propose_order` with no less than 125 TGas (found by execution in the sandbox case), so a key whose allowance is below about 0.126 NEAR can send no proposal the mandate accepts: that is the exhausted state, and that remainder is never spent. An allowance sized at the gas price alone (0.0155 NEAR per proposal) sends nothing; preflight refuses it before any transaction.
+
+`budget.owner_inventory_max` bounds what a run may place or keep under the agent's trading authority, so a fresh start refuses a mandate holding more. A manifest that only revokes, recovers and withdraws exposes nothing and is not held to it: anyone can deposit into the mandate's Intents account, and a cap there would let a stranger block the owner's exit through the runner. Preflight lists the holdings instead (`budget.owner_inventory_listed`). A read-only manifest (checks alone) keeps the cap.
 
 There are two mainnet templates, both unapproved; every `REPLACE_ME` value must be filled in, and the runner refuses a template as is. The primary template, [tools/src/live/manifest.live-agent.example.json](../tools/src/live/manifest.live-agent.example.json), runs the whole revocation story with small amounts, with the owner's actions signed outside the runner:
 1. Grant, then one deliberately forbidden proposal that the mandate itself must refuse.
@@ -49,7 +64,15 @@ The planned deposit is the setup record's, in base units: for the live-agent tem
 Not run, and not part of the certified mainnet story. Running it needs a separate owner approval after a mainnet run; the flag is not spending approval.
 
 - **Templates.** [tools/src/live/manifest.open-challenge.example.json](../tools/src/live/manifest.open-challenge.example.json) opens the challenge with a small new deposit and a fresh grant; [tools/src/live/manifest.open-challenge-close.example.json](../tools/src/live/manifest.open-challenge-close.example.json) closes it after judging (revoke, recover and withdraw). Both are unapproved.
-- **Command.** `MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved challenge manifest> make challenge`, against a separately approved manifest. Its ledger and evidence stay apart from the completed run's (`out/challenge/`).
+- **Command.** `MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved challenge manifest> make challenge`, against a separately approved manifest. Its ledger and evidence stay apart from the completed run's (`out/challenge/`). `make live` refuses a challenge manifest (`agent_key_published`) before any network action, and `make challenge` refuses any other manifest.
+- **Files.** `out/challenge/evidence/challenge-<network>.json` is the challenge record. The runner's own evidence is one file per phase, `live-<network>-challenge-open.json` and `live-<network>-challenge-close.json`; the close does not write over the open's, and neither can write over the completed run's `out/evidence/live-<network>.json`.
+- **Order: open, then publish the key, then record the link.**
+  1. `make challenge` with the open manifest. The record shows the grant active and `agent_key.publication_url` is `null`.
+  2. The lead publishes the agent's private key outside the repository.
+  3. The same command again with `MANDATE_LIVE_RESUME=1 MANDATE_CHALLENGE_KEY_URL=<https link to the published key>`. The resume sends no transaction and rewrites the record with `agent_key.publication_url` set. The variable must be an https URL; anything else is refused before any network action. A later run without it keeps the recorded link.
+
+  A page or README may say the key is published only when `agent_key.publication_url` is set.
+- **Preflight for a published key.** The agent account must hold exactly one key: the manifest's, function-call, for the mandate, with `propose_order` as its only method and an allowance within the cap. That key must not be registered on the verifier as a signing key of the owner, filler or mandate account (`keys.published_agent_key_not_on_verifier`). To open, the key's remaining allowance and the agent account's free NEAR must each buy one proposal's prepaid gas, 0.155 NEAR at mainnet's purchase price (`float.published_agent_allowance_one_proposal`, `float.published_agent_balance_one_proposal`). The close needs none of that allowance.
 - **Sandbox case.** LIVE.open-challenge runs both templates after a completed run on the exact deployment binary, with an adversary holding the agent key ([tools/src/live/challenge.ts](../tools/src/live/challenge.ts)).
 - **Key.** The agent's private key is never committed to any repository or evidence bundle. Only if the owner approves running the challenge does the lead publish it outside the repository (the X thread and a pinned repository issue); only its public key is recorded here.
 
@@ -63,5 +86,13 @@ What it does not show (`CHALLENGE_DOES_NOT_SHOW`):
 - Whoever holds the agent key can exhaust the agent's gas allowance and the grant's proposal budget; the challenge then accepts no further proposals.
 - The cost is bounded by the challenge deposit and the agent's remaining gas allowance.
 - An unknown contract defect could lose the deposit.
+
+Exposure, from the open template's proposed policy (turnover cap 100%, concession bound 0.5%, loss breaker 2%, oracle age 60 s, proposal charge 10%) and its 0.25 NEAR allowance cap:
+
+- Trading at the limits costs, by design, at most the turnover cap times the concession bound: 100% x 0.5% = 0.5% of the deposit's value at the grant's initial reference. On a deposit at the template's ceiling of 5 USDC + 1.25 wNEAR (about $10 at NEAR $4) that is about $0.05.
+- The loss breaker is not a loss cap. It stops new authorizations once a pricing observes a 2% drawdown from the grant's initial reference value; orders already signed stay executable until they expire or the key is removed.
+- Losses beyond the concession are possible. Each order is priced against a reference up to 60 s old, so whoever holds the key can trade against a stale reference after the market has moved; market moves and verifier fees add to that (SPEC.md, Policy).
+- Gas: key holders spend the agent account's NEAR up to the key's remaining allowance, at most 0.25 NEAR.
+- An unknown contract defect could lose the whole deposit.
 
 On mainnet the earlier run's withheld order expires 60 to 120 s after it was signed, long before a challenge opens. There, "stays rejected" rests on the earlier grant's key being absent from the verifier (`earlier_grants[].registered` is false in the challenge record), not on a fresh rejection attributable to revocation. Only the sandbox case, whose primary grant uses an 1800 s order lifetime and oracle age for this purpose, relays the unexpired withheld order while the challenge grant is live.

@@ -275,8 +275,9 @@ export function ownerKeyDeclarationProblems(m: LiveManifest): string[] {
 /** Steps that sign with the agent key or act on orders; a manifest whose agent key is published holds none of them. */
 const PUBLISHED_KEY_FORBIDDEN: readonly StepKind[] = ["propose", "refused_proposal", "fill", "withhold", "relay_withheld", "settle"];
 
-export function publishedKeyProblems(m: LiveManifest): string[] {
-  if (m.agent_key_published !== true) return [];
+/** Problems of a manifest whose agent key is published: forbidden steps, and keys the published key collides with. */
+export function publishedKeyProblems(m: LiveManifest): { steps: string[]; collisions: string[] } {
+  if (m.agent_key_published !== true) return { steps: [], collisions: [] };
   const steps = m.steps.flatMap((s, i) => (PUBLISHED_KEY_FORBIDDEN.includes(s.kind) ? [`step ${i + 1} ${s.kind} is not allowed when agent_key_published is set`] : []));
   const agent = m.keys.agent.public_key;
   const relied: [string, string | undefined][] = [
@@ -290,7 +291,7 @@ export function publishedKeyProblems(m: LiveManifest): string[] {
   const collisions = relied.flatMap(([name, key]) =>
     key === agent ? [`keys.agent.public_key equals ${name}: the published key must not be one the run or the owner relies on`] : [],
   );
-  return [...steps, ...collisions];
+  return { steps, collisions };
 }
 
 export interface LoadedManifest {
@@ -321,7 +322,8 @@ export function loadManifest(env: NodeJS.ProcessEnv): LoadedManifest {
   const sequence = sequenceProblems(result.data.steps);
   if (sequence.length > 0) throw new Refusal(`live: invalid step sequence: ${sequence.join("; ")}`);
   const published = publishedKeyProblems(result.data);
-  if (published.length > 0) throw new Refusal(`live: invalid step sequence: ${published.join("; ")}`);
+  if (published.steps.length > 0) throw new Refusal(`live: invalid step sequence: ${published.steps.join("; ")}`);
+  if (published.collisions.length > 0) throw new Refusal(`live: published agent key collision: ${published.collisions.join("; ")}`);
   const ownerKeys = ownerKeyDeclarationProblems(result.data);
   if (ownerKeys.length > 0) throw new Refusal(`live: invalid owner key declarations: ${ownerKeys.join("; ")}`);
   const shape = networkProblems(result.data);

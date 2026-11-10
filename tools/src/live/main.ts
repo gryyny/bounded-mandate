@@ -24,7 +24,7 @@
 // The flag is not spending approval; mainnet additionally needs MANDATE_LIVE_CONFIRM=<manifest sha256>.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { actions, type Account, type Action } from "near-api-js";
 import { z } from "zod";
 import { toRecording, writeRecording } from "../agent/live-recording.js";
@@ -114,6 +114,19 @@ export interface LiveDeps {
   handoff?: (intent: ExternalIntent, files: { intent: string; handoff: string }) => Promise<ExternalHandoff | null>;
   /** How long to poll for the handoff file before stopping as awaiting (default MANDATE_LIVE_HANDOFF_WAIT_SEC or 0). */
   handoffWaitMs?: number;
+  /**
+   * Set only by the challenge runner (challenge.ts): the phase of the challenge manifest being run. Without it a
+   * manifest whose agent key is published is refused, so `make live` never runs a challenge.
+   */
+  challenge?: "open" | "close";
+}
+
+/**
+ * The runner's evidence file. The completed run writes live-<network>.json; each challenge phase writes its own
+ * live-<network>-challenge-<phase>.json, so no run can write over another kind's or the other phase's evidence.
+ */
+export function evidenceFile(outRoot: string, network: string, challenge?: "open" | "close"): string {
+  return join(outRoot, "..", "evidence", challenge === undefined ? `live-${network}.json` : `live-${network}-challenge-${challenge}.json`);
 }
 
 const BalancesJson = z.object({ usdc: z.string(), wnear: z.string() }).strict();
@@ -1591,6 +1604,9 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
   let creds: Record<"owner" | "agent" | "filler" | "filler_intents", Credential>;
   try {
     loaded = loadManifest(env);
+    if (loaded.manifest.agent_key_published === true && deps.challenge === undefined) {
+      throw new Refusal("live: this manifest publishes the agent key (agent_key_published): it is a challenge manifest and runs only with make challenge");
+    }
     const c = loaded.manifest.credentials;
     const a = loaded.manifest.accounts;
     creds = {
@@ -1728,15 +1744,15 @@ export async function runLive(env: NodeJS.ProcessEnv = process.env, deps: LiveDe
     mode: m.network.name === "mainnet" ? "mainnet" : "sandbox",
     source: binding.source,
     environment: environment(REPO_ROOT, { rpc_url: m.network.rpc_url, chain_id: m.network.chain_id, manifest_sha256: loaded.sha256, ledger: dir }),
-    command: resume ? "MANDATE_LIVE=1 MANDATE_LIVE_RESUME=1 make live" : "MANDATE_LIVE=1 make live",
+    command: `MANDATE_LIVE=1 ${resume ? "MANDATE_LIVE_RESUME=1 " : ""}make ${deps.challenge === undefined ? "live" : "challenge"}`,
     identifiers: { ...m.accounts, mandate_code_hash: m.code_hashes.mandate, approval: `${m.approval.approved_by}: ${m.approval.reference}` },
     receipts,
     assertions: [...(checks ?? []).map((c) => ({ id: `preflight-${c.id}`, gate: "LIVE", description: `preflight ${c.id}`, passed: c.passed, observed: c.observed })), ...earlierSteps(ledger, assertions), ...assertions],
     unknowns: exitCode === 0 ? [] : [message.startsWith("completed with findings") ? message : `run stopped: ${message}`],
   });
-  const outDir = join(deps.outRoot ?? join(REPO_ROOT, "out/live"), "..", "evidence");
-  mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, `live-${m.network.name}.json`), `${JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`);
+  const evidencePath = evidenceFile(deps.outRoot ?? join(REPO_ROOT, "out/live"), m.network.name, deps.challenge);
+  mkdirSync(dirname(evidencePath), { recursive: true });
+  writeFileSync(evidencePath, `${JSON.stringify(evidence, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`);
   return { exitCode, message, evidence, ...extra };
 }
 

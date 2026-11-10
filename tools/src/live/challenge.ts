@@ -221,31 +221,44 @@ export interface ChallengeResult extends LiveResult {
   recordPath?: string;
 }
 
+/** The link to the published key from MANDATE_CHALLENGE_KEY_URL: null when unset, else an https URL. */
+export function publicationUrl(env: NodeJS.ProcessEnv): string | null {
+  const url = env.MANDATE_CHALLENGE_KEY_URL;
+  if (url === undefined || url === "") return null;
+  if (!URL.canParse(url) || new URL(url).protocol !== "https:") throw new Refusal("challenge: MANDATE_CHALLENGE_KEY_URL must be an https URL");
+  return url;
+}
+
 /**
  * Runs a challenge manifest (open or close) through the live runner with ledger and evidence under `<outRoot>/..`
  * (default out/challenge/), apart from the completed run's out/live and out/evidence, then writes the challenge record.
- * MANDATE_CHALLENGE_KEY_URL optionally records the link to the published key.
+ * The runner's evidence of each phase is its own file (live-<network>-challenge-<phase>.json).
+ *
+ * The key is published only after the open phase completed and the record shows the grant active. The link is then
+ * recorded by running the open manifest again with MANDATE_LIVE_RESUME=1 and MANDATE_CHALLENGE_KEY_URL=<https link>:
+ * the resume sends nothing and rewrites the record with `agent_key.publication_url` set. Until then it is null.
  */
 export async function runChallenge(env: NodeJS.ProcessEnv = process.env, deps: LiveDeps = {}): Promise<ChallengeResult> {
   let loaded: ReturnType<typeof loadManifest>;
   let phase: ChallengePhase;
+  let url: string | null;
   try {
     loaded = loadManifest(env);
     const shape = challengePhase(loaded.manifest);
     if ("problems" in shape) throw new Refusal(`challenge: not a challenge manifest: ${shape.problems.join("; ")}`);
     phase = shape.phase;
+    url = publicationUrl(env);
   } catch (error) {
     return { exitCode: 2, message: error instanceof Error ? error.message : String(error) };
   }
   const outRoot = deps.outRoot ?? join(REPO_ROOT, "out/challenge/live");
-  const result = await runLive(env, { ...deps, outRoot });
+  const result = await runLive(env, { ...deps, outRoot, challenge: phase });
   if (result.exitCode === 2 && result.evidence === undefined) return result;
   const m = loaded.manifest;
   const recordPath = join(outRoot, "..", "evidence", `challenge-${m.network.name}.json`);
   const previous = existsSync(recordPath) ? ChallengeRecord.parse(JSON.parse(readFileSync(recordPath, "utf8"))) : null;
   const client = (deps.client ?? new NearClient(m.network.rpc_url)).final();
-  const url = env.MANDATE_CHALLENGE_KEY_URL;
-  const record = await challengeRecord({ client, manifest: m, manifestSha256: loaded.sha256, phase, result, previous, publicationUrl: url === undefined || url === "" ? null : url });
+  const record = await challengeRecord({ client, manifest: m, manifestSha256: loaded.sha256, phase, result, previous, publicationUrl: url });
   mkdirSync(join(outRoot, "..", "evidence"), { recursive: true });
   writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`);
   return { ...result, record, recordPath };

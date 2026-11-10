@@ -132,6 +132,43 @@ export function signingFloat(m: LiveManifest, steps: readonly Step[], signer: "o
   return need;
 }
 
+/**
+ * Why the agent account's keys are not exactly the approved one: a single function-call key, equal to the manifest's
+ * and the credential's, for the mandate, with propose_order as its only method. Empty: they are. This shape is what
+ * makes the key publishable: whoever holds it can call nothing else and can add or remove no key.
+ */
+export function agentKeyProblems(keys: readonly AccessKeyInfo[], m: LiveManifest, credentialKey: string): string[] {
+  const p: string[] = [];
+  if (keys.length !== 1) p.push(`the agent account holds ${keys.length} access keys, expected exactly one`);
+  for (const k of keys) {
+    if (k.permission.kind === "full") {
+      p.push(`${k.public_key} is a full-access key`);
+      continue;
+    }
+    if (k.public_key !== m.keys.agent.public_key) p.push(`${k.public_key} is not the manifest's agent key`);
+    if (k.public_key !== credentialKey) p.push(`${k.public_key} is not the agent credential's key`);
+    if (k.permission.receiver_id !== m.accounts.mandate) p.push(`${k.public_key} is for receiver ${k.permission.receiver_id}, not the mandate`);
+    if (canonical(k.permission.method_names) !== canonical(["propose_order"])) p.push(`${k.public_key} allows methods ${JSON.stringify(k.permission.method_names)}, not exactly ["propose_order"]`);
+  }
+  return p;
+}
+
+/** Steps that only end authority and return funds to the owner. */
+const RETURN_KINDS: readonly StepKind[] = ["revoke", "revoke_external", "recover", "recover_external", "withdraw", "withdraw_external"];
+const RETURN_ONLY_KINDS: readonly StepKind[] = [...RETURN_KINDS, "register_storage", "check"];
+
+/**
+ * Whether a manifest only revokes, recovers and withdraws. `budget.owner_inventory_max` bounds what a run may place
+ * or keep under the agent's trading authority, so that a mistaken manifest cannot expose more than the owner
+ * approved. A run of these steps exposes nothing: it ends the authority and moves whatever the mandate holds to the
+ * fixed owner. Anyone can deposit into the mandate's Intents account, so enforcing the cap there would let a stranger
+ * block the owner's exit through the runner. A read-only run (checks alone) keeps the cap: it is the dry run of a
+ * deposit against the approval.
+ */
+export function returnsFundsOnly(steps: readonly Step[]): boolean {
+  return steps.every((s) => RETURN_ONLY_KINDS.includes(s.kind)) && steps.some((s) => RETURN_KINDS.includes(s.kind));
+}
+
 /** An access-key list in the manifest's form, sorted by public key. */
 export function ownerKeySnapshot(keys: readonly AccessKeyInfo[]): OwnerKey[] {
   return keys
@@ -236,19 +273,21 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   const agentKeys = await client.accessKeys(m.accounts.agent);
   const agentKey = agentKeys[0];
   const allowance = agentKey?.permission.kind === "function_call" ? agentKey.permission.allowance : null;
-  const agentShape =
-    agentKeys.length === 1 &&
-    agentKey !== undefined &&
-    agentKey.public_key === m.keys.agent.public_key &&
-    agentKey.public_key === input.credentialKeys.agent &&
-    agentKey.permission.kind === "function_call" &&
-    agentKey.permission.receiver_id === m.accounts.mandate &&
-    canonical(agentKey.permission.method_names) === canonical(["propose_order"]);
-  check("keys.agent_single_propose_key", agentShape, {
+  const agentProblems = agentKeyProblems(agentKeys, m, input.credentialKeys.agent);
+  check("keys.agent_single_propose_key", agentProblems.length === 0, {
     keys: agentKeys.map((k) => ({ public_key: k.public_key, permission: k.permission.kind === "full" ? "full" : { ...k.permission, allowance: k.permission.allowance?.toString() ?? null } })),
     manifest: m.keys.agent.public_key,
+    problems: agentProblems,
   });
   check("keys.agent_allowance_cap", allowance !== null && allowance <= BigInt(m.keys.agent.max_allowance_yocto), { chain: allowance?.toString() ?? null, cap: m.keys.agent.max_allowance_yocto });
+  if (m.agent_key_published === true) {
+    // On the verifier a registered key signs intents for its account: the published key must be none of theirs.
+    const registeredFor: string[] = [];
+    for (const role of ["owner", "filler", "mandate"] as const) {
+      if (await verifier.hasPublicKey(m.accounts[role], m.keys.agent.public_key)) registeredFor.push(`${role} ${m.accounts[role]}`);
+    }
+    check("keys.published_agent_key_not_on_verifier", registeredFor.length === 0, { public_key: m.keys.agent.public_key, registered_for: registeredFor });
+  }
 
   const ownerKeys = await client.accessKeys(m.accounts.owner);
   const fullKey = async (role: "owner" | "filler"): Promise<{ ok: boolean; nonce: bigint | null }> => {
@@ -333,7 +372,10 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
   });
   const mandateBal = await bal(m.accounts.mandate);
   const fillerBal = await bal(m.accounts.filler);
-  if (input.fresh) {
+  if (input.fresh && returnsFundsOnly(m.steps)) {
+    // Not a refusal: whatever the mandate holds, a stranger's deposit included, goes to the fixed owner.
+    check("budget.owner_inventory_listed", true, { mandate: { usdc: mandateBal.usdc.toString(), wnear: mandateBal.wnear.toString() }, cap: m.budget.owner_inventory_max, enforced: false, reason: "the run only revokes, recovers and withdraws" });
+  } else if (input.fresh) {
     for (const a of ["usdc", "wnear"] as const) {
       check(`budget.owner_inventory.${a}`, mandateBal[a] <= BigInt(m.budget.owner_inventory_max[a]), { mandate: mandateBal[a].toString(), cap: m.budget.owner_inventory_max[a] });
     }
@@ -397,6 +439,13 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
     check("float.agent_allowance", allowance !== null && allowance >= agentFloat, floatObserved(allowance, agentFloat));
     const agentFree = await free(m.accounts.agent);
     check("float.agent_balance", agentFree >= agentFloat, floatObserved(agentFree, agentFloat));
+  }
+  if (m.agent_key_published === true && has("grant")) {
+    // An opening challenge whose key cannot buy one proposal's prepaid gas would accept no proposal at all.
+    const one = (BigInt(m.gas_tgas.propose) + 5n) * 1_000_000_000_000n * purchase;
+    check("float.published_agent_allowance_one_proposal", allowance !== null && allowance >= one, floatObserved(allowance, one));
+    const agentFree = await free(m.accounts.agent);
+    check("float.published_agent_balance_one_proposal", agentFree >= one, floatObserved(agentFree, one));
   }
   const fillerFloat = floatOf("filler");
   if (fillerFloat > 0n) check("float.filler_balance", fillerFree >= fillerFloat, floatObserved(fillerFree, fillerFloat));
