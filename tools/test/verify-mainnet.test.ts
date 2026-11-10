@@ -40,6 +40,7 @@ describe("verify.mjs --mainnet (SYNTHETIC chain and receipts)", () => {
     const r = await runVerify(["--root", dir, "--mainnet", "--rpc", url]);
     expect(lines(r.out, "FAIL")).toEqual([]);
     expect(lines(r.out, "NOT VERIFIED ")).toEqual([]);
+    expect(lineOf(r.out, "mainnet.run")).toMatch(/^PASS .*6 of 6 assertions passed/);
     expect(lineOf(r.out, "mainnet.chain")).toMatch(/^PASS /);
     expect(lines(r.out, "PASS         mainnet.tx ")).toHaveLength(6);
     expect(lineOf(r.out, `mainnet.grant-key ${GRANT_KEY}`)).toMatch(/^PASS .*at block 130, removed by block 162, absent now/);
@@ -171,6 +172,67 @@ describe("verify.mjs --mainnet (SYNTHETIC chain and receipts)", () => {
     expect(lineOf(r.out, "mainnet.balances")).toMatch(/^FAIL /);
     expect(r.out).toContain("mandate.synthetic.near Intents usdc: 5000000 at block 162, recorded 0");
     expect(r.code).toBe(1);
+  });
+
+  it("does not verify a run that stopped after revoke: no relay receipt, and the stop is a recorded unknown", async () => {
+    const ev = syntheticLiveEvidence();
+    ev.receipts = receiptsOf(ev).filter((x) => ["grant", "propose_order", "revoke"].includes(x.label));
+    ev.assertions = (ev.assertions as { id: string }[]).filter((a) => ["preflight-network", "step-1-grant", "step-3-revoke"].includes(a.id));
+    ev.unknowns = ["run stopped: SYNTHETIC stop after revoke"];
+    const dir = await repo(ev);
+    const { url } = await chain();
+    const r = await runVerify(["--root", dir, "--mainnet", "--rpc", url]);
+    expect(lineOf(r.out, "mainnet.run")).toMatch(/^FAIL /);
+    expect(r.out).toContain("unknown: run stopped: SYNTHETIC stop after revoke");
+    expect(lineOf(r.out, "mainnet.relay")).toMatch(/^NOT VERIFIED .*no withheld-order relay/);
+    expect(r.out).toMatch(/^NOT VERIFIED: /m);
+    expect(r.code).toBe(1);
+  });
+
+  it("does not verify a complete-looking run without a withheld-order relay", async () => {
+    const ev = syntheticLiveEvidence();
+    ev.receipts = receiptsOf(ev).filter((x) => x.label !== "relay_withheld");
+    ev.assertions = (ev.assertions as { id: string }[]).filter((a) => a.id !== "step-4-relay_withheld");
+    const dir = await repo(ev);
+    const { url } = await chain();
+    const r = await runVerify(["--root", dir, "--mainnet", "--rpc", url]);
+    expect(lineOf(r.out, "mainnet.run")).toMatch(/^PASS /);
+    expect(lineOf(r.out, "mainnet.relay")).toMatch(/^NOT VERIFIED /);
+    expect(r.code).toBe(1);
+  });
+
+  it("fails when a step assertion records passed false, naming it", async () => {
+    const ev = syntheticLiveEvidence();
+    const step = (ev.assertions as { id: string; passed: boolean }[]).find((a) => a.id === "step-5-recover");
+    if (step === undefined) throw new Error("no step-5-recover assertion");
+    step.passed = false;
+    const dir = await repo(ev);
+    const { url } = await chain();
+    const r = await runVerify(["--root", dir, "--mainnet", "--rpc", url]);
+    expect(lineOf(r.out, "mainnet.run")).toMatch(/^FAIL /);
+    expect(r.out).toContain("assertion step-5-recover passed false");
+    expect(r.code).toBe(1);
+  });
+
+  it("judges a retried step by its latest attempt", async () => {
+    const ev = syntheticLiveEvidence();
+    const assertions = ev.assertions as { id: string; passed: boolean }[];
+    const i = assertions.findIndex((a) => a.id === "step-5-recover");
+    const step = assertions[i];
+    if (step === undefined) throw new Error("no step-5-recover assertion");
+    assertions.splice(i, 1, { ...step, passed: false }, { ...step, id: "step-5-recover-attempt-2" });
+    const dir = await repo(ev);
+    const { url } = await chain();
+    const passed = await runVerify(["--root", dir, "--mainnet", "--rpc", url]);
+    expect(lineOf(passed.out, "mainnet.run")).toMatch(/^PASS /);
+    expect(passed.code).toBe(0);
+
+    assertions.splice(i, 2, { ...step }, { ...step, id: "step-5-recover-attempt-2", passed: false });
+    const failedDir = await repo(ev);
+    const failed = await runVerify(["--root", failedDir, "--mainnet", "--rpc", url]);
+    expect(lineOf(failed.out, "mainnet.run")).toMatch(/^FAIL /);
+    expect(failed.out).toContain("assertion step-5-recover-attempt-2 passed false");
+    expect(failed.code).toBe(1);
   });
 
   it("says plainly when the bundle has no mainnet receipts", async () => {

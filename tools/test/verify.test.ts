@@ -69,6 +69,9 @@ describe("verify.mjs against the committed certified bundle", () => {
     const r = await runVerify(["--root", dir, "--no-checkout", "--rules", "bundle"]);
     expect(lineOf(r.out, "acceptance.rules")).toMatch(/^INFO .*judged under the bundle's own recorded list/);
     expect(r.out).not.toMatch(/^FAIL /m);
+    const listed = new Set((JSON.parse(readFileSync(join(dir, bundle, "acceptance.json"), "utf8")) as { cases: { id: string }[] }).cases.map((c) => c.id));
+    const current = Object.entries(REQUIRED_CASES).flatMap(([g, cs]) => cs.map((c) => `${g}.${c}`));
+    expect(r.out).toMatch(new RegExp(`^VERIFIED under the bundle's own required list \\(${String(current.filter((id) => listed.has(id)).length)} of ${String(current.length)} current cases\\): `, "m"));
     expect(r.code).toBe(0);
   });
 
@@ -175,6 +178,31 @@ describe("verify.mjs on a SYNTHETIC certified repository", () => {
     expect(lineOf(own.out, `gate ${gate}`)).toMatch(/^SKIP /);
     expect(own.out).not.toMatch(new RegExp(`^PASS +gate ${gate} `, "m"));
     expect(own.code).toBe(0);
+  });
+
+  it("under --rules bundle, a gate the current list extends states the cases this bundle lacks", async () => {
+    const dir = await synthetic();
+    const [gate, cases] = Object.entries(REQUIRED_CASES).find(([, cs]) => cs.length > 1) ?? ["", []];
+    const kept = cases.slice(0, 1);
+    const dropped = cases.slice(1).map((c) => `${gate}.${c}`);
+    editJson(join(dir, SYNTHETIC_BUNDLE, "acceptance.json"), (v) => {
+      v.cases = (v.cases as { id: string }[]).filter((c) => !dropped.includes(c.id));
+    });
+    for (const id of dropped) rmSync(join(dir, SYNTHETIC_BUNDLE, `tests/${id}.json`));
+    expect((await runVerify(["--root", dir, "--write-manifest", SYNTHETIC_BUNDLE])).code).toBe(0);
+    const total = Object.values(REQUIRED_CASES).flat().length;
+
+    const own = await runVerify(["--root", dir, "--rules", "bundle"]);
+    expect(lineOf(own.out, `gate ${gate}`)).toMatch(new RegExp(`^PASS +gate ${gate} {2}1 of 1 under the bundle's list, .*: ${kept.join(", ")}; ${dropped.join(", ")} required now, not in this bundle$`));
+    expect(own.out).toMatch(new RegExp(`^VERIFIED under the bundle's own required list \\(${String(total - dropped.length)} of ${String(total)} current cases\\): `, "m"));
+    expect(own.code).toBe(0);
+
+    // Default rules: unchanged wording, and the gate fails.
+    const strict = await runVerify(["--root", dir]);
+    expect(lineOf(strict.out, `gate ${gate}`)).toMatch(/^FAIL /);
+    expect(strict.out).not.toContain("required now, not in this bundle");
+    expect(strict.out).not.toContain("under the bundle's own required list");
+    expect(strict.out).toMatch(/^NOT VERIFIED: /m);
   });
 
   it("refuses usage errors with exit 2", async () => {

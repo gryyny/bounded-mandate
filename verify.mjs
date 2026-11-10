@@ -294,12 +294,16 @@ function checkEvidence(r, root, bundleDir, bundle, rules) {
         const stated = statusList.get(id);
         if (stated?.status !== "passed") problems.push(`${id}: acceptance.json states ${JSON.stringify(stated?.status ?? "nothing")}`);
       }
-      r.check(`${label} ${gate}`, problems, `${names.length} of ${names.length} present once, passed, bound to run ${run.run_id}: ${names.join(", ")}`);
+      // Under --rules bundle a gate the current list extends must not read as fully covered.
+      const later = label === "gate" && rules === "bundle" ? (REQUIRED_CASES[gate] ?? []).filter((c) => !names.includes(c)).map((c) => `${gate}.${c}`) : [];
+      const note = later.length > 0 ? `; ${later.join(", ")} required now, not in this bundle` : "";
+      const under = later.length > 0 ? " under the bundle's list," : "";
+      r.check(`${label} ${gate}`, problems, `${names.length} of ${names.length}${under} present once, passed, bound to run ${run.run_id}: ${names.join(", ")}${note}`, `does not match${note}`);
     }
   };
   caseLines(registry, "gate", statusOf);
   caseLines(SEPARATE_CASES, "separate", new Map((Array.isArray(acc.separate) ? acc.separate : []).map((c) => [c.id, c])));
-  return { run, acc, byId };
+  return { run, acc, byId, coverage: { covered: current.filter((id) => required.includes(id)).length, current: current.length } };
 }
 
 function checkCheckout(r, root, ev, skip) {
@@ -473,6 +477,23 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
   if (typeof ids.mandate !== "string" || typeof ids.verifier !== "string") evProblems.push("evidence names no mandate or verifier account");
   if (!r.check("mainnet.evidence", evProblems, `${receipts.length} receipts recorded in mode mainnet (${livePath ?? `${bundle}/${LIVE_FILE}`})`, "not mainnet evidence")) return;
 
+  // The run's own record of completion, read before any chain data. A failure the evidence itself states is a FAIL, not
+  // NOT VERIFIED: nothing is left to read, the record already says the run did not succeed. Only the latest attempt of a
+  // step counts, since a retried attempt (`-attempt-N`) supersedes the one before it.
+  const runProblems = [];
+  if (!Array.isArray(ev.unknowns)) runProblems.push("evidence has no unknowns list");
+  else for (const u of ev.unknowns) runProblems.push(`unknown: ${typeof u === "string" ? u : JSON.stringify(u)}`);
+  if (assertions.length === 0) runProblems.push("evidence has no assertions");
+  const latest = new Map();
+  for (const a of assertions) {
+    const id = String(a?.id);
+    const m = /^(.*)-attempt-(\d+)$/.exec(id);
+    const [base, attempt] = m === null ? [id, 1] : [m[1], Number(m[2])];
+    if (!latest.has(base) || latest.get(base).attempt <= attempt) latest.set(base, { a, attempt });
+  }
+  for (const { a } of latest.values()) if (a?.passed !== true) runProblems.push(`assertion ${a?.id} passed ${JSON.stringify(a?.passed ?? null)}: ${a?.description ?? ""}`);
+  r.check("mainnet.run", runProblems, `the run records no unknowns and ${latest.size} of ${latest.size} assertions passed`, "the evidence records an incomplete or failed run");
+
   r.out(`             querying ${rpc.url} (read-only; nothing is signed or sent)`);
   const status = await rpc.call("status", []);
   if (!status.ok) {
@@ -569,7 +590,9 @@ async function checkMainnet(r, bundleDir, bundle, rpc, livePath) {
   }
 
   // The withheld order's relay failed on the verifier because the revoked key did not exist.
-  for (const x of fetched.filter((f) => f.rc.detail?.withheld_relay === true)) {
+  const relays = fetched.filter((f) => f.rc.detail?.withheld_relay === true);
+  if (relays.length === 0) r.line("NOT VERIFIED", "mainnet.relay", "the evidence records no withheld-order relay transaction, so rejection of a signed order after revocation is not shown");
+  for (const x of relays) {
     const relay = assertions.find((a) => /-relay_withheld(-attempt-\d+)?$/.test(a.id));
     const key = relay?.observed?.revoked_key ?? grantKeys[0];
     const expected = `public key '${key}' doesn't exist for account '${ids.mandate}'`;
@@ -705,7 +728,9 @@ export async function main(argv, out = console.log) {
   }
   const c = r.counts;
   const summary = `${c.PASS} passed, ${c.FAIL} failed, ${c["NOT VERIFIED"]} not verified, ${c.SKIP} skipped`;
-  out(r.bad === 0 ? `VERIFIED: ${bundle} (${summary}). Recorded evidence only; the tests were not rerun.` : `NOT VERIFIED: ${bundle} (${summary}).`);
+  const cov = ev?.coverage;
+  const rules = opts.rules === "bundle" ? ` under the bundle's own required list${cov === undefined ? "" : ` (${cov.covered} of ${cov.current} current cases)`}` : "";
+  out(r.bad === 0 ? `VERIFIED${rules}: ${bundle} (${summary}). Recorded evidence only; the tests were not rerun.` : `NOT VERIFIED${rules}: ${bundle} (${summary}).`);
   return r.bad === 0 ? 0 : 1;
 }
 
