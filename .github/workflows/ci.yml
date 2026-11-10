@@ -9,9 +9,38 @@ permissions:
   contents: read
 
 jobs:
+  # Decides from the changed files, not the commit message, whether the push is evidence and documentation only.
+  # Anything it cannot establish (a pull request, a new branch, a rewritten history, a failed diff) runs every gate.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      evidence_only: ${{ steps.diff.outputs.evidence_only }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          only=false
+          if [ "$EVENT" = "push" ] && git merge-base --is-ancestor "$BEFORE" "$AFTER" 2>/dev/null; then
+            if files=$(git diff --name-only --no-renames "$BEFORE" "$AFTER") && [ -n "$files" ]; then
+              echo "$files"
+              if ! echo "$files" | grep -qvE '^(evidence/|docs/|README\.md$)' && echo "$files" | grep -q '^evidence/'; then only=true; fi
+            fi
+          fi
+          echo "evidence_only=$only" | tee -a "$GITHUB_OUTPUT"
+
   test:
-    # An evidence-only commit changes no source: the verify job below checks its bundle against the checkout.
-    if: ${{ !startsWith(github.event.head_commit.message, 'docs(evidence)') }}
+    # Skipped only when the changes job found nothing outside evidence/, docs/ and README.md in the push.
+    # always(): a failed or cancelled changes job must run the gate, not skip it.
+    needs: changes
+    if: ${{ always() && needs.changes.outputs.evidence_only != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -54,8 +83,10 @@ jobs:
 
   # The judge's quick path: no Rust or cargo-near, only Node 24, the sandbox binary and Chromium.
   quick:
-    # An evidence-only commit changes no source: the verify job below checks its bundle against the checkout.
-    if: ${{ !startsWith(github.event.head_commit.message, 'docs(evidence)') }}
+    # Skipped only when the changes job found nothing outside evidence/, docs/ and README.md in the push.
+    # always(): a failed or cancelled changes job must run the gate, not skip it.
+    needs: changes
+    if: ${{ always() && needs.changes.outputs.evidence_only != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -77,10 +108,12 @@ jobs:
       - name: make quick
         run: make quick
 
-  # The evidence check on the oldest supported Node, with no install. On an evidence commit the bundle is that of the
+  # The evidence check on the oldest supported Node, with no install. On an evidence-only push the bundle is that of the
   # checked-out source, so the full checkout-bound check runs; on a source commit the newest bundle predates the
   # source, so only its internal consistency is checked.
   verify:
+    needs: changes
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -92,6 +125,6 @@ jobs:
           node-version: "20"
       - name: node verify.mjs
         env:
-          EVIDENCE_COMMIT: ${{ startsWith(github.event.head_commit.message, 'docs(evidence)') }}
+          EVIDENCE_COMMIT: ${{ needs.changes.outputs.evidence_only }}
         run: |
           if [ "$EVIDENCE_COMMIT" = "true" ]; then node verify.mjs; else node verify.mjs --no-checkout --rules bundle; fi
