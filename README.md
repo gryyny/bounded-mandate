@@ -13,8 +13,8 @@ An AI agent trades your treasury on NEAR Intents without holding a signing key. 
 
 | Evidence | State |
 | --- | --- |
-| Sandbox execution | **Certified at 173942f**: 37 of 37 required cases ([acceptance](evidence/173942f/acceptance.json)). Certified means this project's own gate (all required cases passing in one run of one clean revision, in a fresh clone and in CI), not an external audit ([definition](docs/reviewers.md#what-certified-means)). Signer, oracle and tokens are labelled test doubles. |
-| Model output | Genuine recorded `claude-haiku-5-5` output, replayed ([MODEL](evidence/173942f/tests/MODEL.recorded-proposal.json)); no gate or demo calls a model. |
+| Sandbox execution | **Certified at 348a14d**: 37 of 37 required cases ([acceptance](evidence/348a14d/acceptance.json)). Certified means this project's own gate (all required cases passing in one run of one clean revision, in a fresh clone and in CI), not an external audit ([definition](docs/reviewers.md#what-certified-means)). Signer, oracle and tokens are labelled test doubles. |
+| Model output | Genuine recorded `claude-haiku-5-5` output, replayed ([MODEL](evidence/348a14d/tests/MODEL.recorded-proposal.json)); no gate or demo calls a model. |
 | Verifier code | The pinned WASM hashes to the code at `intents.near` ([check](docs/reviewers.md#verify-on-mainnet-read-only)). |
 | MPC signer response | A real mainnet `v1.signer` response, recorded read-only, verifies in the contract's decoder ([test](contract/tests/signer_conformance.rs)); not our own signing. |
 | Mainnet | **Not run**: no mainnet transaction. |
@@ -24,25 +24,25 @@ An AI agent trades your treasury on NEAR Intents without holding a signing key. 
 
 | Do | Needs | See |
 | --- | --- | --- |
-| `make verify` | Node 20+; offline | Last line starts `VERIFIED: evidence/173942f` |
+| `make verify` | Node 20+; offline | Last line starts `VERIFIED: evidence/348a14d` |
 | `make quick` | Node 24, network; no Rust | `60/60 assertions passed`, labelled uncertified |
 | `make test && make demo` | Rust, `cargo-near`, Node 24 | `CERTIFIED: run …`, then `59/59 assertions passed` |
 
-`make verify` checks committed evidence and reruns nothing. `SHA256SUMS` is unsigned: it detects accidental or partial change, not a self-consistent rewrite, so trust rests on the commit history and on rerunning `make test`. [Setup, timings, outputs](docs/reviewers.md#running-the-demo-and-the-gates); [evidence page](evidence/173942f/page/index.html).
+`make verify` checks committed evidence and reruns nothing. `SHA256SUMS` is unsigned: it detects accidental or partial change, not a self-consistent rewrite, so trust rests on the commit history and on rerunning `make test`. [Setup, timings, outputs](docs/reviewers.md#running-the-demo-and-the-gates); [evidence page](evidence/348a14d/page/index.html).
 
 ## Three checkable facts
 
-Sandbox results at 173942f with labelled test doubles; selected samples, not a statistical rate.
+Sandbox results at 348a14d with labelled test doubles; selected samples, not a statistical rate.
 
-1. **No signing key.** The agent's only key is a function-call key for `propose_order`; ten agent-key attacks (other methods, deposits, `mt_transfer`, key changes) were refused by the protocol ([BOUNDARY.attacks](evidence/173942f/tests/BOUNDARY.attacks.json)). The order-signing key is derived by the MPC network (a test double in sandbox), and the contract requests each signature only after its checks ([`propose_order`](contract/src/lib.rs#L419)).
-2. **Limits at the signature.** Of a selected sample of 15 valid scripted trades, 15 settled with no authorization refusal and every fill within the 0.5% concession ([T3.concession](evidence/173942f/tests/T3.concession.json)). 39 of 39 hostile requests were refused at five layers: 10 local validation, 14 contract method checks, 4 policy checks, 10 agent key permission checks, 1 verifier check ([BOUNDARY.attacks](evidence/173942f/tests/BOUNDARY.attacks.json), [attack log](docs/reviewers.md#attack-log)).
-3. **Stop and exit.** After confirmed removal of the grant key at the verifier, a withheld signed order was rejected with the verifier's missing-key error while at least 46 s of its lifetime remained in every post-removal relay, and again after a regrant, which signs with a key on a new path ([T1.withheld-regrant](evidence/173942f/tests/T1.withheld-regrant.json)). `recover` returned both assets to the owner's Intents account with the agent stopped, the oracle failing and the MPC on hold ([T4.dependency-failure](evidence/173942f/tests/T4.dependency-failure.json)).
+1. **No signing key.** The agent's only key is a function-call key for `propose_order`; ten agent-key attacks (other methods, deposits, `mt_transfer`, key changes) were refused by the protocol ([BOUNDARY.attacks](evidence/348a14d/tests/BOUNDARY.attacks.json)). The order-signing key is derived by the MPC network (a test double in sandbox), and the contract requests each signature only after its checks ([`propose_order`](contract/src/lib.rs#L419)).
+2. **Limits at the signature.** Of a selected sample of 15 valid scripted trades, 15 settled with no authorization refusal and every fill within the 0.5% concession ([T3.concession](evidence/348a14d/tests/T3.concession.json)). 39 of 39 hostile requests were refused at five layers: 10 local validation, 14 contract method checks, 4 policy checks, 10 agent key permission checks, 1 verifier check ([BOUNDARY.attacks](evidence/348a14d/tests/BOUNDARY.attacks.json), [attack log](docs/reviewers.md#attack-log)).
+3. **Stop and exit.** After confirmed removal of the grant key at the verifier, a withheld signed order was rejected with the verifier's missing-key error while at least 46 s of its lifetime remained in every post-removal relay, and again after a regrant, which signs with a key on a new path ([T1.withheld-regrant](evidence/348a14d/tests/T1.withheld-regrant.json)). `recover` returned both assets to the owner's Intents account with the agent stopped, the oracle failing and the MPC on hold ([T4.dependency-failure](evidence/348a14d/tests/T4.dependency-failure.json)).
 
-At the open-order limit, 32 open orders (20 signed, 12 awaiting their signature), one confirmed key removal released all 32 reservations in one callback, a withheld signed order relayed afterwards did not execute, a 33rd proposal was refused, and recovery returned every unit. The case first forces a failed removal, then retries it ([T4.open-order-limit](evidence/173942f/tests/T4.open-order-limit.json)).
+At the open-order limit, 32 open orders (20 signed, 12 awaiting their signature), one confirmed key removal released all 32 reservations in one callback, a withheld signed order relayed afterwards did not execute, a 33rd proposal was refused, and recovery returned every unit. The case first forces a failed removal, then retries it ([T4.open-order-limit](evidence/348a14d/tests/T4.open-order-limit.json)).
 
 ## Why not just…
 
-Three withheld 1 USDC orders per strategy on the pinned verifier, relayed unexpired by an unrelated account; one of them is missing from the owner's ledger. The first two rows were measured at verifier level on a plain account whose key is a labelled test key standing in for the MPC-derived key (COMPARE); the third compares the two contracts (T5, T1) ([COMPARE](evidence/173942f/tests/COMPARE.revocation-alternatives.json), [T5](evidence/173942f/tests/T5.baseline.json)).
+Three withheld 1 USDC orders per strategy on the pinned verifier, relayed unexpired by an unrelated account; one of them is missing from the owner's ledger. The first two rows were measured at verifier level on a plain account whose key is a labelled test key standing in for the MPC-derived key (COMPARE); the third compares the two contracts (T5, T1) ([COMPARE](evidence/348a14d/tests/COMPARE.revocation-alternatives.json), [T5](evidence/348a14d/tests/T5.baseline.json)).
 
 | Instead of key removal | Measured result | Remove the key, resume with a fresh key (the mechanism the mandate uses) |
 | --- | --- | --- |
@@ -56,11 +56,11 @@ The advantage over waiting is bounded by the order lifetime: 120 s in this exper
 
 | Criterion | Where to check it |
 | --- | --- |
-| Technical implementation | [contract/src/lib.rs](contract/src/lib.rs), gate suites in [contract/tests/](contract/tests/) and [tools/test/](tools/test/), [acceptance](evidence/173942f/acceptance.json), [required gates](docs/reviewers.md#required-gates); `make verify`, `make test` |
-| Design | [How it works](docs/reviewers.md#how-it-works), [mechanism](docs/reviewers.md#mechanism-in-detail), the [owner journey](docs/reviewers.md#what-the-owner-does) and the [evidence page](evidence/173942f/page/index.html) and [owner console](evidence/173942f/console/index.html) of the certified run |
+| Technical implementation | [contract/src/lib.rs](contract/src/lib.rs), gate suites in [contract/tests/](contract/tests/) and [tools/test/](tools/test/), [acceptance](evidence/348a14d/acceptance.json), [required gates](docs/reviewers.md#required-gates); `make verify`, `make test` |
+| Design | [How it works](docs/reviewers.md#how-it-works), [mechanism](docs/reviewers.md#mechanism-in-detail), the [owner journey](docs/reviewers.md#what-the-owner-does) and the [evidence page](evidence/348a14d/page/index.html) and [owner console](evidence/348a14d/console/index.html) of the certified run |
 | Impact | [Who needs this](#who-needs-this-and-what-is-next). There are no users, customers, revenue or adoption today |
 | Originality | [Comparison](docs/comparison.md): the tested combination of limits, accounting, key-removal revocation and recovery, set against expiry, nonce cancellation, a guard design and related NEAR projects |
-| Sustainability | MIT; a fresh clone works without funds or keys; [CI-certified](evidence/index.json); reproducible deployment build ([DEPLOY](evidence/173942f/tests/DEPLOY.candidate.json)); [libraries](#disclosures); next steps below |
+| Sustainability | MIT; a fresh clone works without funds or keys; [CI-certified](evidence/index.json); reproducible deployment build ([DEPLOY](evidence/348a14d/tests/DEPLOY.candidate.json)); [libraries](#disclosures); next steps below |
 
 ## Who needs this and what is next
 
