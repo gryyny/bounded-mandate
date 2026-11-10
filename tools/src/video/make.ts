@@ -549,12 +549,25 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   const storyCaption =
     notShown.length === 0 ? "" : `In this run ${String(notShown.length)} of ${String(steps.length)} journey steps are not shown as evidence: ${notShown.map((j) => `${j.neutral} (${j.outcome})`).join(", ")}. `;
   const mainnetCaption = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run pending approval; no mainnet transaction executed.";
+  // The recovery scene says a double was off only when a successful receipt switching it off precedes the owner's first
+  // recover receipt; whether recovery itself held is the scene's title, not this label.
+  const recovery = stages.find((s) => s.key === "recovered");
+  const firstRecover = Math.min(...(recovery?.receipts.filter((r) => /^owner recover/.test(r.receipt.label)).map((r) => r.index) ?? []));
+  const offBefore = (label: string): boolean =>
+    recovery?.receipts.some((r) => r.receipt.label === label && r.receipt.outcome === "success" && r.index < firstRecover) === true;
+  const switchedOff = [...(offBefore("oracle set_fail(true)") ? ["oracle"] : []), ...(offBefore("mpc set_mode(hold)") ? ["MPC"] : [])];
+  const returnLabel =
+    switchedOff.length === 2
+      ? "Local sandbox · oracle and MPC test doubles switched off"
+      : switchedOff.length === 1
+        ? `Local sandbox · ${switchedOff[0] ?? ""} test double switched off; ${switchedOff[0] === "oracle" ? "MPC" : "oracle"} not shown switched off`
+        : "Local sandbox · oracle and MPC switch-off not shown";
   // One provenance label per scene, from the labels its stages carry.
   const provenance: Record<Beat, string> = {
     trade: `Local sandbox, test doubles · ${replayed ? "recorded model output, replayed" : "scripted proposal, not model output"}`,
     hostile: `Local sandbox · scripted attacks and order${labelled("attacks", "recorded genuine model output") ? ", one replayed model recording" : ""}`,
     revoke: `Local sandbox · ${labelled("revoked", OWNER_CONTROLS_LABEL) ? "owner console, test signer, not a wallet" : "direct owner call"}`,
-    return: "Local sandbox · oracle and MPC test doubles switched off",
+    return: returnLabel,
   };
   const repro_ = [
     ...(repro.verify === null ? [] : [`Verify the evidence: ${repro.verify}.`]),

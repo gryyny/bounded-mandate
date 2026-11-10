@@ -83,6 +83,21 @@ describe("short video cut", () => {
     expect(scene(olderStoryEvidence(), "The owner revokes")?.provenance ?? scene(olderStoryEvidence(), "Owner revocation")?.provenance).toBe("Local sandbox · direct owner call");
   });
 
+  it("says the oracle and MPC doubles were switched off only when successful receipts before recovery show it", () => {
+    const ret = (ev: Evidence) => short(ev)[4]?.provenance;
+    const relabel = (f: (r: Evidence["receipts"][number]) => Evidence["receipts"][number]): Evidence => {
+      const ev = storyEvidence();
+      return { ...ev, receipts: ev.receipts.map(f) };
+    };
+    const failed = (label: string) => relabel((r) => (r.label === label ? { ...r, outcome: "failure" } : r));
+    expect(ret(failed("mpc set_mode(hold)"))).toBe("Local sandbox · oracle test double switched off; MPC not shown switched off");
+    expect(ret(failed("oracle set_fail(true)"))).toBe("Local sandbox · MPC test double switched off; oracle not shown switched off");
+    // A receipt with another label (the double left on) is not a switch-off.
+    const absent = relabel((r) => (r.label === "oracle set_fail(true)" ? { ...r, label: "oracle set_fail(false)" } : r.label === "mpc set_mode(hold)" ? { ...r, label: "mpc set_mode(sign)" } : r));
+    expect(ret(absent)).toBe("Local sandbox · oracle and MPC switch-off not shown");
+    for (const ev of [failed("mpc set_mode(hold)"), absent]) expect(ret(ev)).not.toContain("oracle and MPC test doubles switched off");
+  });
+
   it("puts the recorded chain state of each scene's last stage in the strip", () => {
     const strip = (i: number) => short()[i]?.strip;
     expect(strip(1)).toMatchObject({ grant_status: "active", key_present: true, open_orders: 0 });

@@ -187,6 +187,17 @@ describe("landing: three checkable facts, each linked to its gate report", () =>
     expect(h).not.toContain('href="#report-');
   });
 
+  it("labels the facts block certified only when a certified, bound acceptance run backs it", () => {
+    const label = (h: string): string => {
+      const start = h.indexOf('id="facts"');
+      return /<p class="prov"><a [^>]*>([^<]*)<\/a><\/p>/.exec(h.slice(start))?.[1] ?? "";
+    };
+    expect(label(html)).toBe("certified sandbox acceptance reports · selected samples · test doubles as labelled");
+    const uncertified = label(renderHtml(storyEvidence(), { acceptance: null, live: null, reports: REPORTS }));
+    expect(uncertified).toBe("sandbox evidence, not backed by a certified acceptance run here · test doubles as labelled");
+    expect(uncertified).not.toMatch(/^certified|certified sandbox acceptance reports/);
+  });
+
   it("every in-page link resolves to an element of the page", () => {
     for (const h of [html, render(live("rejected_revoked_key")), renderHtml(storyEvidence(), { acceptance: null, live: null })]) {
       const ids = new Set([...h.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
