@@ -277,7 +277,20 @@ const PUBLISHED_KEY_FORBIDDEN: readonly StepKind[] = ["propose", "refused_propos
 
 export function publishedKeyProblems(m: LiveManifest): string[] {
   if (m.agent_key_published !== true) return [];
-  return m.steps.flatMap((s, i) => (PUBLISHED_KEY_FORBIDDEN.includes(s.kind) ? [`step ${i + 1} ${s.kind} is not allowed when agent_key_published is set`] : []));
+  const steps = m.steps.flatMap((s, i) => (PUBLISHED_KEY_FORBIDDEN.includes(s.kind) ? [`step ${i + 1} ${s.kind} is not allowed when agent_key_published is set`] : []));
+  const agent = m.keys.agent.public_key;
+  const relied: [string, string | undefined][] = [
+    ["keys.owner.public_key", m.keys.owner.public_key],
+    ["keys.owner_external.public_key", m.keys.owner_external?.public_key],
+    ["keys.filler.public_key", m.keys.filler.public_key],
+    ["keys.filler.intents_public_key", m.keys.filler.intents_public_key],
+    ...m.keys.mandate_full_access.map((k, i): [string, string] => [`keys.mandate_full_access[${i}]`, k]),
+    ...(m.expected_owner_keys ?? []).map((k, i): [string, string] => [`expected_owner_keys[${i}]`, k.public_key]),
+  ];
+  const collisions = relied.flatMap(([name, key]) =>
+    key === agent ? [`keys.agent.public_key equals ${name}: the published key must not be one the run or the owner relies on`] : [],
+  );
+  return [...steps, ...collisions];
 }
 
 export interface LoadedManifest {

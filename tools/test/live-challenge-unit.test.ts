@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { CHALLENGE_DOES_NOT_SHOW, challengePhase, runChallenge } from "../src/live/challenge.js";
-import { LiveManifest, loadManifest } from "../src/live/manifest.js";
+import { LiveManifest, loadManifest, publishedKeyProblems } from "../src/live/manifest.js";
 import { DEMO_POLICY } from "../src/demo/market.js";
+import { sandboxKey } from "../src/near/keys.js";
 import { offlineManifest, writeJson } from "./live-helpers.js";
 
 const dirs: string[] = [];
@@ -93,6 +94,51 @@ describe("a published agent key", () => {
     const d = tmp();
     const r = load(d, { ...offlineManifest(d), agent_key_published: true, steps: [{ kind: "grant", policy: DEMO_POLICY }, step] });
     expect(r.error).toMatch(new RegExp(`step 2 ${kind} is not allowed when agent_key_published is set`));
+  });
+
+  const sandboxPk = (label: string): string => sandboxKey(`challenge-${label}`).getPublicKey().toString();
+  /** A template manifest with every key field of the template filled, each distinct. */
+  const withAllKeys = (d: string, name: string): LiveManifest => {
+    const m = fromTemplate(d, name);
+    const ownerExt = sandboxPk("owner-external");
+    return {
+      ...m,
+      keys: { ...m.keys, mandate_full_access: [sandboxPk("mandate")], owner_external: { public_key: ownerExt } },
+      expected_nonces: { owner: "1", agent: "1", filler: "1", owner_external: "1" },
+      expected_owner_keys: [
+        { public_key: m.keys.owner.public_key, permission: "full_access", nonce: "1" },
+        { public_key: ownerExt, permission: "full_access", nonce: "1" },
+        { public_key: sandboxPk("owner-fc"), permission: { receiver_id: "x.sandbox", method_names: [] }, nonce: "1" },
+      ],
+    };
+  };
+
+  // gate: LIVE
+  it.each([OPEN, CLOSE])("%s with every key field filled distinctly still loads", (name) => {
+    const d = tmp();
+    expect(load(d, withAllKeys(d, name)).error).toBeNull();
+  });
+
+  // gate: LIVE
+  it.each([
+    ["keys.owner.public_key", (m: LiveManifest) => m.keys.owner.public_key],
+    ["keys.owner_external.public_key", (m: LiveManifest) => m.keys.owner_external?.public_key ?? ""],
+    ["keys.filler.public_key", (m: LiveManifest) => m.keys.filler.public_key],
+    ["keys.filler.intents_public_key", (m: LiveManifest) => m.keys.filler.intents_public_key],
+    ["keys.mandate_full_access\\[0\\]", (m: LiveManifest) => m.keys.mandate_full_access[0] ?? ""],
+    ["expected_owner_keys\\[2\\]", (m: LiveManifest) => m.expected_owner_keys?.[2]?.public_key ?? ""],
+  ])("refuses a published agent key equal to %s", (field, pick) => {
+    const d = tmp();
+    const m = withAllKeys(d, OPEN);
+    const r = load(d, { ...m, keys: { ...m.keys, agent: { ...m.keys.agent, public_key: pick(m) } } });
+    expect(r.error).toMatch(new RegExp(`keys\\.agent\\.public_key equals ${field}: the published key must not be one the run or the owner relies on`));
+  });
+
+  // gate: LIVE
+  it("without the flag, a shared agent key is not refused by the published-key rule", () => {
+    const d = tmp();
+    const m = withAllKeys(d, OPEN);
+    expect(publishedKeyProblems({ ...m, agent_key_published: undefined, keys: { ...m.keys, agent: { ...m.keys.agent, public_key: m.keys.owner.public_key } } })).toEqual([]);
   });
 
   // gate: LIVE
