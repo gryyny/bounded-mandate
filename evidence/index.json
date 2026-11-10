@@ -2,9 +2,17 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/0bcb3f4",
+      "revision": "0bcb3f4768d928c0491f8ade0f2bc9882ba5aa85",
+      "status": "certified",
+      "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
+      "run": "evidence/0bcb3f4/run.json",
+      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1503 s cold, 198 Rust and 705 TypeScript tests passed, acceptance run 20261110T005643437Z-552baa42cef7. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.8 s, story 20.5 s, browser start 0.3 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42731558576: make test exit 0 in 2328 s, acceptance run 20261110T005509987Z-2667735e21ac, make demo 59/59 in 81 s (setup 14.6 s, story 20.5 s); a separate job with no Rust toolchain ran make quick 60/60 in 41 s (73 s from job start). Both MP4s (85.9 s and 217.1 s) bind to the same demo log; MP4s are not committed. Two-repo secret scan, site, license, README link and wallet adapter (8/8) checks passed. Twelve duplicate gate reports written by a mistaken second cargo test in the certification clone after acceptance was evaluated were excluded from this bundle and are recorded in the meta status register. Sandbox only."
+    },
+    {
       "path": "evidence/51d2532",
       "revision": "51d2532c034164e0a95d024aa66b9ee0a050090f",
-      "status": "certified",
+      "status": "superseded",
       "rules": "35 required cases in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/51d2532/run.json",
       "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1500 s cold, 197 Rust and 600 TypeScript tests passed, acceptance run 20261108T151902716Z-aade4380554e. make demo exit 0 in 60 s, 59/59 story checks (setup 16.2 s, story 20.2 s, browser start 0.4 s). make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42494181012: make test exit 0 in 2036 s, acceptance run 20261108T152353864Z-d1aac03b2207, make demo exit 0 in 72 s, 59/59 (setup 14.3 s, story 20.9 s, browser start 0.2 s). T1 matched two complete simulated bundles to four unexpired removed-key rejections. 15/15 selected legitimate trades settled and 39/39 hostile requests were refused. The comparison includes five paths. Both MP4s (85.0 s and 217.1 s) bind to the same demo log and played in the locally assembled site. All 40 frame layouts, eight pinned wallet adapters, link, license, disclosure and secret checks passed. Exact MP4s and the log are local under out/video-51d2532. Sandbox only."

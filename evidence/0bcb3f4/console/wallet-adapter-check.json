@@ -1,0 +1,125 @@
+{
+  "schema": "bounded-mandate/wallet-adapter-check@1",
+  "checked_at": "2026-11-10T01:30:33.687Z",
+  "library": {
+    "package": "@hot-labs/near-connect",
+    "version": "0.11.4",
+    "license": "MIT"
+  },
+  "console_page_sha256": "cc61ea9e2801330e5c313246378e6341699e4cebdc101878b92e1ae03bbcd34c",
+  "note": "Adapter load only: no wallet connected, no account, nothing signed. It does not show that a wallet can sign for the owner.",
+  "results": [
+    {
+      "id": "hot-wallet",
+      "url": "https://raw.githubusercontent.com/hot-dao/near-selector/70726e10d0658ff085dc0e4a31bb49b8f3cec48d/repository/hotwallet.js",
+      "sha256_expected": "7597090092612c66856548528043094ff418ab09dea85e886f921c6f6f1277fb",
+      "sha256_fetched": "7597090092612c66856548528043094ff418ab09dea85e886f921c6f6f1277fb",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "accounts: []",
+        "csp_violations": [],
+        "ms": 298
+      }
+    },
+    {
+      "id": "meteor-wallet",
+      "url": "https://raw.githubusercontent.com/Meteor-Wallet/meteor_wallet_sdk/ef1be35fc3712f2de60a7563aed543d78e73f763/storage/meteor-near-connect-latest.js",
+      "sha256_expected": "96210256a89cb382bb7fe95f29d6a2489319da87472fe77018b4cdcbf1672b50",
+      "sha256_fetched": "96210256a89cb382bb7fe95f29d6a2489319da87472fe77018b4cdcbf1672b50",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "accounts: []",
+        "csp_violations": [],
+        "ms": 386
+      }
+    },
+    {
+      "id": "ledger",
+      "url": "https://raw.githubusercontent.com/near/near-connect-ledger/a705e63c3543982f8d3d788a216e5e5cb53c676d/ledger-executor.js",
+      "sha256_expected": "e3b4569f91aa57fe0c4217c4b0cc394a991f582ae7961fb60b0abed5ade51729",
+      "sha256_fetched": "e3b4569f91aa57fe0c4217c4b0cc394a991f582ae7961fb60b0abed5ade51729",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "accounts: []",
+        "csp_violations": [],
+        "ms": 229
+      }
+    },
+    {
+      "id": "mynearwallet",
+      "url": "https://raw.githubusercontent.com/hot-dao/near-selector/acee02484503f42ae2797c89a0a47db264a1e31e/repository/mnw.js",
+      "sha256_expected": "428055aeb7ea018f2e041babf0bfeb33fcf1f0a69b7865e9887a17b9e6f559ca",
+      "sha256_fetched": "428055aeb7ea018f2e041babf0bfeb33fcf1f0a69b7865e9887a17b9e6f559ca",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "accounts: [{\"accountId\":\"\",\"publicKey\":\"\"}]",
+        "csp_violations": [],
+        "ms": 362
+      }
+    },
+    {
+      "id": "okx-wallet",
+      "url": "https://raw.githubusercontent.com/hot-dao/near-selector/acee02484503f42ae2797c89a0a47db264a1e31e/repository/okx.js",
+      "sha256_expected": "e0a6bad07df32596dcdbf6f47396749e03be15f580da0726fa557e0e058891d8",
+      "sha256_fetched": "e0a6bad07df32596dcdbf6f47396749e03be15f580da0726fa557e0e058891d8",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "error: Cannot read properties of undefined (reading 'near')",
+        "csp_violations": [],
+        "ms": 382
+      }
+    },
+    {
+      "id": "nightly-wallet",
+      "url": "https://raw.githubusercontent.com/hot-dao/near-selector/acee02484503f42ae2797c89a0a47db264a1e31e/repository/nightly.js",
+      "sha256_expected": "6e769f105fb30d37501439287ec901b4d858a503ab195e2e99c06c172c5b5d48",
+      "sha256_fetched": "6e769f105fb30d37501439287ec901b4d858a503ab195e2e99c06c172c5b5d48",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "error: Cannot read properties of undefined (reading 'near')",
+        "csp_violations": [],
+        "ms": 356
+      }
+    },
+    {
+      "id": "hana-wallet",
+      "url": "https://raw.githubusercontent.com/Hana-Technology/near-connect/93237ea1b59d439451b7a08a97085f411274c250/repository/hana.js",
+      "sha256_expected": "ef6c88f45bb7ea68e0c5878d4b135c2b4d3e0b0544a3c952a5aae72dcb1bdd62",
+      "sha256_fetched": "ef6c88f45bb7ea68e0c5878d4b135c2b4d3e0b0544a3c952a5aae72dcb1bdd62",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "error: Cannot read properties of undefined (reading 'near')",
+        "csp_violations": [],
+        "ms": 252
+      }
+    },
+    {
+      "id": "near-cli",
+      "url": "https://raw.githubusercontent.com/near/near-cli-connect/dc5cb123e3a8e42ed095739f4ea058b767a80ad2/dist/near-cli.js",
+      "sha256_expected": "522f2a52403f6da84384a409718c54b49ed4432cdfd583363d35109be8c8e318",
+      "sha256_fetched": "522f2a52403f6da84384a409718c54b49ed4432cdfd583363d35109be8c8e318",
+      "matches": true,
+      "fetch_error": null,
+      "load": {
+        "answered": true,
+        "result": "accounts: []",
+        "csp_violations": [],
+        "ms": 187
+      }
+    }
+  ]
+}
