@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   test:
+    # An evidence-only commit changes no source: the verify job below checks its bundle against the checkout.
+    if: ${{ !startsWith(github.event.head_commit.message, 'docs(evidence)') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -52,6 +54,8 @@ jobs:
 
   # The judge's quick path: no Rust or cargo-near, only Node 24, the sandbox binary and Chromium.
   quick:
+    # An evidence-only commit changes no source: the verify job below checks its bundle against the checkout.
+    if: ${{ !startsWith(github.event.head_commit.message, 'docs(evidence)') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -72,3 +76,22 @@ jobs:
           ! command -v cargo && ! command -v rustc
       - name: make quick
         run: make quick
+
+  # The evidence check on the oldest supported Node, with no install. On an evidence commit the bundle is that of the
+  # checked-out source, so the full checkout-bound check runs; on a source commit the newest bundle predates the
+  # source, so only its internal consistency is checked.
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: node verify.mjs
+        env:
+          EVIDENCE_COMMIT: ${{ startsWith(github.event.head_commit.message, 'docs(evidence)') }}
+        run: |
+          if [ "$EVIDENCE_COMMIT" = "true" ]; then node verify.mjs; else node verify.mjs --no-checkout --rules bundle; fi
