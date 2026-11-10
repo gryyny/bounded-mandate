@@ -27,11 +27,14 @@ jobs:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
+          # The list is read from a file, never through a pipe: with pipefail, a grep -q that exits at its first match
+          # kills the writer of a long list (SIGPIPE) and the pipeline's status would no longer be grep's.
           only=false
+          list=$(mktemp)
           if [ "$EVENT" = "push" ] && git merge-base --is-ancestor "$BEFORE" "$AFTER" 2>/dev/null; then
-            if files=$(git diff --name-only --no-renames "$BEFORE" "$AFTER") && [ -n "$files" ]; then
-              echo "$files"
-              if ! echo "$files" | grep -qvE '^(evidence/|docs/|README\.md$)' && echo "$files" | grep -q '^evidence/'; then only=true; fi
+            if git diff --name-only --no-renames "$BEFORE" "$AFTER" > "$list" && [ -s "$list" ]; then
+              head -n 200 "$list"
+              if ! grep -qvE '^(evidence/|docs/|README\.md$)' "$list" && grep -q '^evidence/' "$list"; then only=true; fi
             fi
           fi
           echo "evidence_only=$only" | tee -a "$GITHUB_OUTPUT"
