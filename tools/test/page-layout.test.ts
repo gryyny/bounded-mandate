@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { renderHtml } from "../src/page/render.js";
 import { assembleSite, checkSite, PLANNED_BASE, serveSite } from "../src/release/site.js";
 import { Evidence } from "../src/types.js";
+import { record } from "./page-challenge-specimen.js";
 import { storyEvidence, txHash } from "./video-story-specimen.js";
 
 const mainnet = (): Evidence =>
@@ -34,14 +35,16 @@ afterAll(async () => {
 });
 
 describe.each([
-  ["sandbox", null],
-  ["mainnet (SYNTHETIC)", mainnet()],
-] as const)("evidence page in Chromium: %s layout", (_name, live) => {
+  ["sandbox", null, null],
+  ["mainnet (SYNTHETIC)", mainnet(), null],
+  ["sandbox with a SYNTHETIC closed challenge", null, record("closed", { agent_key: { ...record("closed").agent_key, publication_url: "https://example.invalid/SYNTHETIC-key-post" } })],
+  ["mainnet (SYNTHETIC) with a SYNTHETIC open challenge", mainnet(), record("open", { mode: "mainnet" })],
+] as const)("evidence page in Chromium: %s layout", (_name, live, challenge) => {
   it("passes the site and CSP check, makes no request before interaction and fits 1440 and 390 px", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bm-page-layout-"));
     dirs.push(dir);
     const page = join(dir, "index.html");
-    writeFileSync(page, renderHtml(storyEvidence(), { acceptance: null, live }));
+    writeFileSync(page, renderHtml(storyEvidence(), { acceptance: null, live, challenge }));
     const root = assembleSite({ page, out: join(dir, "site") });
     const report = await checkSite(root, [""]);
     expect(report.problems).toEqual([]);

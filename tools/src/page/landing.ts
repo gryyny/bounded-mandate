@@ -21,18 +21,21 @@ export const REAL_ID = "real";
 /**
  * Blocks below the landing screen, in page order. With mainnet receipts, the receipts and the live read-only
  * verification come before the sandbox journey; otherwise the sandbox layout keeps the replay first.
- * Extension point for the open-challenge panel: add a "challenge" key, render it in renderHtml's block map, and place
- * it directly after "verify" in the mainnet layout only, so the open grant stays apart from the certified run.
+ * The open-challenge panel ("challenge") is present only with a valid challenge record: directly after "verify" in the
+ * mainnet layout, at the end of the sandbox layout, so the open grant stays apart from the certified run.
  */
 export type PageBlock =
   | "replay" | "story" | "paths" | "benchmark" | "attacks" | "alternatives" | "mainnet" | "verify" | "regrant" | "demo"
-  | "gates" | "baseline" | "agent-api" | "limits" | "policy" | "provenance" | "legacy";
+  | "gates" | "baseline" | "agent-api" | "limits" | "policy" | "provenance" | "legacy" | "challenge";
 
 const SANDBOX_LAYOUT: readonly PageBlock[] = ["replay", "story", "paths", "benchmark", "attacks", "alternatives", "mainnet", "verify", "regrant", "demo", "gates", "baseline", "agent-api", "limits", "policy", "provenance", "legacy"];
 const MAINNET_LAYOUT: readonly PageBlock[] = ["mainnet", "verify", ...SANDBOX_LAYOUT.filter((b) => b !== "mainnet" && b !== "verify")];
 
 export const PAGE_LAYOUT = { sandbox: SANDBOX_LAYOUT, mainnet: MAINNET_LAYOUT } as const;
-export const pageLayout = (live: LiveView): readonly PageBlock[] => (live.kind === "mainnet" ? MAINNET_LAYOUT : SANDBOX_LAYOUT);
+export const pageLayout = (live: LiveView, challenge = false): readonly PageBlock[] => {
+  if (!challenge) return live.kind === "mainnet" ? MAINNET_LAYOUT : SANDBOX_LAYOUT;
+  return live.kind === "mainnet" ? ["mainnet", "verify", "challenge", ...MAINNET_LAYOUT.slice(2)] : [...SANDBOX_LAYOUT, "challenge"];
+};
 
 /** One provenance label: a single line that names what the screen shows and links to the real-versus-double section. */
 export const provenance = (text: string): string => `<p class="prov"><a href="#${REAL_ID}">${escapeHtml(text)}</a></p>`;
