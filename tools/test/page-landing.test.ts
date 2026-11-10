@@ -75,7 +75,7 @@ const live = (relay: string | null, over: { failedStep?: boolean; failedPrefligh
     ...storyEvidence(),
     mode: "mainnet",
     command: "MANDATE_LIVE=1 make live (SYNTHETIC)",
-    environment: { chain_id: "mainnet", label: "SYNTHETIC" },
+    environment: { chain_id: "mainnet", label: "SYNTHETIC", manifest_steps: "check,grant,propose,fill,withhold,revoke,relay_withheld,recover,recover" },
     identifiers: { mandate: "mandate.synthetic.near", owner: "owner.synthetic.near" },
     receipts: [
       { label: "owner grant (SYNTHETIC)", tx_hash: txHash("grant"), block_height: 1, outcome: "success", detail: { step: 2, signer_id: "owner.synthetic.near" } },
@@ -83,9 +83,15 @@ const live = (relay: string | null, over: { failedStep?: boolean; failedPrefligh
     ],
     assertions: [
       check("preflight-accounts", "preflight: accounts (SYNTHETIC)", over.failedPreflight !== true),
+      check("step-1-check", "read-only state check (SYNTHETIC)", true),
       check("step-2-grant", "grant: terminal verification (SYNTHETIC)", true),
+      check("step-3-propose", "propose: terminal verification (SYNTHETIC)", true),
+      check("step-4-fill", "fill: terminal verification (SYNTHETIC)", true),
+      check("step-5-withhold", "withhold (SYNTHETIC)", true),
       check("step-6-revoke", "revoke: terminal verification (SYNTHETIC)", over.failedStep !== true),
       ...(relay === null ? [] : [check("step-7-relay_withheld", "relay_withheld (SYNTHETIC)", true, { classification: relay })]),
+      check("step-8-recover", "recover: terminal verification (SYNTHETIC)", true, { asset: "usdc" }),
+      check("step-9-recover", "recover: terminal verification (SYNTHETIC)", true, { asset: "wnear" }),
     ],
     unknowns: over.unknowns ?? [],
   });
@@ -370,7 +376,7 @@ describe("landing: layout chosen from the evidence", () => {
       [live("executed"), "failure", /revocation test failed: withheld order executed after revocation/],
       [live("inconclusive"), "inconclusive", /revocation test inconclusive: not evidence that revocation stopped the withheld order/],
       [live(null), "inconclusive", /revocation test not run: no withheld order was relayed in this run/],
-      [live("rejected_revoked_key", { failedStep: true }), "failure", /withheld-order relay step held \(that step only\) · 1 of 2 steps did not hold/],
+      [live("rejected_revoked_key", { failedStep: true }), "failure", /withheld-order relay step held \(that step only\) · 1 of 8 steps did not hold/],
       [live("rejected_revoked_key", { failedPreflight: true }), "failure", /withheld-order relay step held \(that step only\) · 1 preflight checks did not hold/],
       [live("rejected_revoked_key", { unknowns: ["SYNTHETIC stop"] }), "inconclusive", /withheld-order relay step held \(that step only\) · run stopped/],
     ];
@@ -395,12 +401,29 @@ describe("landing: layout chosen from the evidence", () => {
     const body = h.slice(at(h, "mainnet"), h.indexOf("</section>", at(h, "mainnet")));
     expect(RELAY_STEP_ONLY).toBe("withheld-order relay step held (that step only)");
     expect(body).toContain('<span class="status failure">run did not hold</span>');
-    expect(body).toContain(`The ${RELAY_STEP_ONLY}: the relay was rejected for the removed key. The run as a whole does not hold: 1 of 2 step verifications did not hold.`);
+    expect(body).toContain(`The ${RELAY_STEP_ONLY}: the relay was rejected for the removed key. The run as a whole does not hold: 1 of 8 step verifications did not hold; no revoke that held.`);
     expect(body).toContain('<td><code>step-7-relay_withheld</code></td><td><span class="status success">held (this step only): relay rejected for the removed key</span>');
     expect(body).toContain('<td><code>step-6-revoke</code></td><td><span class="status failure">did not hold</span>');
     const stopped = render(live("rejected_revoked_key", { unknowns: ["SYNTHETIC stop"] }));
     expect(stopped).toContain('<span class="status inconclusive">run incomplete</span>');
     expect(stopped).toContain("The run as a whole does not hold: run stopped: SYNTHETIC stop.");
+  });
+
+  it("does not call a relay-only record a completed run: the strip and the verdict say that step only", () => {
+    // The reviewer's counterexample: the relay assertion alone, no other step verification, nothing unknown.
+    const full = live("rejected_revoked_key");
+    const relayOnly = Evidence.parse({ ...full, assertions: full.assertions.filter((x) => x.id.endsWith("-relay_withheld")) });
+    const unrecorded = Evidence.parse({ ...full, environment: { chain_id: "mainnet", label: "SYNTHETIC" } });
+    for (const ev of [relayOnly, unrecorded]) {
+      const h = render(ev);
+      expect(strip(h)).toContain(`<span class="status inconclusive">2 transactions · ${RELAY_STEP_ONLY}</span>`);
+      expect(h).not.toContain("revocation test passed");
+      expect(h).not.toContain(SUCCESS_SENTENCE);
+      expect(h).not.toContain("The run completed every manifest step");
+      expect(h.slice(at(h, "mainnet"))).toContain('<div class="verdict"><span class="status inconclusive">run incomplete</span>');
+    }
+    // Control: the same evidence, complete, is the success case.
+    expect(strip(render(full))).toContain('<span class="status success">2 transactions · revocation test passed</span>');
   });
 
   it("uses the success wording only when the relay was rejected, every assertion held and nothing is unknown", () => {

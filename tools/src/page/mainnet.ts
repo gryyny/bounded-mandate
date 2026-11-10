@@ -1,7 +1,8 @@
 // Mainnet receipts from `make live` (out/evidence/live-mainnet.json). Shown as mainnet only when the evidence's
 // mode is "mainnet", it names no other chain, and every receipt carries a NEAR transaction hash; otherwise the
 // page states that no mainnet receipt is presented. The relay of a withheld order counts as a successful
-// revocation test only for classification "rejected_revoked_key" on a passing assertion.
+// revocation test only for classification "rejected_revoked_key" on a passing assertion. The run as a whole is said
+// to hold only when its completion was checked against the manifest steps the evidence records (runVerdict).
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -54,10 +55,44 @@ export interface RevocationResult {
   text: string;
 }
 
-/** Result of the relayed withheld order. Only a passing "rejected_revoked_key" is a successful revocation test. */
+/**
+ * A step verification's id as the runner writes it: `step-<n>-<kind>`, and `step-<n>-<kind>-attempt-<k>` for attempt
+ * k > 1 of a retried step. Every manifest step kind gets one when it finishes, skipped and no-action steps included.
+ */
+const STEP_ID = /^step-([1-9][0-9]*)-([a-z_]+)(?:-attempt-([1-9][0-9]*))?$/;
+
+interface StepAssertion {
+  step: number;
+  kind: string;
+  attempt: number;
+  assertion: Assertion;
+}
+
+/** Each step's latest attempt, which supersedes its earlier ones. Of two records of one attempt, a failed one stands. */
+function latestSteps(assertions: readonly Assertion[]): Map<number, StepAssertion> {
+  const latest = new Map<number, StepAssertion>();
+  for (const assertion of assertions) {
+    const m = STEP_ID.exec(assertion.id);
+    if (m === null) continue;
+    const s = { step: Number(m[1]), kind: m[2] ?? "", attempt: m[3] === undefined ? 1 : Number(m[3]), assertion };
+    const cur = latest.get(s.step);
+    if (cur === undefined || s.attempt > cur.attempt || (s.attempt === cur.attempt && !assertion.passed)) latest.set(s.step, s);
+  }
+  return latest;
+}
+
+const isRelay = (a: Assertion): boolean => STEP_ID.exec(a.id)?.[2] === "relay_withheld";
+
+/**
+ * Result of the relayed withheld order, from the latest attempt of each relay step; of several relay steps the worst
+ * stands. Only a passing "rejected_revoked_key" is a successful revocation test.
+ */
 export function revocationResult(assertions: readonly Assertion[]): RevocationResult {
-  const a = assertions.find((x) => /^step-\d+-relay_withheld$/.test(x.id));
-  if (a === undefined) return { cls: "not-run", text: "no withheld order was relayed in this run" };
+  const results = [...latestSteps(assertions.filter(isRelay)).values()].map((s) => relayResult(s.assertion));
+  return results.find((r) => r.cls === "failure") ?? results.find((r) => r.cls !== "success") ?? results[0] ?? { cls: "not-run", text: "no withheld order was relayed in this run" };
+}
+
+function relayResult(a: Assertion): RevocationResult {
   const parsed = z.object({ classification: z.string() }).safeParse(a.observed);
   const classification = parsed.success ? parsed.data.classification : null;
   if (classification === "rejected_revoked_key") {
@@ -75,26 +110,59 @@ export const RELAY_STEP_ONLY = "withheld-order relay step held (that step only)"
 
 export interface RunVerdict {
   revocation: RevocationResult;
-  /** Step verifications other than the relay, and how many did not hold. */
+  /** Steps other than the relay with a verification, and how many of their latest attempts did not hold. */
   steps: number;
   failedSteps: number;
+  /** Failed attempts that a later attempt of the same step superseded. */
+  superseded: number;
   failedPreflight: number;
   stopped: boolean;
-  /** The whole run holds: the relay was rejected for the removed key, every assertion passed and nothing is unknown. */
+  /** What keeps the run from being shown complete: unrecorded or unverified manifest steps, a missing grant, revoke or recovery. */
+  missing: string[];
+  /**
+   * The whole run holds: the evidence records the manifest's steps, the latest attempt of every one of them held, a
+   * grant, a revoke and the recovery of each asset are among them, the relay was rejected for the removed key, no
+   * preflight check failed and nothing is unknown.
+   */
   holds: boolean;
   cls: "success" | "failure" | "inconclusive";
 }
 
+const ASSETS = ["usdc", "wnear"] as const;
+
 export function runVerdict(ev: Evidence): RunVerdict {
   const revocation = revocationResult(ev.assertions);
-  const relay = (a: Assertion): boolean => /-relay_withheld$/.test(a.id);
-  const steps = ev.assertions.filter((a) => a.id.startsWith("step-") && !relay(a));
-  const failedSteps = steps.filter((a) => !a.passed).length;
+  const stepAssertions = ev.assertions.filter((a) => a.id.startsWith("step-"));
+  const latest = latestSteps(stepAssertions);
+  const steps = [...latest.values()].filter((s) => s.kind !== "relay_withheld");
+  const failedSteps = steps.filter((s) => !s.assertion.passed).length;
+  const current = new Set([...latest.values()].map((s) => s.assertion));
+  const superseded = stepAssertions.filter((a) => STEP_ID.test(a.id) && !current.has(a) && !a.passed).length;
   const failedPreflight = ev.assertions.filter((a) => !a.id.startsWith("step-") && !a.passed).length;
   const stopped = ev.unknowns.length > 0;
-  const holds = revocation.cls === "success" && failedSteps === 0 && failedPreflight === 0 && !stopped;
+
+  const missing = stepAssertions.filter((a) => !STEP_ID.test(a.id)).map((a) => `${a.id} is not a step verification the runner writes`);
+  const recorded = ev.environment.manifest_steps;
+  if (recorded === undefined || recorded === "") {
+    missing.push("the evidence does not record the manifest's steps (environment.manifest_steps), so completion was not checked");
+  } else {
+    const kinds = recorded.split(",");
+    for (const [i, kind] of kinds.entries()) {
+      const s = latest.get(i + 1);
+      if (s === undefined) missing.push(`step ${String(i + 1)} ${kind} has no verification`);
+      else if (s.kind !== kind) missing.push(`step ${String(i + 1)} is ${kind} in the manifest, its verification is for ${s.kind}`);
+    }
+    for (const s of latest.values()) if (s.step > kinds.length) missing.push(`step ${String(s.step)} ${s.kind} is not a manifest step`);
+  }
+  const held = [...latest.values()].filter((s) => s.assertion.passed);
+  if (!held.some((s) => s.kind === "grant")) missing.push("no grant that held");
+  if (!held.some((s) => s.kind === "revoke" || s.kind === "revoke_external")) missing.push("no revoke that held");
+  const recovered = new Set(held.filter((s) => s.kind === "recover" || s.kind === "recover_external").map((s) => z.object({ asset: z.string() }).safeParse(s.assertion.observed).data?.asset));
+  for (const asset of ASSETS) if (!recovered.has(asset)) missing.push(`no recovery of ${asset} that held`);
+
+  const holds = revocation.cls === "success" && failedSteps === 0 && failedPreflight === 0 && !stopped && missing.length === 0;
   const cls = holds ? "success" : revocation.cls === "failure" || failedSteps > 0 || failedPreflight > 0 ? "failure" : "inconclusive";
-  return { revocation, steps: steps.length, failedSteps, failedPreflight, stopped, holds, cls };
+  return { revocation, steps: steps.length, failedSteps, superseded, failedPreflight, stopped, missing, holds, cls };
 }
 
 const ACCOUNT = /^[a-z0-9][a-z0-9._-]{1,63}$/;
@@ -148,12 +216,12 @@ export function mainnetBody(view: LiveView): string {
   const steps = ev.assertions.filter((a) => a.id.startsWith("step-"));
   const preflight = ev.assertions.filter((a) => !a.id.startsWith("step-"));
   const row = (a: Assertion): string => {
-    const relay = /-relay_withheld$/.test(a.id);
+    const relay = isRelay(a);
     // A rejected relay carries the revocation sentence only when the whole run holds; otherwise it is one step that held.
     const result = relay
-      ? revocationResult([a]).cls === "success" && !verdict.holds
+      ? relayResult(a).cls === "success" && !verdict.holds
         ? word("success", "held (this step only): relay rejected for the removed key")
-        : word(revocationResult([a]).cls, revocationResult([a]).text)
+        : word(relayResult(a).cls, relayResult(a).text)
       : word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold");
     return `<tr><td><code>${escapeHtml(a.id)}</code></td><td>${result}</td><td>${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(JSON.stringify(a.observed, null, 2).slice(0, 4000))}</pre></details></td></tr>`;
   };
@@ -162,6 +230,7 @@ export function mainnetBody(view: LiveView): string {
     ...(verdict.failedSteps > 0 ? [`${String(verdict.failedSteps)} of ${String(verdict.steps)} step verifications did not hold`] : []),
     ...(verdict.failedPreflight > 0 ? [`${String(verdict.failedPreflight)} preflight checks did not hold`] : []),
     ...(verdict.stopped ? [`run stopped: ${ev.unknowns.join("; ")}`] : []),
+    ...verdict.missing,
   ];
   const headline = verdict.holds
     ? word("success", "revocation test passed")
@@ -169,7 +238,9 @@ export function mainnetBody(view: LiveView): string {
       ? word(verdict.cls, verdict.cls === "failure" ? "run did not hold" : "run incomplete")
       : word(revocation.cls, revocation.cls === "failure" ? "revocation test failed" : revocation.cls === "not-run" ? "revocation test not run" : "revocation test inconclusive");
   const sentence = verdict.holds
-    ? `${revocation.text}. The run completed every manifest step and every assertion held.`
+    ? verdict.superseded === 0
+      ? `${revocation.text}. The run completed every manifest step and every assertion held.`
+      : `${revocation.text}. The run completed every manifest step: the latest attempt of each held, and ${String(verdict.superseded)} earlier attempt${verdict.superseded === 1 ? "" : "s"} that did not hold ${verdict.superseded === 1 ? "was" : "were"} retried.`
     : revocation.cls === "success"
       ? `The ${RELAY_STEP_ONLY}: the relay was rejected for the removed key. The run as a whole does not hold: ${shortfalls.join("; ")}.`
       : `${revocation.text}.${shortfalls.length > 0 ? ` Also: ${shortfalls.join("; ")}.` : ""}`;

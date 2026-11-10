@@ -7,7 +7,7 @@ import { join, relative, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { ACCEPTANCE_SCHEMA, type Acceptance, type BaselineOutcome, type CaseResult, type T5Data } from "../src/evidence/schema.js";
-import { LIVE_MAINNET_PATH, isTxHash, loadLive } from "../src/page/mainnet.js";
+import { LIVE_MAINNET_PATH, isTxHash, liveView, loadLive, mainnetBody, revocationResult, runVerdict } from "../src/page/mainnet.js";
 import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/page/render.js";
 import { clientScript, scriptHash } from "../src/page/verify.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
@@ -452,21 +452,39 @@ describe("evidence page: revocation story", () => {
 
 describe("evidence page: mainnet section", () => {
   const PENDING = "Mainnet run: pending approval — no mainnet transaction has been executed";
+  const STEPS = "check,grant,propose,fill,withhold,revoke,relay_withheld,recover,recover,withdraw";
+  const step = (id: string, passed: boolean, observed: unknown = null): Assertion => ({ id, gate: "LIVE", description: `${id} (SYNTHETIC)`, passed, observed });
+  const recover = (n: number, asset: string): Assertion => step(`step-${String(n)}-recover`, true, { asset });
   const live = (over: Partial<Evidence> = {}): Evidence =>
     Evidence.parse({
       ...specimen(),
       mode: "mainnet",
       command: "MANDATE_LIVE=1 make live (SYNTHETIC)",
-      environment: { chain_id: "mainnet", label: "SYNTHETIC" },
+      environment: { chain_id: "mainnet", label: "SYNTHETIC", manifest_steps: STEPS },
       identifiers: { mandate: "mandate.synthetic.near", owner: "owner.synthetic.near" },
       receipts: [
         { label: "owner grant (SYNTHETIC)", tx_hash: txHash("grant"), block_height: 1, outcome: "success", detail: { step: 2, signer_id: "owner.synthetic.near", fee_yocto: "1000000000000000000000" } },
         { label: "owner revoke (SYNTHETIC)", tx_hash: txHash("revoke"), block_height: 2, outcome: "success", detail: { step: 6, signer_id: "owner.synthetic.near" } },
       ],
-      assertions: [check("step-2-grant", "LIVE", "grant: terminal verification"), check("step-6-revoke", "LIVE", "revoke: terminal verification")],
+      assertions: [
+        check("step-1-check", "LIVE", "read-only state check"),
+        check("step-2-grant", "LIVE", "grant: terminal verification"),
+        check("step-3-propose", "LIVE", "propose: terminal verification"),
+        check("step-4-fill", "LIVE", "fill: terminal verification"),
+        check("step-5-withhold", "LIVE", "withhold"),
+        check("step-6-revoke", "LIVE", "revoke: terminal verification"),
+        recover(8, "usdc"),
+        recover(9, "wnear"),
+        step("step-10-withdraw", true),
+      ],
       unknowns: [],
       ...over,
     });
+  const verdictOf = (ev: Evidence): { cls: string; headline: string; sentence: string } => {
+    const m = /<div class="verdict"><span class="status ([a-z-]+)">([^<]*)<\/span><p>([^<]*)<\/p>/.exec(mainnetBody(liveView(ev)));
+    return { cls: m?.[1] ?? "", headline: m?.[2] ?? "", sentence: m?.[3] ?? "" };
+  };
+  const without = (ev: Evidence, ...ids: string[]): Evidence => ({ ...ev, assertions: ev.assertions.filter((a) => !ids.includes(a.id)) });
   const relay = (classification: string, passed: boolean): Assertion => ({ id: "step-7-relay_withheld", gate: "LIVE", description: "relay_withheld (SYNTHETIC)", passed, observed: { classification } });
   const withRelay = (classification: string, passed: boolean): Evidence => live({ assertions: [...live().assertions, relay(classification, passed)] });
   const noMainnet = (html: string) => {
@@ -543,6 +561,68 @@ describe("evidence page: mainnet section", () => {
     // The only external links are explorer links and the source repository; nothing is loaded from the network.
     expect(html).not.toMatch(/\bsrc=["']?(https?:)?\/\//i);
     for (const m of html.matchAll(/href="(https?:[^"]*)"/g)) if (m[1] !== REPO_URL) expect(m[1]).toMatch(/^https:\/\/nearblocks\.io\/txns\/[1-9A-HJ-NP-Za-km-z]+$/);
+  });
+
+  const COMPLETE = "The run completed every manifest step";
+
+  it("says the run completed every manifest step only when that was checked against the recorded manifest steps", () => {
+    const full = withRelay("rejected_revoked_key", true);
+    // Control: every recorded manifest step has a verification that held.
+    expect(runVerdict(full)).toMatchObject({ holds: true, cls: "success", missing: [], steps: 9, failedSteps: 0, superseded: 0 });
+    expect(verdictOf(full)).toEqual({ cls: "success", headline: "revocation test passed", sentence: `withheld order rejected after confirmed revocation (rejected_revoked_key). ${COMPLETE} and every assertion held.` });
+
+    const cases: [string, Evidence, string[]][] = [
+      // The reviewer's counterexample: a relay-only record with zero other step assertions.
+      ["relay only", { ...full, assertions: full.assertions.filter((a) => a.id.endsWith("-relay_withheld")) }, ["step 1 check has no verification", "step 10 withdraw has no verification", "no grant that held", "no revoke that held", "no recovery of usdc that held", "no recovery of wnear that held"]],
+      ["manifest steps not recorded", { ...full, environment: { chain_id: "mainnet" } }, ["the evidence does not record the manifest's steps (environment.manifest_steps), so completion was not checked"]],
+      ["one manifest step unverified", without(full, "step-4-fill"), ["step 4 fill has no verification"]],
+      ["last manifest step unverified", without(full, "step-10-withdraw"), ["step 10 withdraw has no verification"]],
+      ["no recovery", without(full, "step-8-recover", "step-9-recover"), ["step 8 recover has no verification", "step 9 recover has no verification", "no recovery of usdc that held", "no recovery of wnear that held"]],
+      ["one asset recovered twice, the other never", { ...full, assertions: full.assertions.map((a) => (a.id === "step-9-recover" ? recover(9, "usdc") : a)) }, ["no recovery of wnear that held"]],
+      ["a manifest without grant, revoke or recovery", { ...full, environment: { chain_id: "mainnet", manifest_steps: "relay_withheld" }, assertions: [{ ...relay("rejected_revoked_key", true), id: "step-1-relay_withheld" }] }, ["no grant that held", "no revoke that held", "no recovery of usdc that held", "no recovery of wnear that held"]],
+      ["a verification of another kind than the manifest step", { ...full, environment: { chain_id: "mainnet", manifest_steps: STEPS.replace("fill", "settle") } }, ["step 4 is settle in the manifest, its verification is for fill"]],
+      ["a verification beyond the manifest", { ...full, assertions: [...full.assertions, step("step-11-check", true)] }, ["step 11 check is not a manifest step"]],
+    ];
+    for (const [name, ev, missing] of cases) {
+      const v = runVerdict(ev);
+      expect([name, v.holds, v.cls, v.revocation.cls]).toEqual([name, false, "inconclusive", "success"]);
+      for (const m of missing) expect(v.missing, name).toContain(m);
+      const shown = verdictOf(ev);
+      expect([name, shown.cls, shown.headline]).toEqual([name, "inconclusive", "run incomplete"]);
+      for (const m of missing) expect(shown.sentence, name).toContain(escapeHtml(m));
+      const html = renderHtml(specimen(), { acceptance: null, live: ev });
+      expect(html, name).not.toContain(COMPLETE);
+      expect(html, name).not.toContain("revocation test passed");
+      expect(html, name).not.toContain("withheld order rejected after confirmed revocation");
+    }
+    // A failed preflight check or an unknown still keeps a complete record from holding.
+    expect(runVerdict({ ...full, assertions: [...full.assertions, step("preflight-accounts", false)] })).toMatchObject({ holds: false, cls: "failure", failedPreflight: 1, missing: [] });
+    expect(runVerdict({ ...full, unknowns: ["SYNTHETIC"] })).toMatchObject({ holds: false, cls: "inconclusive", stopped: true, missing: [] });
+  });
+
+  it("lets a step's latest attempt supersede its earlier ones, for the relay too", () => {
+    const full = withRelay("rejected_revoked_key", true);
+    const withdraw = (first: boolean, second: boolean): Evidence => ({ ...without(full, "step-10-withdraw"), assertions: [...without(full, "step-10-withdraw").assertions, step("step-10-withdraw", first), step("step-10-withdraw-attempt-2", second)] });
+    // Control: a refunded withdrawal retried successfully holds, and the page says an attempt was retried.
+    const retried = withdraw(false, true);
+    expect(runVerdict(retried)).toMatchObject({ holds: true, failedSteps: 0, superseded: 1, steps: 9 });
+    expect(verdictOf(retried).sentence).toBe(`withheld order rejected after confirmed revocation (rejected_revoked_key). ${COMPLETE}: the latest attempt of each held, and 1 earlier attempt that did not hold was retried.`);
+    // A later attempt that failed stands, whatever the first one said.
+    expect(runVerdict(withdraw(true, false))).toMatchObject({ holds: false, cls: "failure", failedSteps: 1, superseded: 0 });
+    expect(verdictOf(withdraw(true, false))).toMatchObject({ cls: "failure", headline: "run did not hold" });
+
+    // The relay: an attempt suffix used to be ignored, so a later attempt could not change the result.
+    const second = (classification: string, passed: boolean): Evidence => ({ ...full, assertions: [...full.assertions, { ...relay(classification, passed), id: "step-7-relay_withheld-attempt-2" }] });
+    expect(revocationResult(second("executed", false).assertions).cls).toBe("failure");
+    expect(runVerdict(second("executed", false))).toMatchObject({ holds: false, cls: "failure" });
+    expect(renderHtml(specimen(), { acceptance: null, live: second("executed", false) })).not.toContain("revocation test passed");
+    expect(revocationResult(second("inconclusive", false).assertions).cls).toBe("inconclusive");
+    expect(revocationResult([{ ...relay("rejected_revoked_key", true), id: "step-7-relay_withheld-attempt-2" }]).cls).toBe("success");
+    // Control: a later attempt that was rejected for the removed key supersedes an inconclusive first one.
+    const recovered: Evidence = { ...full, assertions: [...without(full, "step-7-relay_withheld").assertions, relay("inconclusive", false), { ...relay("rejected_revoked_key", true), id: "step-7-relay_withheld-attempt-2" }] };
+    expect(runVerdict(recovered)).toMatchObject({ holds: true, superseded: 1 });
+    // Two relay steps: the worst stands.
+    expect(revocationResult([relay("rejected_revoked_key", true), { ...relay("executed", false), id: "step-9-relay_withheld" }]).cls).toBe("failure");
   });
 
   it("shows a stopped mainnet run as stopped", () => {
