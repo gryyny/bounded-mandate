@@ -1,40 +1,40 @@
-# Bounded Mandate: keyless AI trading on NEAR Intents
+# Bounded Mandate: AI trading on NEAR Intents without a signing key
 
 Give an AI agent trading power. Keep the power to stop it.
 
 An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.
 
-**The problem.** Pausing a trading agent stops new orders, but orders it already signed stay valid until they expire or are cancelled, and how they can be cancelled depends on the venue: on the NEAR Intents verifier, each cancellation names one order's nonce and is signed by the same key. Here the owner's `revoke` removes the grant's signing key from the verifier. Once that removal is confirmed, every outstanding order of the grant fails, including one someone held back; orders that executed before it are not reversed.
+**The problem.** Pausing an agent stops new orders, but orders it already signed stay valid until they expire or are cancelled one by one. Here `revoke` removes the grant's signing key at the verifier; once removal is confirmed, every outstanding order fails. The gain over waiting is at most the order lifetime: 60 s in the demo, 120 s proposed for mainnet (not approved or run).
 
 **What NEAR provides.**
-- **Chain Signatures.** The mandate contract owns its account on `intents.near` and gets every order signature from `v1.signer` on its own path `mandate/v1/<epoch>`, after checking the limits. No single person or server holds that key; the MPC network's nodes hold only key shares.
-- **The verifier's key registry.** `intents.near` keeps each account's signing keys (`add_public_key`, `remove_public_key`) and checks the key when it executes a signed intent. Revocation is a key removal anyone can check with a view call.
-- **Function-call keys.** The agent's only NEAR key can call `propose_order` on the mandate and nothing else; the protocol refuses other calls, deposits and transfers before the contract runs.
+- **Chain Signatures.** The contract gets each signature from `v1.signer` after checking the limits; no single person or server holds that key. In the sandbox evidence the signer is a single labelled test double, and our own mainnet signing is unexercised.
+- **Verifier key registry.** `intents.near` checks the registered key on every signed intent, so revoking is a key removal.
+- **Function-call keys.** The agent's key can call only `propose_order`.
 
 | Evidence | State |
 | --- | --- |
-| Sandbox execution | **Certified at 0bcb3f4**: all 37 required cases of 17 gates in one clean run, in a fresh clone and in CI ([acceptance](evidence/0bcb3f4/acceptance.json)). Our contract and the exact mainnet verifier WASM execute; the MPC signer, oracle and tokens are labelled test doubles ([stubs/](stubs/)). |
-| Model output | A genuine recorded `claude-haiku-5-5` interaction, replayed into the contract ([MODEL](evidence/0bcb3f4/tests/MODEL.recorded-proposal.json)). No gate or demo calls a model or needs a model key. |
-| Verifier code | The pinned verifier WASM hashes to the code deployed at `intents.near` ([fixtures/manifest.json](fixtures/manifest.json), [read-only check](docs/reviewers.md#verify-on-mainnet-read-only)). |
-| MPC signer response | A real mainnet `v1.signer` EdDSA response, recorded read-only from a third party's request, decodes with the contract's own decoder and verifies under the derived key; altered copies fail ([fixture](fixtures/signer/v1-signer-eddsa-sign.json), [test](contract/tests/signer_conformance.rs)). This is not our own signing on mainnet. |
-| Mainnet | **Not run.** No mainnet transaction has been executed. |
-| Public links | **Planned, unpublished.** The repository is private pending publication approval; the hosted page and videos are not published. |
+| Sandbox execution | **Certified at 0bcb3f4**: 37 of 37 required cases ([acceptance](evidence/0bcb3f4/acceptance.json)). Certified means this project's own gate (all required cases passing in one run of one clean revision, in a fresh clone and in CI), not an external audit ([definition](docs/reviewers.md#what-certified-means)). Signer, oracle and tokens are labelled test doubles. |
+| Model output | Genuine recorded `claude-haiku-5-5` output, replayed ([MODEL](evidence/0bcb3f4/tests/MODEL.recorded-proposal.json)); no gate or demo calls a model. |
+| Verifier code | The pinned WASM hashes to the code at `intents.near` ([check](docs/reviewers.md#verify-on-mainnet-read-only)). |
+| MPC signer response | A real mainnet `v1.signer` response, recorded read-only, verifies in the contract's decoder ([test](contract/tests/signer_conformance.rs)); not our own signing. |
+| Mainnet | **Not run**: no mainnet transaction. |
+| Public links | **Planned, unpublished**; after publication: [page](https://gryyny.github.io/bounded-mandate/), [console](https://gryyny.github.io/bounded-mandate/console/), [short video](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4). |
 
-**Try it.** No funds, model key or private repository needed. Clone, then:
+**Try it** from a clone; no funds or model key:
 
 | Do | Needs | See |
 | --- | --- | --- |
-| `make verify` (same as `node verify.mjs`) | Node 20 or later; no install; offline by default | Checks the bundle marked certified in [evidence/index.json](evidence/index.json): every file against its `SHA256SUMS`, each required case from its own report, and this checkout's `SPEC.md`, fixtures and deployment candidate. One line per gate, ending `VERIFIED: …` or `NOT VERIFIED: …`, non-zero exit on any mismatch. It checks recorded evidence and does not rerun the tests. Run it at a commit that contains the certified bundle, such as this README's: it ends `VERIFIED: evidence/0bcb3f4 (25 passed, 0 failed, 0 not verified, 1 skipped). Recorded evidence only; the tests were not rerun.` (the skip is the mainnet line: no mainnet run is recorded). `--mainnet` reads a run's receipts from a public archival RPC; none exist yet, so it says so and exits 1. |
-| `make quick` | Node 24; network for npm, the NEAR sandbox binary and Chromium; no Rust. On Linux, Chromium's system libraries: `cd tools && npm ci --ignore-scripts && npx --no-install playwright install-deps chromium` (root) | The demo story on the exact deployment candidate with prebuilt test doubles pinned in [fixtures/prebuilt](fixtures/prebuilt/provenance.json) with provenance (built twice in the pinned cargo-near image with identical bytes; `make quick` checks their hashes and never rebuilds them). Writes only `out/quick/`; labelled prebuilt and uncertified. 60/60 checks (59 demo checks and the prebuilt pin check). On a clean GitHub Actions ubuntu-24.04 runner with no Rust toolchain: 73 s from job start (`npm ci`, Chromium with its system libraries, then `make quick` in 41 s: setup 13.9 s, story 20.4 s). 40 s warm on macOS arm64. |
-| `make test && make demo` | Rust, `cargo-near` 0.22.0, Node 24, Chromium ([platform needs](docs/reviewers.md#platform-needs)) | `CERTIFIED: run …`, then `… 59/59 assertions passed …`. At 0bcb3f4 in a fresh clone on macOS arm64 (Node 24.22.1): `make test` 1503 s cold, `make demo` 59 s warm (run after `make test`). GitHub Actions ubuntu-24.04: 2328 s and 81 s. |
+| `make verify` | Node 20+; offline | Last line starts `VERIFIED: evidence/0bcb3f4` |
+| `make quick` | Node 24, network; no Rust | `60/60 assertions passed`, labelled uncertified |
+| `make test && make demo` | Rust, `cargo-near`, Node 24 | `CERTIFIED: run …`, then `59/59 assertions passed` |
 
-Or open the [committed evidence page](evidence/0bcb3f4/page/index.html) offline. Outputs and timings: [reviewer guide](docs/reviewers.md#running-the-demo-and-the-gates).
+`make verify` checks committed evidence and reruns nothing. `SHA256SUMS` is unsigned: it detects accidental or partial change, not a self-consistent rewrite, so trust rests on the commit history and on rerunning `make test`. [Setup, timings, outputs](docs/reviewers.md#running-the-demo-and-the-gates); [evidence page](evidence/0bcb3f4/page/index.html).
 
 ## Three checkable facts
 
 Sandbox results at 0bcb3f4 with labelled test doubles; selected samples, not a statistical rate.
 
-1. **No key.** The agent's only key is a function-call key for `propose_order`; ten agent-key attacks (other methods, deposits, `mt_transfer`, key changes) were refused by the protocol ([BOUNDARY.attacks](evidence/0bcb3f4/tests/BOUNDARY.attacks.json)). The order-signing key is derived by the MPC network (a test double in sandbox), and the contract requests each signature only after its checks ([`propose_order`](contract/src/lib.rs#L419)).
+1. **No signing key.** The agent's only key is a function-call key for `propose_order`; ten agent-key attacks (other methods, deposits, `mt_transfer`, key changes) were refused by the protocol ([BOUNDARY.attacks](evidence/0bcb3f4/tests/BOUNDARY.attacks.json)). The order-signing key is derived by the MPC network (a test double in sandbox), and the contract requests each signature only after its checks ([`propose_order`](contract/src/lib.rs#L419)).
 2. **Limits at the signature.** Of a selected sample of 15 valid scripted trades, 15 settled with no authorization refusal and every fill within the 0.5% concession ([T3.concession](evidence/0bcb3f4/tests/T3.concession.json)). 39 of 39 hostile requests were refused at five layers: 10 local validation, 14 contract method checks, 4 policy checks, 10 agent key permission checks, 1 verifier check ([BOUNDARY.attacks](evidence/0bcb3f4/tests/BOUNDARY.attacks.json), [attack log](docs/reviewers.md#attack-log)).
 3. **Stop and exit.** After confirmed removal of the grant key at the verifier, a withheld signed order was rejected with the verifier's missing-key error while at least 46 s of its lifetime remained in every post-removal relay, and again after a regrant, which signs with a key on a new path ([T1.withheld-regrant](evidence/0bcb3f4/tests/T1.withheld-regrant.json)). `recover` returned both assets to the owner's Intents account with the agent stopped, the oracle failing and the MPC on hold ([T4.dependency-failure](evidence/0bcb3f4/tests/T4.dependency-failure.json)).
 
@@ -42,15 +42,15 @@ At the open-order limit, 32 open orders (20 signed, 12 awaiting their signature)
 
 ## Why not just…
 
-Three withheld 1 USDC orders per strategy on the pinned verifier, relayed unexpired by an unrelated account; one of them is missing from the owner's ledger ([COMPARE](evidence/0bcb3f4/tests/COMPARE.revocation-alternatives.json), [T5](evidence/0bcb3f4/tests/T5.baseline.json)).
+Three withheld 1 USDC orders per strategy on the pinned verifier, relayed unexpired by an unrelated account; one of them is missing from the owner's ledger. The first two rows were measured at verifier level on a plain account whose key is a labelled test key standing in for the MPC-derived key (COMPARE); the third compares the two contracts (T5, T1) ([COMPARE](evidence/0bcb3f4/tests/COMPARE.revocation-alternatives.json), [T5](evidence/0bcb3f4/tests/T5.baseline.json)).
 
-| Instead of key removal | Measured result | Remove the key, resume with a fresh key (the mandate's mechanism) |
+| Instead of key removal | Measured result | Remove the key, resume with a fresh key (the mechanism the mandate uses) |
 | --- | --- | --- |
 | Wait for expiry | 3 of 3 withheld orders executed; protection starts at each order's deadline | 0 of 3 executed after confirmed removal |
 | Cancel nonces (an empty intent signed per order) | Needs the account's signer for each one. With the ledger's two nonces, 1 of 3 still executed; with a complete list, 0 of 3 | No list and no signature by the grant's key; the owner signs `revoke` |
 | Pause the agent | In our re-implementation of the Claw Guard design (not their deployed product), a withheld order executed after pause and agent removal; a regrant revived a second one that removing the key had blocked | Rejected after confirmed removal and after regrant (T1) |
 
-The advantage over waiting is bounded by the order lifetime: 120 s in this experiment, 60 s in the demo and 120 s proposed for mainnet. Cancellation is venue-specific, other products can also remove and rotate keys, and the mainnet window is not yet measured. Details and limits: [comparison](docs/comparison.md).
+The advantage over waiting is bounded by the order lifetime: 120 s in this experiment, 60 s in the demo and 120 s proposed for mainnet. The 120 s is a proposed deviation from the spec's 60 s oracle maximum age, pending the owner's decision; it is not approved and has not run. Cancellation is venue-specific, other products can also remove and rotate keys, and the mainnet window is not yet measured. Details and limits: [comparison](docs/comparison.md).
 
 ## Where to check each criterion
 
@@ -84,7 +84,13 @@ More: [known limits](docs/reviewers.md#known-limits), [status by area](docs/revi
 
 ## Open challenge (optional, not run)
 
-After a mainnet run, and only with a separate owner approval, a fresh grant could let anyone act as the agent against a small deposit (`make challenge`, sandbox case LIVE.open-challenge). The agent's private key is never committed. What it shows and does not show: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
+Optional and not run. After a mainnet run, and only with the owner's separate approval of the deposit and of publishing the key, a fresh grant could let anyone act as the agent against a small deposit (`make challenge`, sandbox case LIVE.open-challenge). The agent's private key is never committed. Its limits, with the policy proposed in the unapproved [template](tools/src/live/manifest.open-challenge.example.json):
+
+- **A holder of the published agent key cannot** withdraw, transfer to another account, change keys or policy, or exceed the limits: per-order and outstanding caps of 20%, a 0.5% concession bound, a 100% turnover cap and the 2% loss breaker.
+- **They can** make permitted but poor trades at up to the 0.5% concession on each order, up to the turnover cap, and exhaust the agent's gas allowance (at most 0.25 NEAR) and the grant's proposal budget (at most 10 proposals).
+- **Loss bound.** By design the concession given up is at most the turnover cap times the concession bound, 100% × 0.5% = 0.5% of the challenge deposit's initial value, plus the gas allowance. The loss breaker stops new authorizations and is not a loss cap; market moves, stale references and fees are outside this bound, and an unknown contract defect could lose the deposit.
+
+More: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
 
 ## Mainnet runner (opt-in, not run)
 
@@ -126,6 +132,7 @@ npx tsx src/agent/rehearse.ts --state ../out/rehearsal-state.json --manifest <ap
 | `near-api-js` | 7.3.1 | MIT AND Apache-2.0 | RPC and transactions in `tools/` |
 | `near-sandbox` (npm) | 0.3.4 | MIT | local sandbox for the demo |
 | `zod` | 4.6.7 | MIT | schema validation of model output and RPC results |
+| `@hot-labs/near-connect` | 0.11.4 | MIT (npm metadata; the repository has no LICENSE file) | NEAR Connect wallet connector, inlined into the shipped owner console page |
 | `@anthropic-ai/sdk` | 0.136.0 | MIT | optional provider for recording new model interactions; unused by gates and demo |
 | `typescript` / `tsx` | 6.0.3 / 4.23.15 | Apache-2.0 / MIT | build and script runner |
 | `vitest` | 5.0.5 | MIT | TypeScript tests |
@@ -138,6 +145,9 @@ npx tsx src/agent/rehearse.ts --state ../out/rehearsal-state.json --manifest <ap
 - [baseline/claw-guard-adapted](baseline/claw-guard-adapted): our re-implementation of the [Claw Guard](https://github.com/metafrogmeme-droid/claw-guard-near) design at commit 225d37d (MIT, Patrick Baur). The design is adapted and no code is copied; it serves T5 alone.
 - [fixtures/sputnik/sputnikdao2-2.3.1.wasm](fixtures/sputnik/sputnikdao2-2.3.1.wasm): the Sputnik DAO v2 code that the mainnet factory `sputnik-dao.near` deploys, retrieved read-only and unmodified (MIT, near-daos), used only as the DAO owner in sandbox tests. Provenance is in [fixtures/manifest.json](fixtures/manifest.json).
 - [fixtures/vectors/oracle.json](fixtures/vectors/oracle.json): public read-only responses of `aggregate-oracle.near`.
+- [fixtures/signer/v1-signer-eddsa-sign.json](fixtures/signer/v1-signer-eddsa-sign.json): read-only records of a third party's mainnet `v1.signer` sign request, its response and the derived public key (public chain data), used by the SIGNER gate. Provenance is in [its provenance file](fixtures/signer/v1-signer-eddsa-sign.provenance.json).
+- [fixtures/wallets/near-connect.json](fixtures/wallets/near-connect.json): wallet entries from the NEAR Connect wallet manifest ([hot-dao/near-selector@9cee11c](https://github.com/hot-dao/near-selector/tree/9cee11c04cfd42f5a420688f808d4aca612b5fde); MIT per npm metadata), with each adapter URL pinned by commit and sha256. The adapters themselves are not in this repository; the console fetches a chosen wallet's pinned adapter at run time.
+- [fixtures/prebuilt/](fixtures/prebuilt/provenance.json): our own `stubs/` compiled for `make quick`; each WASM contains third-party crates compiled unmodified, listed with their licenses in [NOTICE](NOTICE) (including BSD-3-Clause `curve25519-dalek` 4.1.3, `ed25519-dalek` 2.2.0 and `subtle` 2.6.1, and MPL-2.0 `wee_alloc`).
 - `stubs/`: our own labelled test doubles, written against the documented interfaces of `v1.signer`, `aggregate-oracle.near` and NEP-141.
 
 **Tooling, not distributed:**
