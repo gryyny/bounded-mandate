@@ -1,4 +1,4 @@
-# DISABLED. GitHub Pages deployment for the certified evidence page and owner console.
+# DISABLED. GitHub Pages deployment for the certified evidence page, owner console and the two video cuts.
 #
 # This file is deliberately outside .github/workflows/, so GitHub never runs it. Enabling it publishes the
 # site and needs the lead's separate approval (see hosting/README.md). To enable after approval:
@@ -8,6 +8,11 @@
 #
 # It serves the committed, certified bytes unchanged: nothing is built or edited here. It fails before
 # upload if the local routing/CSP check fails or the bytes differ from the certified evidence.
+#
+# The evidence page links to console/ and to video/bounded-mandate-short.mp4 and video/bounded-mandate-demo.mp4
+# relative to the site root, so the bundle must hold the console and both cuts. The cuts are committed under
+# evidence/<revision>/video/ before the bundle's SHA256SUMS is written, so the sums and `node verify.mjs` cover
+# the same files that are served here.
 name: pages
 
 on:
@@ -48,17 +53,23 @@ jobs:
           case "$REVISION" in (*[!0-9a-f]*|'') echo "revision must be a hex commit id" >&2; exit 2;; esac
           dir="evidence/$REVISION"
           test -f "$dir/page/index.html"
-          console_args=()
-          if [ -d "$dir/console" ]; then console_args=(--console "$PWD/$dir/console"); fi
+          # The page links to the console, so the console of the same revision is required.
+          test -f "$dir/console/index.html"
+          console_args=(--console "$PWD/$dir/console")
           # Served cuts must equal the certified ones: their sha256 is checked against evidence/<rev>/video.json.
-          # The planned video URLs are served from exactly the two certified cuts; nothing else is served there.
+          # video/ holds exactly the two certified cuts the page links to; nothing else is served there.
           test -f "$dir/video.json"
           test "$(cd "$dir/video" && ls -A | sort | tr '\n' ' ')" = "bounded-mandate-demo.mp4 bounded-mandate-short.mp4 "
           console_args+=(--video "$PWD/$dir/video" --video-manifest "$PWD/$dir/video.json")
           (cd tools && npx --no-install tsx src/release/main.ts site --page "$PWD/../$dir/page/index.html" "${console_args[@]}")
+          # The bundle's own sums cover the served files (the cuts were committed before SHA256SUMS was written).
+          for f in page/index.html console/index.html video/bounded-mandate-short.mp4 video/bounded-mandate-demo.mp4; do
+            grep -Eq "^[0-9a-f]{64} [ *]$f\$" "$dir/SHA256SUMS" || { echo "$dir/SHA256SUMS does not list $f" >&2; exit 1; }
+          done
+          ( cd "$dir" && sha256sum --check --quiet SHA256SUMS )
           # Served bytes must equal the certified files.
           cmp "$dir/page/index.html" out/release/site/index.html
-          if [ -d "$dir/console" ]; then diff -r "$dir/console" out/release/site/console; fi
+          diff -r "$dir/console" out/release/site/console
           diff -r "$dir/video" out/release/site/video
           ( cd out/release/site && find . -type f ! -name .nojekyll -exec sha256sum {} + | sort -k2 ) | tee out/release/site-sha256.txt
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

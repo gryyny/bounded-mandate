@@ -76,7 +76,7 @@ describe("short video cut", () => {
       "Local sandbox · scripted attacks and order, one replayed model recording",
       "Local sandbox · owner console, test signer, not a wallet",
       "Local sandbox · oracle and MPC test doubles switched off",
-      "Commands · URLs planned, unpublished",
+      "Commands and URLs",
     ]);
     expect(short(storyEvidence(), true)[0]?.provenance).toBe("Summary of one local sandbox run");
     // A revocation by direct owner call is not labelled as the console.
@@ -226,14 +226,16 @@ describe("short video cut", () => {
     expect(closing).not.toMatch(/Certified for this demo:/);
   });
 
-  it("names only the reproduction paths the Makefile ships, and the repository as planned", () => {
+  it("names only the reproduction paths the Makefile ships, and never says whether a URL is published", () => {
     const ev = storyEvidence();
     const none = shortScenes(ev, bindDemo(ev, null), false).at(-1);
-    expect(none?.captions.at(-1)).toBe("Demo: make demo. Full proof: make test && make demo.");
+    expect(none?.captions.at(-1)).toBe("Demo: make demo. Certified path: make test && make demo.");
     expect(none?.body).not.toMatch(/make verify|make quick/);
-    expect(none?.body).toContain(`<b>Repository and evidence page (planned, unpublished):</b> <code>${PLANNED_REPO}</code>`);
+    expect(none?.body).toContain(`<b>Repository and evidence page (hosted site):</b> <code>${PLANNED_REPO}</code>`);
+    // The cut is served beside the page for good, so it never says whether a URL is published; it calls nothing "full proof".
+    for (const sc of [...short(), ...shortScenes(ev, bindDemo(ev, null), false, { verify: "make verify", quick: true })]) expect(`${sc.provenance} ${sc.body} ${sc.captions.join(" ")}`).not.toMatch(/unpublished|not published|Full proof|keyless|No key\b/i);
     const all = shortScenes(ev, bindDemo(ev, null), false, { verify: "make verify, or node verify.mjs with no install", quick: true }).at(-1);
-    expect(all?.captions.at(-1)).toBe("Verify the evidence: make verify, or node verify.mjs with no install. Quick demo: make quick. Full proof: make test && make demo.");
+    expect(all?.captions.at(-1)).toBe("Verify the evidence: make verify, or node verify.mjs with no install. Prebuilt, uncertified demo: make quick. Certified path: make test && make demo.");
     expect(all?.captions.flatMap(chunks)).toHaveLength(2);
     expect(all?.body).toContain("It checks the evidence bundle, not that the tests ran.");
     expect(all?.body).toContain("<code>make quick</code> (prebuilt WASM, uncertified)");

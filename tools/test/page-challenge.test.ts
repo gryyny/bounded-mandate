@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CHALLENGE_DOES_NOT_SHOW, CHALLENGE_SHOWS, ChallengeRecord, KEY_PUBLICATION } from "../src/live/challenge.js";
 import { withoutSecrets } from "../src/page/challenge.js";
 import { escapeHtml, renderHtml } from "../src/page/render.js";
+import { usd, usdc, wnear } from "../src/page/story.js";
 import { Evidence } from "../src/types.js";
 import { AGENT_PUBLIC, SECRET_LOOKING, record } from "./page-challenge-specimen.js";
 import { storyEvidence, txHash } from "./video-story-specimen.js";
@@ -38,21 +39,58 @@ describe("open-challenge panel (SYNTHETIC records)", () => {
     expect(h).not.toContain("Open challenge");
   });
 
-  it("open: states shows and does-not-show verbatim, the public key, 'key not published', grant and orders, with its own label", () => {
+  it("open without a publication link: states shows and does-not-show verbatim, the public key, grant and orders, with its own label", () => {
     const p = panel(render(record("open")));
-    expect(p).toContain('<h2 id="challenge-h">Open challenge: a separate grant whose agent key is public</h2>');
+    expect(p).toContain('<h2 id="challenge-h">Open challenge: a separate grant, apart from the completed run</h2>');
     expect(p).toContain(`<p class="prov"><a href="#real">sandbox open-challenge record, separate from the completed run</a></p>`);
     expect(p).toContain(escapeHtml(CHALLENGE_SHOWS));
     for (const t of CHALLENGE_DOES_NOT_SHOW) expect(p).toContain(`<li>${escapeHtml(t)}</li>`);
     expect(p).toContain(`<code>${AGENT_PUBLIC}</code>`);
-    expect(p).toContain('<span class="muted">key not published</span>');
-    expect(p).toContain('<span class="status inconclusive">open: the agent key is public and the grant is live</span>');
+    // The status follows the record: this one carries no publication link, so the panel never calls the key public.
+    expect(p).toContain('<span class="muted">no publication recorded</span>');
+    expect(p).toContain('<span class="status inconclusive">open: grant active; no publication of the agent key is recorded</span>');
+    const status = p.slice(p.indexOf('<p class="challenge-status">'), p.indexOf("</p>", p.indexOf('<p class="challenge-status">')));
+    expect(status).not.toMatch(/key is (public|published)|grant is live/);
+    // The record's fixed publication sentence (src/live/challenge.ts) is quoted as the record's statement, after saying no link is recorded.
+    expect(p).toContain(`<p>This record carries no publication link. The record&#39;s fixed statement of how the key is published: “${escapeHtml(KEY_PUBLICATION)}”</p>`.replace("record&#39;s", "record's"));
     expect(p).toContain("<code>mandate/v1/3</code>");
     expect(p).toContain("registered at the verifier");
     expect(p).toContain("<strong>5</strong> orders proposed under the challenge grant: executed 2 · rejected:over_cap 3.");
     expect(p).toContain("<code>SYNTHETIC-withheld-9</code>");
     expect(p).toContain("released:key_removed");
     expect(p).toContain("not part of the completed run&#39;s verdict, state strip or gates");
+  });
+
+  it("open with a publication link: the status says the key is published, and the grant's own status", () => {
+    const url = "https://example.invalid/SYNTHETIC-key-post";
+    const open = record("open");
+    const p = panel(render(record("open", { agent_key: { ...open.agent_key, publication_url: url } })));
+    expect(p).toContain('<span class="status inconclusive">open: grant active; the agent key is published</span>');
+    expect(p).toContain(`<a href="${url}" rel="noopener noreferrer">${url}</a>`);
+    expect(p).not.toContain("no publication");
+    if (open.grant === null) throw new Error("SYNTHETIC open record has a grant");
+    const revoking = panel(render(record("open", { grant: { ...open.grant, status: "revoking" } })));
+    expect(revoking).toContain("open: grant revoking; no publication of the agent key is recorded");
+  });
+
+  it("shows the record's balances and the exposure in numbers from its policy", () => {
+    const r = record("open");
+    const g = r.grant;
+    if (g === null || g.initial_value === null) throw new Error("SYNTHETIC open record has a grant with an initial value");
+    const p = panel(render(r));
+    expect(p).toContain(`<dt>Mandate&#39;s Intents balances at the read block</dt><dd>${usdc(r.mandate_balances.usdc)} · ${wnear(r.mandate_balances.wnear)}</dd>`);
+    expect(p).not.toContain("Challenge deposit");
+    // Independent derivation: value × turnover cap × concession bound, in basis points of basis points.
+    const loss = (BigInt(g.initial_value) * BigInt(g.policy.turnover_cap_bps) * BigInt(g.policy.max_concession_bps)) / 10_000n / 10_000n;
+    expect(loss > 0n).toBe(true);
+    expect(p).toContain(`Largest by-design trading loss against the reference prices: ${(g.policy.turnover_cap_bps / 100).toFixed(2)}% turnover cap × ${(g.policy.max_concession_bps / 100).toFixed(2)}% concession bound of the initial reference value ${usd(g.initial_value)} = ${usd(loss.toString())}. Arithmetic on the recorded policy, not a measured result.`);
+    expect(p).toContain(`The loss breaker (${(g.policy.breaker_drawdown_bps / 100).toFixed(2)}% drawdown) stops new authorizations only. It is not a loss cap`);
+    expect(p).toContain("Gas: up to the agent key&#39;s remaining allowance, 0.250000 NEAR.");
+    // Absent fields are said to be absent, never assumed.
+    const bare = panel(render(record("open", { grant: { ...g, initial_value: null }, agent_key: { ...r.agent_key, allowance_yocto: null } })));
+    expect(bare).toContain("of the initial reference value (not recorded).");
+    expect(bare).toContain("Gas: the agent key&#39;s allowance is not recorded (key absent or unlimited).");
+    expect(panel(render(record("not-opened")))).not.toContain("Exposure in numbers");
   });
 
   it("closed: shows the close and its transactions; a published key URL becomes a link", () => {
@@ -62,7 +100,7 @@ describe("open-challenge panel (SYNTHETIC records)", () => {
     expect(p).toContain(`<a href="${url}" rel="noopener noreferrer">${url}</a>`);
     expect(p).toContain("SYNTHETIC close completed");
     expect(p).toContain("SYNTHETICrevokeTx");
-    expect(p).not.toContain("key not published");
+    expect(p).not.toContain("no publication recorded");
   });
 
   it("not-opened: says so and shows no grant", () => {

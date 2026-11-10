@@ -18,6 +18,7 @@ import {
   OWNER_CONTROLS_LABEL,
   OwnerWithdrawal,
   PLANNED_LABEL,
+  bundlePaths,
   demoSteps,
   enforcementLayer,
   type StepState,
@@ -406,7 +407,8 @@ export function revocationStory(ev: Evidence): Stage[] {
                 ["Served at", shown.origin],
                 ["Screenshot", shown.screenshot.path],
                 ["Static console view", view?.local_path ?? "not rendered by this run"],
-                ["Console URL", `${view?.planned_url ?? ""} (${PLANNED_LABEL})`],
+                [`Console (${PLANNED_LABEL})`, view?.planned_url ?? ""],
+                ["Console in a clone", bundlePaths(ev.source.product_commit).console],
               ],
         labels: [CONSOLE_BROWSER_LABEL],
         caption:

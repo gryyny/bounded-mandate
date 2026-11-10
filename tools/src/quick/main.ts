@@ -3,10 +3,12 @@
 // prebuilt and uncertified: its output goes to out/quick/ (never out/evidence, out/page or out/console), its page is
 // rendered with no acceptance run, and its evidence records no target/near WASM hash, so the page and video binding
 // can never call it certified.
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { DEMO_RUN, runDemo, type DemoRun } from "../demo/main.js";
 import { REPO_ROOT } from "../near/sandbox.js";
-import { PROVENANCE, QUICK_WASM, loadPrebuilt, type PrebuiltSet } from "./prebuilt.js";
+import { Evidence } from "../types.js";
+import { PROVENANCE, QUICK_WASM, loadPrebuilt, pinHolds, type PrebuiltSet } from "./prebuilt.js";
 
 export const QUICK_LABEL = "PREBUILT, UNCERTIFIED";
 export const QUICK_OUT = "out/quick";
@@ -44,15 +46,40 @@ export function quickRun(set: PrebuiltSet): DemoRun {
       {
         id: "prebuilt-pins",
         gate: "INTEGRITY",
-        description: "every WASM make quick deploys matches its pinned sha256 (fixtures/manifest.json and the prebuilt provenance)",
-        passed: true,
-        observed: { provenance: `fixtures/${PROVENANCE}`, provenance_sha256: set.provenance_sha256, wasm: Object.fromEntries(Object.entries(set.wasm).map(([role, w]) => [role, { path: w.path, sha256: w.sha256 }])) },
+        description: "every WASM make quick deploys matches its sha256 pinned in code (tools/src/quick/prebuilt.ts), in fixtures/manifest.json and, for the prebuilt doubles, in the provenance record",
+        // The result of comparing the deployed bytes with each pin, not a constant.
+        passed: set.pins.length === Object.keys(QUICK_WASM).length && set.pins.every((p) => pinHolds(p)),
+        observed: { provenance: `fixtures/${PROVENANCE}`, provenance_sha256: set.provenance_sha256, wasm: Object.fromEntries(set.pins.map((p) => [p.role, { path: p.path, sha256: p.sha256, pinned_in_code: p.code, pinned_in_manifest: p.manifest, pinned_in_provenance: p.provenance }])) },
       },
     ],
     page: { acceptance: null, latestRunId: null, live: null, reports: [], challenge: null },
     decorate: (html) => labelHtml(html, statement),
   };
 }
+
+/**
+ * Why a finished quick run's evidence is not "the demo story plus the pin check"; empty when it is. The run must
+ * record the story's checks and exactly the one pin check, all passed. `demo` is the saved `make demo` evidence when
+ * it is of the same clean revision: then the story must have the same number of checks.
+ */
+export function quickProblems(quick: Evidence, pre: readonly string[], demo: Evidence | null): string[] {
+  const out: string[] = [];
+  const story = quick.assertions.filter((a) => !pre.includes(a.id));
+  for (const id of pre) {
+    const found = quick.assertions.filter((a) => a.id === id);
+    if (found.length !== 1) out.push(`${id} is recorded ${String(found.length)} times, expected once`);
+  }
+  if (quick.assertions.length !== story.length + 1) out.push(`${String(quick.assertions.length)} assertions recorded, expected the story's ${String(story.length)} + 1`);
+  if (story.length === 0) out.push("the story recorded no checks");
+  const failed = quick.assertions.filter((a) => !a.passed);
+  if (failed.length > 0) out.push(`${String(failed.length)} assertions did not hold: ${failed.map((a) => a.id).join(", ")}`);
+  if (demo !== null && !demo.source.dirty && !quick.source.dirty && demo.source.product_commit === quick.source.product_commit && demo.assertions.length !== story.length) {
+    out.push(`the story recorded ${String(story.length)} checks; make demo at the same revision recorded ${String(demo.assertions.length)}`);
+  }
+  return out;
+}
+
+const readEvidence = (path: string): Evidence | null => (existsSync(path) ? Evidence.parse(JSON.parse(readFileSync(path, "utf8"))) : null);
 
 async function main(): Promise<number> {
   let set: PrebuiltSet;
@@ -65,7 +92,11 @@ async function main(): Promise<number> {
   }
   const run = quickRun(set);
   if (run.outRoot === DEMO_RUN.outRoot) throw new Error("make quick must not write the certified demo output");
-  return runDemo(run);
+  const code = await runDemo(run);
+  const quick = readEvidence(join(REPO_ROOT, run.outRoot, "evidence/demo.json"));
+  const problems = quick === null ? [`${run.outRoot}/evidence/demo.json was not written`] : quickProblems(quick, run.preChecks.map((c) => c.id), readEvidence(join(REPO_ROOT, DEMO_RUN.outRoot, "evidence/demo.json")));
+  for (const p of problems) console.error(`make quick: ${p}`);
+  return code !== 0 || problems.length > 0 ? 1 : 0;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {

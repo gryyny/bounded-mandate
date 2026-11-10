@@ -6,9 +6,22 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
+import { REPO_URL, SITE_PATHS } from "../evidence/journey.js";
 
 export const PLANNED_ORIGIN = "https://gryyny.github.io";
 export const PLANNED_BASE = "/bounded-mandate/";
+
+/**
+ * Links the evidence page (the site's root) must carry: the owner console and both cuts, relative to the base so the
+ * same bytes work under the project path, and the source repository. A release without any of them is a problem.
+ */
+export interface RequiredLinks {
+  /** Paths relative to the base that an `<a href>` of the root page must resolve to, and be served. */
+  internal: readonly string[];
+  /** Absolute URLs an `<a href>` of the root page must equal. */
+  external: readonly string[];
+}
+export const EVIDENCE_PAGE_LINKS: RequiredLinks = { internal: [SITE_PATHS.console, SITE_PATHS.video, SITE_PATHS.walkthrough], external: [REPO_URL] };
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -34,7 +47,7 @@ export function assembleSite(opts: { page: string; console?: string | undefined;
   mkdirSync(opts.out, { recursive: true });
   cpSync(opts.page, join(opts.out, "index.html"));
   if (opts.console !== undefined) cpSync(opts.console, join(opts.out, "console"), { recursive: true });
-  // The planned video URLs live under /video/; the release commit adds the final cuts there.
+  // The page links to the cuts under video/; the bundle holds the certified cuts there (evidence/<rev>/video/).
   if (opts.video !== undefined) cpSync(opts.video, join(opts.out, "video"), { recursive: true });
   // GitHub Pages runs Jekyll unless this file exists; Jekyll drops files and folders starting with _ or .
   writeFileSync(join(opts.out, ".nojekyll"), "");
@@ -257,7 +270,10 @@ interface Fetched {
 
 const get = async (url: string): Promise<Fetched> => {
   const r = await fetch(url, { redirect: "manual" });
-  const body = r.status === 200 ? await r.text() : "";
+  // Only HTML is parsed; a linked cut or asset is checked by status and type, its bytes by checkVideos.
+  const html = (r.headers.get("content-type") ?? "").startsWith("text/html");
+  const body = r.status === 200 && html ? await r.text() : "";
+  if (!html) await r.body?.cancel();
   return { status: r.status, type: r.headers.get("content-type"), body, location: r.headers.get("location") };
 };
 
@@ -295,8 +311,13 @@ export async function checkVideos(root: string, expected: { path: string; sha256
   return { videos, problems };
 }
 
-/** Serves `root` locally and checks the given routes (relative to the base, for example `` and `console/`). */
-export async function checkSite(root: string, routes: string[], base = PLANNED_BASE): Promise<SiteReport> {
+/**
+ * Serves `root` locally and checks the given routes (relative to the base, for example `` and `console/`).
+ * The root page must also carry `required` (default: the evidence page's console, video and source links); every
+ * link is requested, so a site assembled without the console or the cuts fails on the page's own links.
+ * Pass `required: null` only for a site that is not the evidence page.
+ */
+export async function checkSite(root: string, routes: string[], base = PLANNED_BASE, required: RequiredLinks | null = EVIDENCE_PAGE_LINKS): Promise<SiteReport> {
   const { server, origin } = await serveSite(root, base);
   const problems: string[] = [];
   const pages: PageCheck[] = [];
@@ -340,6 +361,12 @@ export async function checkSite(root: string, routes: string[], base = PLANNED_B
         script_hashes: (directives.get("script-src") ?? []).filter((s) => s.startsWith("'sha256-")),
         references: refs.length,
       });
+      if (required !== null && new URL(url).pathname === base) {
+        const anchors = refs.filter((r) => r.tag === "a");
+        const paths = new Set(anchors.filter((r) => r.kind === "relative" || r.kind === "planned-host").map((r) => new URL(r.kind === "planned-host" ? `${origin}${r.url.slice(PLANNED_ORIGIN.length)}` : r.url, url).pathname));
+        for (const path of required.internal) if (!paths.has(`${base}${path}`)) problems.push(`${route}: the evidence page has no link to ${path}`);
+        for (const ext of required.external) if (!anchors.some((r) => r.kind === "external" && r.url === ext)) problems.push(`${route}: the evidence page has no link to ${ext}`);
+      }
       for (const ref of refs) {
         switch (ref.kind) {
           case "javascript":
@@ -386,10 +413,12 @@ export async function checkSite(root: string, routes: string[], base = PLANNED_B
           problems.push(`${from}: <${ref.tag} ${ref.attr}="${ref.url}"> redirects to ${res.location}; link to the trailing-slash form`);
           res = await get(new URL(res.location, target).href);
         }
+        const cut = target.pathname.endsWith(".mp4");
         if (res.status !== 200) {
-          problems.push(`${from}: <${ref.tag} ${ref.attr}="${ref.url}"> is HTTP ${res.status}`);
+          problems.push(`${from}: <${ref.tag} ${ref.attr}="${ref.url}"> is HTTP ${res.status}${cut ? "; assemble the site with the certified cuts (--video <dir> --video-manifest <video.json>)" : ""}`);
           continue;
         }
+        if (cut && res.type !== "video/mp4") problems.push(`${from}: <${ref.tag} ${ref.attr}="${ref.url}"> is served as ${res.type ?? "no content type"}, expected video/mp4`);
         if (ref.tag !== "a" && ref.kind !== "fragment") assets.add(target.pathname);
         if ((res.type ?? "").startsWith("text/html")) html = res.body;
       } else if (ref.tag !== "a" && ref.kind !== "fragment") assets.add(target.pathname);
@@ -405,7 +434,8 @@ export async function checkSite(root: string, routes: string[], base = PLANNED_B
     pages,
     assets: [...assets].sort(),
     external_links: [...external].sort(),
-    problems,
+    // A target linked from several places is reported once.
+    problems: [...new Set(problems)],
     passed: problems.length === 0 && pages.length >= routes.length,
   };
 }

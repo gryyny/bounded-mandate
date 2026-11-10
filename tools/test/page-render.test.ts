@@ -12,7 +12,7 @@ import { escapeHtml, renderHtml, renderLegacyBundle, renderPage } from "../src/p
 import { clientScript, scriptHash } from "../src/page/verify.js";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
 import { ATTACKS, CONSOLE_RENDERED, CONSOLE_REVOKE, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
-import { CONSOLE_BROWSER_LABEL, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../src/evidence/journey.js";
+import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, REPO_URL, SITE_PATHS, bundlePaths } from "../src/evidence/journey.js";
 import { revocationStory } from "../src/page/story.js";
 import { AGENT_API_EXAMPLES, AGENT_API_EXAMPLES_URL, AGENT_API_QUOTE } from "../src/page/related.js";
 
@@ -276,7 +276,10 @@ describe("evidence page: escaping and self-containment", () => {
     expect(html).toContain(`script-src '${scriptHash(script)}'`);
     const rest = html.replace(scripts[0]?.[0] ?? "", "");
     expect(rest).not.toMatch(/<(script|link|img|iframe)\b/i);
-    expect(html).not.toMatch(/\b(src|href)=["']?(https?:)?\/\//i);
+    expect(html).not.toMatch(/\bsrc=["']?(https?:)?\/\//i);
+    // The one external reference is a link the reader may follow to the source repository; nothing is loaded.
+    expect([...new Set([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bhref=["']?((?:https?:)?\/\/[^"'\s>]*)/gi)].map((m) => `${m[1] ?? ""} ${m[2] ?? ""}`))]).toEqual([`a ${REPO_URL}`]);
+    expect(html).not.toMatch(/<(video|audio|source|track|embed|object)\b|\bposter=|\bautoplay\b/i);
     expect(html).toContain("Content-Security-Policy");
     expect(gateStatus(html, "T1")).toBe("not-run");
   });
@@ -427,13 +430,22 @@ describe("evidence page: revocation story", () => {
     for (const gate of Object.keys(REQUIRED_CASES)) expect(gateStatus(html, gate)).toBe("not-run");
   });
 
-  it("offers the three paths, with the video's planned URL as labelled text, not a link", () => {
+  it("offers the three paths: the cuts as links relative to the site, and both local demos named for what they are", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
+    const paths = html.slice(html.indexOf('id="paths"'), html.indexOf("</section>", html.indexOf('id="paths"')));
     expect(html).not.toContain("VIDEO_URL_PENDING");
-    expect(html).toContain(`${PLANNED_LABEL}</span> <code>${PLANNED_URLS.video}</code>`);
+    const clone = bundlePaths(storyEvidence().source.product_commit);
+    expect(paths).toContain(`<a href="${SITE_PATHS.video}">Short cut</a> · <a href="${SITE_PATHS.walkthrough}">longer walkthrough</a> (in a clone: <code>${clone.video}</code>, <code>${clone.walkthrough}</code>)`);
+    // The site is a project site: an absolute or root-absolute link to it would not survive the base path.
     expect(html).not.toContain(`href="${PLANNED_URLS.video}`);
-    expect(html).toContain("Quick sandbox demo.");
-    expect(html).toContain("<code>make test &amp;&amp; make demo</code>");
+    expect(html).not.toMatch(/href="\/[^"]/);
+    // make quick is the prebuilt, uncertified path without Rust; make test && make demo is the certified one.
+    expect(paths).toContain("<strong>Quick demo: prebuilt, uncertified, no Rust.</strong> <code>make quick</code>");
+    expect(paths).toContain("writes only <code>out/quick/</code>");
+    expect(paths).toContain("<strong>Certified path (needs Rust).</strong> On a clean revision run <code>make test &amp;&amp; make demo</code>");
+    expect(paths).toContain("<code>make demo</code> alone runs the story from source but certifies nothing");
+    expect(paths).not.toContain("Quick sandbox demo");
+    expect(paths).toContain("<code>make verify</code> (Node only, offline)");
     expect(html).toContain("<code>make test &amp;&amp; make page</code>");
   });
 });
@@ -528,14 +540,16 @@ describe("evidence page: mainnet section", () => {
     }
     expect(html).toContain("0.001000 NEAR");
     expect(html).toContain(escapeHtml('"method_name":"get_grant"'));
-    // The only external links are explorer links; nothing is loaded from the network.
+    // The only external links are explorer links and the source repository; nothing is loaded from the network.
     expect(html).not.toMatch(/\bsrc=["']?(https?:)?\/\//i);
-    for (const m of html.matchAll(/href="(https?:[^"]*)"/g)) expect(m[1]).toMatch(/^https:\/\/nearblocks\.io\/txns\/[1-9A-HJ-NP-Za-km-z]+$/);
+    for (const m of html.matchAll(/href="(https?:[^"]*)"/g)) if (m[1] !== REPO_URL) expect(m[1]).toMatch(/^https:\/\/nearblocks\.io\/txns\/[1-9A-HJ-NP-Za-km-z]+$/);
   });
 
   it("shows a stopped mainnet run as stopped", () => {
     const html = renderHtml(specimen(), { acceptance: null, live: live({ unknowns: ["run stopped: SYNTHETIC ambiguous outcome"] }) });
-    expect(html).toContain("Run stopped: run stopped: SYNTHETIC ambiguous outcome");
+    expect(html).toContain("run stopped: run stopped: SYNTHETIC ambiguous outcome");
+    expect(html).not.toContain("The run completed every manifest step");
+    expect(html).not.toContain("revocation test passed");
   });
 });
 
@@ -651,7 +665,8 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
   });
 
   it("heads the page with the lead line and the two sentences", () => {
-    expect(html).toContain('<h1 class="lead-line">Bounded Mandate: keyless AI trading on NEAR Intents</h1>');
+    expect(html).toContain('<p class="kicker">Bounded Mandate: AI trading on NEAR Intents without a signing key</p>\n<h1 class="lead-line">Give an AI agent trading power. Keep the power to stop it.</h1>');
+    expect(html).not.toMatch(/keyless|No key\b|without a key|holds no key/i);
     expect(html).toContain(
       `<p class="position lead-sub">${escapeHtml("An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.")}</p>`,
     );
@@ -776,7 +791,9 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
       shown.screenshot.path,
       OWNER_CONTROLS_LABEL,
       "not rendered by this run",
-      `${PLANNED_URLS.console} (${PLANNED_LABEL})`,
+      `Console (${PLANNED_LABEL})`,
+      PLANNED_URLS.console,
+      bundlePaths(storyEvidence().source.product_commit).console,
       CONSOLE_BROWSER_LABEL,
     ]) {
       expect(card).toContain(escapeHtml(text));
@@ -861,17 +878,25 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
     for (const part of [section(html, "story"), section(html, "attacks")]) expect(part).not.toMatch(/\bverified\b|\blive\b|\bmainnet receipt/i);
   });
 
-  it("shows the planned URLs as text labelled planned and unpublished, never as links", () => {
+  it("says where the page, console and cuts are served and where they are in a clone, never whether they are published", () => {
     const html = renderHtml(storyEvidence(), { acceptance: null, live: null });
-    expect(html).toContain(`${PLANNED_LABEL}</span> Page <code>${PLANNED_URLS.page}</code>`);
-    expect(html).toContain(`${PLANNED_LABEL}</span> Short video <code>${PLANNED_URLS.video}</code> · walkthrough <code>${PLANNED_URLS.walkthrough}</code>`);
+    const clone = bundlePaths(storyEvidence().source.product_commit);
+    expect(PLANNED_LABEL).toBe("hosted site");
     expect(PLANNED_URLS.video).toBe(`${PLANNED_URLS.page}video/bounded-mandate-short.mp4`);
     expect(PLANNED_URLS.walkthrough).toBe(`${PLANNED_URLS.page}video/bounded-mandate-demo.mp4`);
+    expect(clone).toEqual({ page: "evidence/aaaaaaa/page/index.html", console: "evidence/aaaaaaa/console/index.html", video: "evidence/aaaaaaa/video/bounded-mandate-short.mp4", walkthrough: "evidence/aaaaaaa/video/bounded-mandate-demo.mp4" });
+    for (const path of Object.values(clone)) expect(html).toContain(`<code>${path}</code>`);
+    // Links to the site's own routes are relative, so the same bytes work under the project path.
     expect(html).not.toMatch(/href="https:\/\/gryyny\.github\.io/);
-    for (const m of html.matchAll(/gryyny\.github\.io[^<"]*/g)) {
-      const around = html.slice(Math.max(0, m.index - 200), m.index + 200);
-      expect(around).toContain(PLANNED_LABEL);
-    }
+    for (const route of Object.values(SITE_PATHS)) expect(html).toContain(`<a href="${route}">`);
+    expect(html).toContain(`<a href="${REPO_URL}" rel="noopener noreferrer">`);
+    // Outside the raw recorded detail (which shows what the run recorded), nothing states a publication state.
+    const prose = html.replace(/<details[\s\S]*?<\/details>/g, "");
+    expect(prose).not.toMatch(/unpublished|not (yet )?published|planned, |Nothing was hosted|not hosted|is published|is live\b/i);
+    for (const m of prose.matchAll(/gryyny\.github\.io[^<"]*/g)) expect(prose.slice(Math.max(0, m.index - 200), m.index + 200)).toContain(PLANNED_LABEL);
+    // Evidence up to 0bcb3f4 recorded the earlier label; both parse, and a new run records the state-independent one.
+    const view = (label: string): boolean => ConsoleReview.shape.view.safeParse({ local_path: null, planned_url: PLANNED_URLS.console, planned_label: label }).success;
+    expect(view("planned, unpublished") && view(PLANNED_LABEL)).toBe(true);
   });
 
   it("compares the Agent API's routes from pinned, dated documentation, as text and without a tested-weakness claim", () => {

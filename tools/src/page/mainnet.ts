@@ -70,6 +70,33 @@ export function revocationResult(assertions: readonly Assertion[]): RevocationRe
   return { cls: "inconclusive", text: `unrecognized classification ${JSON.stringify(classification)}: not shown as a revocation result` };
 }
 
+/** How the strip and the verdict name a relay that was rejected in a run that does not hold as a whole. */
+export const RELAY_STEP_ONLY = "withheld-order relay step held (that step only)";
+
+export interface RunVerdict {
+  revocation: RevocationResult;
+  /** Step verifications other than the relay, and how many did not hold. */
+  steps: number;
+  failedSteps: number;
+  failedPreflight: number;
+  stopped: boolean;
+  /** The whole run holds: the relay was rejected for the removed key, every assertion passed and nothing is unknown. */
+  holds: boolean;
+  cls: "success" | "failure" | "inconclusive";
+}
+
+export function runVerdict(ev: Evidence): RunVerdict {
+  const revocation = revocationResult(ev.assertions);
+  const relay = (a: Assertion): boolean => /-relay_withheld$/.test(a.id);
+  const steps = ev.assertions.filter((a) => a.id.startsWith("step-") && !relay(a));
+  const failedSteps = steps.filter((a) => !a.passed).length;
+  const failedPreflight = ev.assertions.filter((a) => !a.id.startsWith("step-") && !a.passed).length;
+  const stopped = ev.unknowns.length > 0;
+  const holds = revocation.cls === "success" && failedSteps === 0 && failedPreflight === 0 && !stopped;
+  const cls = holds ? "success" : revocation.cls === "failure" || failedSteps > 0 || failedPreflight > 0 ? "failure" : "inconclusive";
+  return { revocation, steps: steps.length, failedSteps, failedPreflight, stopped, holds, cls };
+}
+
 const ACCOUNT = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 const Detail = z.object({ step: z.union([z.number(), z.string()]).optional(), signer_id: z.string().optional(), fee_yocto: z.string().regex(/^[0-9]+$/).optional(), expected_error: z.string().optional(), withheld_relay: z.boolean().optional() });
 const detailOf = (r: Receipt) => {
@@ -109,8 +136,8 @@ export function mainnetBody(view: LiveView): string {
     return `<div class="pending-panel" role="status"><p class="pending-title">Mainnet run: not shown — <code>${LIVE_MAINNET_PATH}</code> is not mainnet evidence</p><p>Not presented as mainnet because ${escapeHtml(view.reasons.join("; "))}. No mainnet receipt is shown on this page.</p></div>`;
   }
   const ev = view.ev;
-  const revocation = revocationResult(ev.assertions);
-  const stopped = ev.unknowns.length > 0;
+  const verdict = runVerdict(ev);
+  const revocation = verdict.revocation;
   const receipts = ev.receipts
     .map((r) => {
       const d = detailOf(r);
@@ -122,13 +149,31 @@ export function mainnetBody(view: LiveView): string {
   const preflight = ev.assertions.filter((a) => !a.id.startsWith("step-"));
   const row = (a: Assertion): string => {
     const relay = /-relay_withheld$/.test(a.id);
-    const result = relay ? word(revocationResult([a]).cls, revocationResult([a]).text) : word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold");
+    // A rejected relay carries the revocation sentence only when the whole run holds; otherwise it is one step that held.
+    const result = relay
+      ? revocationResult([a]).cls === "success" && !verdict.holds
+        ? word("success", "held (this step only): relay rejected for the removed key")
+        : word(revocationResult([a]).cls, revocationResult([a]).text)
+      : word(a.passed ? "success" : "failure", a.passed ? "held" : "did not hold");
     return `<tr><td><code>${escapeHtml(a.id)}</code></td><td>${result}</td><td>${escapeHtml(a.description)}<details><summary>Observed</summary><pre>${escapeHtml(JSON.stringify(a.observed, null, 2).slice(0, 4000))}</pre></details></td></tr>`;
   };
   const commands = readOnlyCommands(ev);
-  return `<div class="verdict">${word(revocation.cls, revocation.cls === "success" ? "revocation test passed" : revocation.cls === "failure" ? "revocation test failed" : revocation.cls === "not-run" ? "revocation test not run" : "revocation test inconclusive")}<p>${escapeHtml(revocation.text)}. ${
-    stopped ? `Run stopped: ${escapeHtml(ev.unknowns.join("; "))}` : "The run completed every manifest step."
-  }</p></div>
+  const shortfalls = [
+    ...(verdict.failedSteps > 0 ? [`${String(verdict.failedSteps)} of ${String(verdict.steps)} step verifications did not hold`] : []),
+    ...(verdict.failedPreflight > 0 ? [`${String(verdict.failedPreflight)} preflight checks did not hold`] : []),
+    ...(verdict.stopped ? [`run stopped: ${ev.unknowns.join("; ")}`] : []),
+  ];
+  const headline = verdict.holds
+    ? word("success", "revocation test passed")
+    : revocation.cls === "success"
+      ? word(verdict.cls, verdict.cls === "failure" ? "run did not hold" : "run incomplete")
+      : word(revocation.cls, revocation.cls === "failure" ? "revocation test failed" : revocation.cls === "not-run" ? "revocation test not run" : "revocation test inconclusive");
+  const sentence = verdict.holds
+    ? `${revocation.text}. The run completed every manifest step and every assertion held.`
+    : revocation.cls === "success"
+      ? `The ${RELAY_STEP_ONLY}: the relay was rejected for the removed key. The run as a whole does not hold: ${shortfalls.join("; ")}.`
+      : `${revocation.text}.${shortfalls.length > 0 ? ` Also: ${shortfalls.join("; ")}.` : ""}`;
+  return `<div class="verdict">${headline}<p>${escapeHtml(sentence)}</p></div>
 <p class="source">Source: ${LIVE_MAINNET_PATH} · ${escapeHtml(ev.command)} · generated ${escapeHtml(ev.generated_at)} · revision ${escapeHtml(ev.source.product_commit)}${ev.source.dirty ? " (dirty)" : ""}</p>
 <div class="scroll"><table><caption>Mainnet transactions (links open nearblocks.io)</caption><thead><tr><th scope="col">Step</th><th scope="col">Transaction</th><th scope="col">Result</th><th scope="col">Block</th><th scope="col">Fee</th></tr></thead><tbody>${receipts}</tbody></table></div>
 <h3>Terminal verification per step</h3><div class="scroll"><table><caption>Read back from chain state and receipts after each step</caption><thead><tr><th scope="col">Assertion</th><th scope="col">Result</th><th scope="col">Detail</th></tr></thead><tbody>${steps.map(row).join("")}</tbody></table></div>

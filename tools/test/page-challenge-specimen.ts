@@ -22,12 +22,12 @@ export const record = (status: "open" | "closed" | "not-opened", over: Record<st
     manifests: { open: opened ? "f".repeat(64) : null, close: status === "closed" ? "e".repeat(64) : null },
     opened: opened ? { tx_hash: "SYNTHETICopenTx", block_height: 4000 } : null,
     grant: opened
-      ? { epoch: 3, path: "mandate/v1/3", public_key: "ed25519:SYNTHETICgrantKey", key_registered: status === "open", status: status === "closed" ? "revoked" : "active", policy: POLICY, initial_value: "1000000", turnover_used: "1234", outstanding: "0", breaker: null, proposal_budget_upper_bound: 500 }
+      ? { epoch: 3, path: "mandate/v1/3", public_key: "ed25519:SYNTHETICgrantKey", key_registered: status === "open", status: status === "closed" ? "revoked" : "active", policy: POLICY, initial_value: "200000000000000", turnover_used: "123400000", outstanding: "0", breaker: null, proposal_budget_upper_bound: 500 }
       : null,
     earlier_grants: [{ epoch: 2, path: "mandate/v1/2", derived_public_key: "ed25519:SYNTHETICearlierKey", registered: false }],
     earlier_unexecuted_orders: [{ id: "SYNTHETIC-withheld-9", epoch: 2, state: "released:key_removed", deadline_ns: "999", nonce_used: false }],
     challenge_orders: { total: opened ? 5 : 0, by_state: opened ? { executed: 2, "rejected:over_cap": 3 } : {} },
-    mandate_balances: { usdc: "1", wnear: "2" },
+    mandate_balances: { usdc: "100000000", wnear: "33000000000000000000000000" },
     close: status === "closed" ? { exit_code: 0, message: "SYNTHETIC close completed", receipts: [{ label: "owner revoke (SYNTHETIC)", tx_hash: "SYNTHETICrevokeTx", method: "revoke", outcome: "success" }] } : null,
     shows: CHALLENGE_SHOWS,
     does_not_show: [...CHALLENGE_DOES_NOT_SHOW],

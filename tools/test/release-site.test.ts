@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { PLANNED_URLS } from "../src/evidence/journey.js";
-import { assembleSite, checkCsp, checkSite, checkVideos, inlineBlocks, PLANNED_BASE, PLANNED_ORIGIN, references, serveSite } from "../src/release/site.js";
+import { PLANNED_URLS, REPO_URL, SITE_PATHS } from "../src/evidence/journey.js";
+import { assembleSite, checkCsp, checkSite, checkVideos, EVIDENCE_PAGE_LINKS, inlineBlocks, PLANNED_BASE, PLANNED_ORIGIN, references, serveSite } from "../src/release/site.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -40,13 +40,18 @@ const consoleJs = "document.body.dataset.ready = '1';";
 const goodSite = (): Record<string, string> => ({
   "index.html": page(
     `<h1 id="top">Evidence</h1><a href="#top">top</a> <a href="console/">Console</a> <a href="console/#orders">orders</a>
+     <a href="video/bounded-mandate-short.mp4">Watch</a> <a href="video/bounded-mandate-demo.mp4">walkthrough</a>
      <a href="https://github.com/gryyny/bounded-mandate">source</a> <a href="https://gryyny.github.io/bounded-mandate/console/">hosted console</a>
      <img src="data:image/png;base64,AAAA" alt="">`,
     ["console.log('page')"],
   ),
   "console/index.html": page(`<h2 id="orders">Orders</h2><a href="../">Evidence</a><img src="assets/logo.svg" alt="">`, [consoleJs]),
   "console/assets/logo.svg": "<svg xmlns='http://www.w3.org/2000/svg'/>",
+  "video/bounded-mandate-short.mp4": "SYNTHETIC short cut",
+  "video/bounded-mandate-demo.mp4": "SYNTHETIC walkthrough",
 });
+/** The same site as a release without --video would assemble it: the page links to cuts that are not there. */
+const withoutCuts = (): Record<string, string> => Object.fromEntries(Object.entries(goodSite()).filter(([path]) => !path.startsWith("video/")));
 
 describe("CSP", () => {
   it("accepts a policy whose script hashes match the inline scripts exactly", () => {
@@ -110,7 +115,8 @@ describe("site check over a local server", () => {
     const files = goodSite();
     files["index.html"] = page('<a href="console">no slash</a> <a href="/console/">root</a> <a href="missing.html">gone</a> <a href="console/#nope">frag</a>', ["1"]);
     files["console/index.html"] = page('<img src="assets/missing.svg" alt=""><a href="../../outside/">up</a>', [consoleJs]);
-    const report = await checkSite(site(files), ["", "console/", "absent/"]);
+    // required: null, so this case counts only the broken references it plants.
+    const report = await checkSite(site(files), ["", "console/", "absent/"], PLANNED_BASE, null);
     expect(report.passed).toBe(false);
     expect(report.problems).toHaveLength(7);
     expect(report.problems).toEqual(
@@ -129,20 +135,27 @@ describe("site check over a local server", () => {
   it("assembles the page and console into one directory for GitHub Pages", async () => {
     const src = site(goodSite());
     const out = join(src, "assembled");
-    assembleSite({ page: join(src, "index.html"), console: join(src, "console"), out });
+    assembleSite({ page: join(src, "index.html"), console: join(src, "console"), video: join(src, "video"), out });
     expect(existsSync(join(out, ".nojekyll"))).toBe(true);
     expect(readFileSync(join(out, "index.html"), "utf8")).toBe(readFileSync(join(src, "index.html"), "utf8"));
     const report = await checkSite(out, ["", "console/"]);
     expect(report.problems).toEqual([]);
   });
 
-  it("serves the planned video files under /video/ only when a video directory is given", async () => {
-    const src = site(goodSite());
+  it("serves the cuts under video/ only when a video directory is given; without it the page's own video links are problems", async () => {
+    const src = site(withoutCuts());
     const videos = join(src, "videos");
     mkdirSync(videos, { recursive: true });
     writeFileSync(join(videos, "bounded-mandate-short.mp4"), "SYNTHETIC short cut");
+    writeFileSync(join(videos, "bounded-mandate-demo.mp4"), "SYNTHETIC walkthrough");
     const without = assembleSite({ page: join(src, "index.html"), console: join(src, "console"), out: join(src, "without") });
     expect(existsSync(join(without, "video"))).toBe(false);
+    const missing = await checkSite(without, ["", "console/"]);
+    expect(missing.passed).toBe(false);
+    expect(missing.problems).toEqual([
+      '/bounded-mandate/: <a href="video/bounded-mandate-short.mp4"> is HTTP 404; assemble the site with the certified cuts (--video <dir> --video-manifest <video.json>)',
+      '/bounded-mandate/: <a href="video/bounded-mandate-demo.mp4"> is HTTP 404; assemble the site with the certified cuts (--video <dir> --video-manifest <video.json>)',
+    ]);
     const out = assembleSite({ page: join(src, "index.html"), console: join(src, "console"), video: videos, out: join(src, "with") });
     expect(readFileSync(join(out, "video/bounded-mandate-short.mp4"), "utf8")).toBe("SYNTHETIC short cut");
     expect((await checkSite(out, ["", "console/"])).problems).toEqual([]);
@@ -155,6 +168,25 @@ describe("site check over a local server", () => {
     } finally {
       server.close();
     }
+  });
+
+  it("requires the evidence page to link the console, both cuts and the source, and a cut to be served as video/mp4", async () => {
+    expect(EVIDENCE_PAGE_LINKS).toEqual({ internal: [SITE_PATHS.console, SITE_PATHS.video, SITE_PATHS.walkthrough], external: [REPO_URL] });
+    // The paths the page links are the ones the release check compares with the certified cuts (src/release/main.ts).
+    expect([PLANNED_URLS.console, PLANNED_URLS.video, PLANNED_URLS.walkthrough]).toEqual(EVIDENCE_PAGE_LINKS.internal.map((p) => `${PLANNED_ORIGIN}${PLANNED_BASE}${p}`));
+    const bare = goodSite();
+    bare["index.html"] = page('<h1 id="top">Evidence</h1><a href="video/bounded-mandate-short.mp4">Watch</a>', ["1"]);
+    expect((await checkSite(site(bare), [""])).problems).toEqual([
+      "/bounded-mandate/: the evidence page has no link to console/",
+      "/bounded-mandate/: the evidence page has no link to video/bounded-mandate-demo.mp4",
+      "/bounded-mandate/: the evidence page has no link to https://github.com/gryyny/bounded-mandate",
+    ]);
+    const retyped = goodSite();
+    delete retyped["video/bounded-mandate-short.mp4"];
+    retyped["video/bounded-mandate-short.mp4/index.html"] = page("<p>not a video</p>");
+    const report = await checkSite(site(retyped), [""]);
+    expect(report.problems.join("\n")).toMatch(/video\/bounded-mandate-short\.mp4"> (redirects|is served as text\/html)/);
+    expect(report.passed).toBe(false);
   });
 
   it("checks every planned video URL: served as video/mp4 and, with a manifest, equal to the certified bytes", async () => {

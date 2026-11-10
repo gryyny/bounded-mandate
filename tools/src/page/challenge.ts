@@ -1,13 +1,14 @@
-// The optional open-challenge panel: a separate grant whose agent key is published, read from the challenge record
+// The optional open-challenge panel: a separate grant whose agent key is meant to be published, read from the challenge record
 // (src/live/challenge.ts). Shown apart from the completed run: its own heading and provenance label, never counted in
 // the run's verdict, state strip or gates. An invalid record is not rendered. The record holds public keys only; the
 // panel renders named fields, and the one free-form field (breaker) is shown without any secret-looking value.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { ChallengeRecord, CHALLENGE_RECORD_SCHEMA } from "../live/challenge.js";
 import { chip, escapeHtml, modeBadge, word } from "./html.js";
 import { provenance } from "./landing.js";
-import { units } from "./story.js";
+import { units, usd, usdc, wnear } from "./story.js";
 
 export { ChallengeRecord };
 
@@ -43,22 +44,55 @@ export function withoutSecrets(value: unknown): unknown {
   return value;
 }
 
-const STATUS: Record<ChallengeRecord["status"], [string, string]> = {
-  open: ["inconclusive", "open: the agent key is public and the grant is live"],
-  closed: ["success", "closed: revoked, recovered and withdrawn by the owner"],
-  "not-opened": ["not-run", "not opened: no challenge grant was made"],
+/** The status line follows the record: the grant's own status and whether a publication link is recorded. */
+function statusLine(r: ChallengeRecord): [string, string] {
+  if (r.status === "closed") return ["success", "closed: revoked, recovered and withdrawn by the owner"];
+  if (r.status === "not-opened") return ["not-run", "not opened: no challenge grant was made"];
+  const grant = r.grant === null ? "no grant in this record" : `grant ${r.grant.status}`;
+  return ["inconclusive", r.agent_key.publication_url === null ? `open: ${grant}; no publication of the agent key is recorded` : `open: ${grant}; the agent key is published`];
+}
+
+const Balances = z.object({ usdc: z.string().regex(/^[0-9]+$/), wnear: z.string().regex(/^[0-9]+$/) });
+const balances = (v: unknown): string | null => {
+  const b = Balances.safeParse(v);
+  return b.success ? `${usdc(b.data.usdc)} · ${wnear(b.data.wnear)}` : null;
 };
+/** A field the record schema may gain (src/live/challenge.ts); absent in records that predate it. */
+const optional = (r: ChallengeRecord, names: readonly string[]): unknown => {
+  const raw = r as unknown as Record<string, unknown>;
+  return names.map((n) => raw[n]).find((v) => v !== undefined && v !== null);
+};
+
+const pct = (bps: number): string => `${(bps / 100).toFixed(2)}%`;
+
+/**
+ * The exposure in numbers, as arithmetic on the recorded policy (not a measured result): trading at the concession
+ * bound on every order up to the turnover cap. The breaker is not a loss cap, and gas is bounded by the key's allowance.
+ */
+function exposure(r: ChallengeRecord): string {
+  const g = r.grant;
+  if (g === null) return "";
+  const p = g.policy;
+  const bound = `${pct(p.turnover_cap_bps)} turnover cap × ${pct(p.max_concession_bps)} concession bound`;
+  const loss =
+    g.initial_value !== null && /^[0-9]+$/.test(g.initial_value)
+      ? `${bound} of the initial reference value ${usd(g.initial_value)} = ${usd(((BigInt(g.initial_value) * BigInt(p.turnover_cap_bps) * BigInt(p.max_concession_bps)) / 100_000_000n).toString())}`
+      : `${bound} of the initial reference value (not recorded)`;
+  const gas = r.agent_key.allowance_yocto === null ? "the agent key's allowance is not recorded (key absent or unlimited)" : `up to the agent key's remaining allowance, ${yocto(r.agent_key.allowance_yocto)}`;
+  return `<h3>Exposure in numbers</h3><ul class="exposure"><li>Largest by-design trading loss against the reference prices: ${escapeHtml(loss)}. Arithmetic on the recorded policy, not a measured result.</li><li>The loss breaker (${escapeHtml(pct(p.breaker_drawdown_bps))} drawdown) stops new authorizations only. It is not a loss cap: market moves and orders already signed can lose more.</li><li>Gas: ${escapeHtml(gas)}.</li></ul>`;
+}
 
 const kv = (rows: readonly [string, string][]): string => `<dl class="kv">${rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
 const code = (s: string): string => `<code>${escapeHtml(s)}</code>`;
 const yocto = (s: string): string => `${units(s, 24, 6)} NEAR`;
 
 export function challengeBody(r: ChallengeRecord): string {
-  const [cls, text] = STATUS[r.status];
+  const [cls, text] = statusLine(r);
   const url = r.agent_key.publication_url;
   const published =
-    url === null ? `<span class="muted">key not published</span>` : /^https:\/\/[^\s"<>]+$/.test(url) ? `<a href="${escapeHtml(url)}" rel="noopener noreferrer">${escapeHtml(url)}</a>` : code(url);
+    url === null ? `<span class="muted">no publication recorded</span>` : /^https:\/\/[^\s"<>]+$/.test(url) ? `<a href="${escapeHtml(url)}" rel="noopener noreferrer">${escapeHtml(url)}</a>` : code(url);
   const g = r.grant;
+  const deposit = balances(optional(r, ["deposit", "challenge_deposit", "deposits"]));
   const grant =
     g === null
       ? `<p class="muted">No challenge grant in this record.</p>`
@@ -98,7 +132,11 @@ export function challengeBody(r: ChallengeRecord): string {
     ["Public key", code(r.agent_key.public_key)],
     ["Published at", published],
     ["Remaining allowance", r.agent_key.allowance_yocto === null ? "key absent or unlimited" : escapeHtml(yocto(r.agent_key.allowance_yocto))],
-  ])}<p>${escapeHtml(r.agent_key.publication)}</p>
+  ])}<p>${url === null ? "This record carries no publication link. " : ""}The record's fixed statement of how the key is published: “${escapeHtml(r.agent_key.publication)}”</p>
 <h3>Challenge grant</h3>${grant}${orders}
+<h3>Balances</h3>${kv([
+    ...(deposit === null ? [] : [["Challenge deposit", escapeHtml(deposit)] as [string, string]]),
+    ["Mandate's Intents balances at the read block", balances(r.mandate_balances) ?? "not recorded"],
+  ])}${exposure(r)}
 <h3>Earlier grants</h3>${earlier}${keys}${close}`;
 }

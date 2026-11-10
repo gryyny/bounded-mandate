@@ -1,6 +1,8 @@
 // Pinned WASMs for `make quick`: the exact deployment candidate, the pinned verifier and prebuilt test doubles
-// (fixtures/prebuilt). Every file is checked against both its provenance record and fixtures/manifest.json before
-// anything runs; any missing entry or differing byte fails closed.
+// (fixtures/prebuilt). Every file is checked against the sha256 pinned in this file (CODE_PINS), its provenance record
+// and fixtures/manifest.json before anything runs; any missing entry or differing byte fails closed. The pins in code
+// are what makes "the deployment candidate" mean one binary: the manifest and the provenance record sit beside the
+// bytes, so re-pinning both to other bytes would otherwise pass.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,6 +18,18 @@ export const QUICK_WASM = {
   mpc: "prebuilt/mock_mpc.wasm",
 } as const;
 export type QuickRole = keyof typeof QUICK_WASM;
+
+/**
+ * sha256 of each WASM `make quick` deploys, pinned in code. Changing a binary needs a reviewed change to this file,
+ * not only to the hashes stored beside the bytes.
+ */
+export const CODE_PINS: Readonly<Record<QuickRole, string>> = {
+  mandate: "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+  verifier: "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547",
+  ft: "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89",
+  oracle: "672e95e0e5c6daaa31b62a77e86c7c7e48f375469339ada758ebc71773ecfa8c",
+  mpc: "ada6f78437be156625696480b4a209a9d8d92b8931791a10712bed7b22dd5694",
+};
 
 const Sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 export const Provenance = z.object({
@@ -35,8 +49,23 @@ const Manifest = z.object({ files: z.record(z.string(), z.looseObject({ sha256: 
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
+/** One deployed file's bytes against each of its pins; `provenance` is null for files the provenance record does not cover. */
+export interface PinCheck {
+  role: QuickRole;
+  path: string;
+  sha256: string;
+  code: string;
+  manifest: string | null;
+  provenance: string | null;
+}
+
+/** True when the bytes equal the pin in code, the manifest pin and, for a prebuilt double, the provenance pin. */
+export const pinHolds = (p: PinCheck): boolean =>
+  p.sha256 === p.code && p.sha256 === p.manifest && (p.path.startsWith("fixtures/prebuilt/") ? p.sha256 === p.provenance : p.provenance === null);
+
 export interface PrebuiltSet {
   wasm: Record<QuickRole, Wasm>;
+  pins: PinCheck[];
   provenance: Provenance;
   provenance_sha256: string;
 }
@@ -69,12 +98,14 @@ export function loadPrebuilt(root: string): PrebuiltSet {
   }
 
   const wasm: Partial<Record<QuickRole, Wasm>> = {};
+  const pins: PinCheck[] = [];
   for (const [role, rel] of Object.entries(QUICK_WASM) as [QuickRole, string][]) {
     const bytes = read(rel);
     if (bytes === null) continue;
+    if (sha256(bytes) !== CODE_PINS[role]) problems.push(`fixtures/${rel}: sha256 ${sha256(bytes)} != the pin in tools/src/quick/prebuilt.ts ${CODE_PINS[role]}`);
+    const recorded = rel.startsWith("prebuilt/") ? provenance?.files[rel.slice("prebuilt/".length)] : undefined;
+    pins.push({ role, path: `fixtures/${rel}`, sha256: sha256(bytes), code: CODE_PINS[role], manifest: manifest.files[rel]?.sha256 ?? null, provenance: recorded?.sha256 ?? null });
     if (rel.startsWith("prebuilt/")) {
-      const name = rel.slice("prebuilt/".length);
-      const recorded = provenance?.files[name];
       if (provenance !== null && recorded === undefined) problems.push(`fixtures/${rel}: not in ${PROVENANCE}`);
       else if (recorded !== undefined && recorded.sha256 !== sha256(bytes)) problems.push(`fixtures/${rel}: sha256 ${sha256(bytes)} != provenance ${recorded.sha256}`);
     }
@@ -86,5 +117,5 @@ export function loadPrebuilt(root: string): PrebuiltSet {
     }
   }
   if (problems.length > 0 || provenance === null || provenanceBytes === null) throw new Error(`prebuilt pin check failed:\n${problems.join("\n")}`);
-  return { wasm: wasm as Record<QuickRole, Wasm>, provenance, provenance_sha256: sha256(provenanceBytes) };
+  return { wasm: wasm as Record<QuickRole, Wasm>, pins, provenance, provenance_sha256: sha256(provenanceBytes) };
 }

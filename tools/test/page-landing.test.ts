@@ -1,16 +1,17 @@
 // SYNTHETIC specimens only: the evidence, acceptance, gate reports and mainnet-shaped evidence below are built here to
 // test the landing screen and the layout choice. None was executed; the mainnet-shaped evidence never touched a chain.
-// The one exception is the test that reads the committed certified bundle evidence/51d2532, labelled as such.
+// The one exception is the block that reads the committed bundle marked certified in evidence/index.json, labelled as such.
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { ACCEPTANCE_SCHEMA, type Acceptance, type CaseResult } from "../src/evidence/schema.js";
-import { PLANNED_LABEL, PLANNED_URLS } from "../src/evidence/journey.js";
+import { PLANNED_LABEL, REPO_URL, SITE_PATHS, bundlePaths } from "../src/evidence/journey.js";
 import { loadReportFiles } from "../src/page/casefiles.js";
-import { LEAD_LINE, PAGE_LAYOUT, POSITION } from "../src/page/landing.js";
-import { escapeHtml, renderHtml } from "../src/page/render.js";
-import { type Assertion, Evidence } from "../src/types.js";
+import { CERTIFIED_DEFINITION, CERTIFIED_SHORT, DISPLAY_NAME, LEAD_LINE, PAGE_LAYOUT, POSITION } from "../src/page/landing.js";
+import { RELAY_STEP_ONLY } from "../src/page/mainnet.js";
+import { HEADLINE, escapeHtml, renderHtml } from "../src/page/render.js";
+import { type Assertion, Evidence, Policy } from "../src/types.js";
 import { storyEvidence, txHash } from "./video-story-specimen.js";
 
 const REV = "a".repeat(40);
@@ -69,7 +70,7 @@ const REPORTS = [
 
 const check = (id: string, description: string, passed: boolean, observed: unknown = null): Assertion => ({ id, gate: "LIVE", description, passed, observed });
 /** SYNTHETIC mainnet-shaped evidence: valid-looking hashes, never executed. */
-const live = (relay: string | null, over: { failedStep?: boolean; unknowns?: string[] } = {}): Evidence =>
+const live = (relay: string | null, over: { failedStep?: boolean; failedPreflight?: boolean; unknowns?: string[] } = {}): Evidence =>
   Evidence.parse({
     ...storyEvidence(),
     mode: "mainnet",
@@ -81,6 +82,7 @@ const live = (relay: string | null, over: { failedStep?: boolean; unknowns?: str
       { label: "owner revoke (SYNTHETIC)", tx_hash: txHash("revoke"), block_height: 2, outcome: over.failedStep === true ? "failure" : "success", detail: { step: 6, signer_id: "owner.synthetic.near" } },
     ],
     assertions: [
+      check("preflight-accounts", "preflight: accounts (SYNTHETIC)", over.failedPreflight !== true),
       check("step-2-grant", "grant: terminal verification (SYNTHETIC)", true),
       check("step-6-revoke", "revoke: terminal verification (SYNTHETIC)", over.failedStep !== true),
       ...(relay === null ? [] : [check("step-7-relay_withheld", "relay_withheld (SYNTHETIC)", true, { classification: relay })]),
@@ -100,24 +102,66 @@ describe("landing: the first screen", () => {
   const html = render();
   const first = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
 
-  it("opens with the lead line, the two sentences, three actions and the state strip, in that order", () => {
-    expect(LEAD_LINE).toBe("Bounded Mandate: keyless AI trading on NEAR Intents");
-    expect(first).toContain(`<h1 class="lead-line">${LEAD_LINE}</h1>`);
-    expect(first).toContain(`<p class="position lead-sub">${escapeHtml(POSITION)}</p>`);
+  it("opens with the display name as the kicker, the lead line as the H1, the two sentences, three actions and the state strip, in that order", () => {
+    expect(DISPLAY_NAME).toBe("Bounded Mandate: AI trading on NEAR Intents without a signing key");
+    expect(LEAD_LINE).toBe("Give an AI agent trading power. Keep the power to stop it.");
+    expect(HEADLINE).toBe(LEAD_LINE);
+    expect(first).toContain(`<p class="kicker">${DISPLAY_NAME}</p>\n<h1 class="lead-line">${LEAD_LINE}</h1>\n<p class="position lead-sub">${escapeHtml(POSITION)}</p>`);
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
     expect(POSITION).toBe("An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.");
-    const order = ['class="lead-line"', 'class="position lead-sub"', 'class="actions"', 'class="state-strip"'].map((n) => first.indexOf(n));
+    const order = ['class="kicker"', 'class="lead-line"', 'class="position lead-sub"', 'class="actions"', 'class="state-strip"'].map((n) => first.indexOf(n));
     expect(order.every((n) => n >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(html).toContain(`<title>${LEAD_LINE} — evidence (sandbox)</title>`);
+    expect(html).toContain(`<title>${DISPLAY_NAME} — evidence (sandbox)</title>`);
   });
 
-  it("offers watch, replay and verify; the unpublished cut is labelled text, never a link", () => {
-    expect([...first.matchAll(/<p class="act">(?:<a href="#([a-z]+)">)?([A-Za-z]+)/g)].map((m) => `${m[2] ?? ""}${m[1] === undefined ? "" : ` #${m[1]}`}`)).toEqual(["Watch", "Replay #replay", "Verify #verify"]);
-    expect(first).toContain(`${PLANNED_LABEL}</span> <code>${PLANNED_URLS.video}</code>`);
-    expect(html).not.toContain(`href="${PLANNED_URLS.video}`);
+  it("never calls the agent keyless: it holds a function-call key, and no signing key", () => {
+    for (const h of [html, render(live("rejected_revoked_key")), renderHtml(storyEvidence(), { acceptance: null, live: null })]) expect(h).not.toMatch(/keyless|No key\b|without a key|holds no key/i);
+    expect(html).toContain("<h3>1. No signing key</h3>");
+  });
+
+  it("offers watch, replay and verify as links; the cuts, the console and the source are linked, with their place in a clone", () => {
+    expect([...first.matchAll(/<p class="act"><a href="([^"]+)">([A-Za-z]+)<\/a>/g)].map((m) => `${m[2] ?? ""} ${m[1] ?? ""}`)).toEqual([`Watch ${SITE_PATHS.video}`, "Replay #replay", "Verify #verify"]);
+    const clone = bundlePaths(REV);
+    expect(first).toContain(`<a href="${SITE_PATHS.walkthrough}">longer walkthrough</a>`);
+    expect(first).toContain(`In a clone: <code>evidence/aaaaaaa/video/</code>`);
+    expect(first).toContain(`<a href="${REPO_URL}" rel="noopener noreferrer">github.com/gryyny/bounded-mandate</a>`);
+    expect(first).toContain(`<a href="${SITE_PATHS.console}">Owner console</a> on the ${PLANNED_LABEL}; in a clone <code>${clone.console}</code>`);
+    expect(first).toContain(`This page in a clone: <code>${clone.page}</code>`);
+    // Relative to the site's base, never absolute or root-absolute, and never a statement that anything is or is not published.
+    expect(first).not.toMatch(/href="(\/|https:\/\/gryyny\.github\.io)/);
+    expect(first).not.toMatch(/unpublished|not (yet )?published|planned|Nothing was hosted/i);
     expect(first).toContain(`<code class="cmd">make verify</code> or <code class="cmd">node verify.mjs</code>`);
     expect(at(html, "replay")).toBeGreaterThan(0);
     expect(at(html, "verify-panel")).toBeGreaterThan(0);
+  });
+
+  it("states the size of the claim on the first screen and in fact 3, with the order lifetime read from the evidence", () => {
+    const base = storyEvidence();
+    const policy = Policy.parse((base.assertions.find((a) => a.id === "grant-active")?.observed as { policy: unknown }).policy);
+    const line = (ttl: string): string => `The advantage of revoking over waiting for expiry is bounded by the order lifetime: ${ttl}.`;
+    expect(first).toContain(`<p class="claim-size"><strong>Size of the claim.</strong> ${line(`${String(policy.order_ttl_sec)} s in this sandbox run`)}</p>`);
+    expect(html.slice(at(html, "fact-stop"), html.indexOf("</article>", at(html, "fact-stop")))).toContain(line(`${String(policy.order_ttl_sec)} s in this sandbox run`));
+    // Not hard-coded: another recorded lifetime, a supplied policy, and evidence with no policy at all.
+    const other = Evidence.parse({ ...base, assertions: base.assertions.map((a) => (a.id === "grant-active" ? { ...a, observed: { ...(a.observed as object), policy: { ...policy, order_ttl_sec: 137 } } } : a)) });
+    expect(renderHtml(other, { acceptance: null, live: null })).toContain(line("137 s in this sandbox run"));
+    expect(renderHtml(base, { acceptance: null, live: null, policy: { ...policy, order_ttl_sec: 91 } })).toContain(line("91 s in this sandbox run"));
+    const none = Evidence.parse({ ...base, assertions: base.assertions.filter((a) => a.id !== "grant-active") });
+    expect(renderHtml(none, { acceptance: null, live: null })).toContain(line("not recorded in this evidence"));
+  });
+
+  it("defines certified where it first appears: a visible phrase linked to the definition, our own gate and not an audit", () => {
+    for (const h of [html, renderHtml(storyEvidence(), { acceptance: null, live: null })]) {
+      const head = h.slice(h.indexOf("<header"), h.indexOf("</header>"));
+      const firstUse = head.search(/certified/i);
+      expect(firstUse).toBeGreaterThan(0);
+      // The first use is the strip's evidence cell; the short definition follows it in the same cell.
+      const cell = head.slice(head.lastIndexOf("<div>", firstUse), head.indexOf("</div>", firstUse));
+      expect(cell).toContain(`<a class="defn" href="#certified-def">${CERTIFIED_SHORT}</a>`);
+      expect(head).toContain(`<p class="defn-text" id="certified-def">${escapeHtml(CERTIFIED_DEFINITION)}</p>`);
+    }
+    expect(CERTIFIED_SHORT).toBe("our own acceptance gate, not an external audit");
+    expect(CERTIFIED_DEFINITION).toMatch(/this project's own acceptance gate on one clean revision.*every required case.*one run.*fresh clone and in CI.*not an external audit/);
   });
 
   it("states certification, gates, mainnet status and the recorded end state in the strip", () => {
@@ -142,12 +186,15 @@ describe("landing: three checkable facts, each linked to its gate report", () =>
     return html.slice(start, html.indexOf("</article>", start)).replace(/<details[\s\S]*?<\/details>/g, "");
   };
 
-  it("No key: the agent's only key is a propose_order function-call key, with the recorded checks and the contract boundary report", () => {
+  it("No signing key: the agent's only key is a propose_order function-call key, with the recorded checks and the contract boundary report", () => {
     const f = fact("fact-key");
     expect(f).toContain("The agent's only key is a function-call key limited to <code>propose_order</code>.");
     expect(f).toContain('href="#check-agent-one-restricted-key"');
     expect(f).toContain('href="#report-BOUNDARY.contract"');
     expect(f).toContain("MPC signer is a labelled test double");
+    // The design claim about MPC shares is qualified in its own sentence for evidence that ran a test double.
+    expect(f).toContain("By design the order-signing key exists only as MPC shares; in this sandbox evidence the signer is a single labelled test double, not the MPC network, and the contract requests each signature after checking the limits.");
+    expect(f).not.toMatch(/(?<!By design )the order-signing key exists only as MPC shares/i);
   });
 
   it("Limits at the signature: counts and layers come from the certified reports, labelled selected samples", () => {
@@ -206,15 +253,51 @@ describe("landing: three checkable facts, each linked to its gate report", () =>
     }
   });
 
-  it("reads the certified bundle's open-order-limit report (committed evidence/51d2532)", () => {
-    const bundle = join(repo, "evidence/51d2532");
-    const acc = JSON.parse(readFileSync(join(bundle, "acceptance.json"), "utf8")) as Acceptance;
-    const ev = Evidence.parse(JSON.parse(readFileSync(join(bundle, "demo.json"), "utf8")));
-    const files = loadReportFiles(join(bundle, "tests"));
+});
+
+// The committed bundle marked certified in evidence/index.json: recorded by make test and make demo at its revision,
+// read here as files. Nothing below is synthetic, and nothing is asserted that the bundle's own files do not state.
+describe("landing: the committed certified bundle renders through renderHtml", () => {
+  const index = JSON.parse(readFileSync(join(repo, "evidence/index.json"), "utf8")) as { bundles: { path: string; revision: string; status: string }[] };
+  const certified = index.bundles.filter((b) => b.status === "certified");
+  const entry = certified[0];
+  if (entry === undefined) throw new Error("evidence/index.json marks no bundle certified");
+  const bundle = join(repo, entry.path);
+  const acc = JSON.parse(readFileSync(join(bundle, "acceptance.json"), "utf8")) as Acceptance;
+  const ev = Evidence.parse(JSON.parse(readFileSync(join(bundle, "demo.json"), "utf8")));
+  const files = loadReportFiles(join(bundle, "tests"));
+  const policy = Policy.parse((ev.assertions.find((a) => a.id === "grant-active")?.observed as { policy: unknown }).policy);
+  const h = renderHtml(ev, { acceptance: acc, latestRunId: acc.run_id, live: null, challenge: null, reports: files, policy });
+  const head = h.slice(h.indexOf("<header"), h.indexOf("</header>"));
+
+  it("is the one certified bundle, of the revision its demo and acceptance run record", () => {
+    expect(certified).toHaveLength(1);
+    expect(ev.source.product_commit).toBe(entry.revision);
+    expect(acc.revision).toBe(entry.revision);
+    expect(entry.path).toBe(`evidence/${entry.revision.slice(0, 7)}`);
+  });
+
+  it("shows it certified, every gate passed, with the lead line, the recorded lifetime and the bundle's own paths", () => {
+    expect(strip(h)).toContain('<span class="status passed">certified for this demo</span>');
+    expect(strip(h)).toContain(`${String(Object.keys(REQUIRED_CASES).length)} / ${String(Object.keys(REQUIRED_CASES).length)} passed and certified`);
+    expect(head).toContain(`<h1 class="lead-line">${LEAD_LINE}</h1>`);
+    expect(head).toContain(`bounded by the order lifetime: ${String(policy.order_ttl_sec)} s in this sandbox run.`);
+    for (const path of Object.values(bundlePaths(entry.revision))) expect(h).toContain(path);
+    expect(h).toContain(`evidence/${entry.revision.slice(0, 7)}/demo.json`);
+    expect(h).not.toContain('<p class="banner">Not certified for this demo');
+    expect(h).not.toMatch(/keyless|No key\b/);
+  });
+
+  it("reads the open-order-limit result from the bundle's report", () => {
     const data = (JSON.parse(files.find((f) => f.file === "T4.open-order-limit.json")?.text ?? "") as { data: typeof OPEN }).data;
-    const h = renderHtml(ev, { acceptance: acc, latestRunId: acc.run_id, live: null, reports: files });
     expect(h).toContain(`<p class="fact-number">${String(data.open_orders)}</p><p>open orders under one grant (${String(data.states_before_revoke.signed)} signed, ${String(data.states_before_revoke.signing)} awaiting signature)</p>`);
     expect(h).toContain(`released ${String(data.released_key_removed)} of ${String(data.open_orders)} reservations`);
+  });
+
+  it("resolves every in-page link and states no publication state outside the raw recorded detail", () => {
+    const ids = new Set([...h.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+    expect([...h.matchAll(/href="#([^"]+)"/g)].map((m) => m[1]).filter((f) => !ids.has(f))).toEqual([]);
+    expect(h.replace(/<details[\s\S]*?<\/details>/g, "")).not.toMatch(/unpublished|Nothing was hosted/i);
   });
 });
 
@@ -287,18 +370,44 @@ describe("landing: layout chosen from the evidence", () => {
       [live("executed"), "failure", /revocation test failed: withheld order executed after revocation/],
       [live("inconclusive"), "inconclusive", /revocation test inconclusive: not evidence that revocation stopped the withheld order/],
       [live(null), "inconclusive", /revocation test not run: no withheld order was relayed in this run/],
-      [live("rejected_revoked_key", { failedStep: true }), "failure", /revocation test passed · 1 of 2 steps did not hold/],
-      [live("rejected_revoked_key", { unknowns: ["SYNTHETIC stop"] }), "inconclusive", /revocation test passed · run stopped/],
+      [live("rejected_revoked_key", { failedStep: true }), "failure", /withheld-order relay step held \(that step only\) · 1 of 2 steps did not hold/],
+      [live("rejected_revoked_key", { failedPreflight: true }), "failure", /withheld-order relay step held \(that step only\) · 1 preflight checks did not hold/],
+      [live("rejected_revoked_key", { unknowns: ["SYNTHETIC stop"] }), "inconclusive", /withheld-order relay step held \(that step only\) · run stopped/],
     ];
     for (const [ev, cls, text] of cases) {
       const h = render(ev);
       expect(at(h, "mainnet")).toBeLessThan(at(h, "replay"));
       expect(strip(h)).toContain(`<span class="status ${cls}">`);
       expect(strip(h)).toMatch(text);
-      if (cls !== "success" && !/revocation test passed/.test(text.source)) {
-        expect(h).not.toContain(SUCCESS_SENTENCE);
-        expect(h).not.toContain("revocation test passed");
-      }
+      // No exemption: unless the whole run holds, the page carries neither the success sentence nor "passed" for the
+      // revocation test, no green verdict, and no claim that every manifest step completed.
+      expect(h).not.toContain(SUCCESS_SENTENCE);
+      expect(h).not.toContain("revocation test passed");
+      expect(h).not.toContain("The run completed every manifest step");
+      const verdict = /<div class="verdict">(<span class="status ([a-z-]+)">[^<]*<\/span>)<p>([^<]*)<\/p>/.exec(h.slice(at(h, "mainnet")));
+      expect(verdict?.[2]).not.toBe("success");
+      expect(verdict?.[2]).toBe(cls === "inconclusive" && ev.assertions.every((x) => !/relay_withheld/.test(x.id)) ? "not-run" : cls);
     }
+  });
+
+  it("words a relay that held inside a run that does not hold as that step only, and says what did not hold", () => {
+    const h = render(live("rejected_revoked_key", { failedStep: true }));
+    const body = h.slice(at(h, "mainnet"), h.indexOf("</section>", at(h, "mainnet")));
+    expect(RELAY_STEP_ONLY).toBe("withheld-order relay step held (that step only)");
+    expect(body).toContain('<span class="status failure">run did not hold</span>');
+    expect(body).toContain(`The ${RELAY_STEP_ONLY}: the relay was rejected for the removed key. The run as a whole does not hold: 1 of 2 step verifications did not hold.`);
+    expect(body).toContain('<td><code>step-7-relay_withheld</code></td><td><span class="status success">held (this step only): relay rejected for the removed key</span>');
+    expect(body).toContain('<td><code>step-6-revoke</code></td><td><span class="status failure">did not hold</span>');
+    const stopped = render(live("rejected_revoked_key", { unknowns: ["SYNTHETIC stop"] }));
+    expect(stopped).toContain('<span class="status inconclusive">run incomplete</span>');
+    expect(stopped).toContain("The run as a whole does not hold: run stopped: SYNTHETIC stop.");
+  });
+
+  it("uses the success wording only when the relay was rejected, every assertion held and nothing is unknown", () => {
+    const h = render(live("rejected_revoked_key"));
+    const body = h.slice(at(h, "mainnet"), h.indexOf("</section>", at(h, "mainnet")));
+    expect(body).toContain('<div class="verdict"><span class="status success">revocation test passed</span><p>withheld order rejected after confirmed revocation (rejected_revoked_key). The run completed every manifest step and every assertion held.</p>');
+    expect(strip(h)).toContain('<span class="status success">2 transactions · revocation test passed</span>');
+    expect(body).not.toContain("this step only");
   });
 });

@@ -38,7 +38,7 @@ import { loadReportFiles } from "../page/casefiles.js";
 import { GATE_LABEL, HEADLINE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
 import { sandboxResults } from "../page/results.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, modelReason, ownerJourney, priceText, readable, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type JourneyStep, type StageKey } from "../page/story.js";
-import { CONSOLE_BROWSER_LABEL, ConsoleReview, ConsoleRevoke, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, demoSteps, type Screenshot, type StepState } from "../evidence/journey.js";
+import { CONSOLE_BROWSER_LABEL, ConsoleReview, ConsoleRevoke, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, REPO_URL, demoSteps, type Screenshot, type StepState } from "../evidence/journey.js";
 import { Evidence } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
@@ -488,8 +488,8 @@ export const PROBLEM = "An agent holding a trading key can exceed your limits, a
  */
 export const LEAD =
   "An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.";
-/** Planned, unpublished repository URL; always shown with PLANNED_LABEL. */
-export const PLANNED_REPO = "https://github.com/gryyny/bounded-mandate";
+/** The source repository's URL, shown as text: the cut never says whether a URL is published. */
+export const PLANNED_REPO = REPO_URL;
 
 /** Reproduction paths the product actually ships, read from its Makefile. */
 export interface Repro {
@@ -571,8 +571,8 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   };
   const repro_ = [
     ...(repro.verify === null ? [] : [`Verify the evidence: ${repro.verify}.`]),
-    ...(repro.quick ? ["Quick demo: make quick."] : ["Demo: make demo."]),
-    "Full proof: make test && make demo.",
+    ...(repro.quick ? ["Prebuilt, uncertified demo: make quick."] : ["Demo: make demo."]),
+    "Certified path: make test && make demo.",
   ].join(" ");
   return [
     {
@@ -601,12 +601,12 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
     }),
     {
       kind: "summary",
-      provenance: `Commands · URLs ${PLANNED_LABEL}`,
+      provenance: "Commands and URLs",
       title: "Where to verify",
       body: `${notShown.length === 0 ? "" : `<p class="note">${esc(storyCaption)}</p>`}${list([
         ...(repro.verify === null ? [] : [`<b>Check the committed evidence, no toolchain:</b> <code>${esc(repro.verify)}</code>. It checks the evidence bundle, not that the tests ran.`]),
         ...(repro.quick ? ["<b>Quick demo:</b> <code>make quick</code> (prebuilt WASM, uncertified)."] : ["<b>Demo:</b> <code>make demo</code>."]),
-        "<b>Full proof:</b> <code>make test &amp;&amp; make demo</code>. No funds or model key needed.",
+        "<b>Certified path:</b> <code>make test &amp;&amp; make demo</code>. No funds or model key needed.",
         `<b>Mainnet receipts:</b> ${esc(mainnet)}`,
         `<b>Repository and evidence page (${esc(PLANNED_LABEL)}):</b> <code>${esc(PLANNED_REPO)}</code>, <code>${esc(PLANNED_URLS.page)}</code>`,
       ])}<p class="note">${esc(status.sentence)}</p>`,

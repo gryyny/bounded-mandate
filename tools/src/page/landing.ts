@@ -1,22 +1,40 @@
-// The landing screen: lead line, the two sentences, three actions (watch, replay, verify), the state strip, the three
+// The landing screen: display name, lead line, the two sentences, three actions (watch, replay, verify), the size of
+// the claim, the state strip, links to the source and the console, the three
 // checkable facts linked to their gate reports, and the "what is real and what is a test double" section that every
 // provenance label links to. The order of everything below the facts is chosen from the evidence (PAGE_LAYOUT).
 import { z } from "zod";
 import type { DemoBinding } from "../evidence/binding.js";
-import { PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
+import { PLANNED_LABEL, PLANNED_SITE, REPO_URL, SITE_PATHS, bundlePaths } from "../evidence/journey.js";
 import type { Evidence } from "../types.js";
 import { chip, escapeHtml, modeBadge, word } from "./html.js";
-import { LIVE_MAINNET_PATH, revocationResult, type LiveView } from "./mainnet.js";
+import { LIVE_MAINNET_PATH, RELAY_STEP_ONLY, runVerdict, type LiveView } from "./mainnet.js";
 import { reportAnchor, reportDetails, type Results } from "./results.js";
 import type { Stage } from "./story.js";
 
-/** Display name, as the submission and the post use it. */
-export const LEAD_LINE = "Bounded Mandate: keyless AI trading on NEAR Intents";
+/** Display name, as the submission and the post use it: the kicker above the lead line, and the page title. */
+export const DISPLAY_NAME = "Bounded Mandate: AI trading on NEAR Intents without a signing key";
+/** The lead line: the page's H1 (also the console's and the video's). */
+export const LEAD_LINE = "Give an AI agent trading power. Keep the power to stop it.";
 /** The two sentences under the lead line. */
 export const POSITION =
   "An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.";
 
 export const REAL_ID = "real";
+export const CERTIFIED_ID = "certified-def";
+/** Shown beside the first "certified" on the page, linking to CERTIFIED_DEFINITION. */
+export const CERTIFIED_SHORT = "our own acceptance gate, not an external audit";
+export const CERTIFIED_DEFINITION =
+  "“Certified” is this project's own acceptance gate on one clean revision: every required case passes in one run, and the demo is bound to that run by revision, spec, fixtures and WASM hashes. A committed bundle repeats it in a fresh clone and in CI. It is not an external audit.";
+export const certifiedLink = (): string => `<a class="defn" href="#${CERTIFIED_ID}">${escapeHtml(CERTIFIED_SHORT)}</a>`;
+export const certifiedDefinition = (): string => `<p class="defn-text" id="${CERTIFIED_ID}">${escapeHtml(CERTIFIED_DEFINITION)}</p>`;
+
+/**
+ * The size of the claim: what revoking adds over waiting for the order to expire. `ttlSec` is the grant's recorded
+ * order lifetime (policy.order_ttl_sec); null when the evidence records no policy.
+ */
+export const claimSize = (mode: string, ttlSec: number | null): string =>
+  `The advantage of revoking over waiting for expiry is bounded by the order lifetime: ${ttlSec === null ? "not recorded in this evidence" : `${String(ttlSec)} s in this ${mode} run`}.`;
+export const claimSizeLine = (mode: string, ttlSec: number | null): string => `<p class="claim-size"><strong>Size of the claim.</strong> ${escapeHtml(claimSize(mode, ttlSec))}</p>`;
 
 /**
  * Blocks below the landing screen, in page order. With mainnet receipts, the receipts and the live read-only
@@ -43,12 +61,24 @@ export const provenance = (text: string): string => `<p class="prov"><a href="#$
 /** What the run itself was, from the evidence: e.g. "sandbox · real Intents verifier WASM · test doubles: MPC, oracle, tokens". */
 export const runProvenance = (ev: Evidence, labels: readonly string[]): string => [`${ev.mode} replay`, ...labels.filter((l) => l !== "no mainnet")].join(" · ");
 
-export function actionsBlock(): string {
+/**
+ * The three actions. The same bytes are read from a clone and served on the hosted site, so nothing here says whether
+ * the site is published: the links are relative to the site's base (hosting/README.md) and the text names the same
+ * files in a clone. No media element: the page requests nothing until the reader follows a link or presses a button.
+ */
+export function actionsBlock(ev: Evidence): string {
+  const clone = bundlePaths(ev.source.product_commit);
   return `<ol class="actions" aria-label="Three things to do here">
-<li><p class="act">Watch</p><p>The short cut of the recorded run. ${chip("pending", PLANNED_LABEL)} <code>${escapeHtml(PLANNED_URLS.video)}</code></p><p class="muted">Local build: <code>out/video/bounded-mandate-short.mp4</code></p></li>
+<li><p class="act"><a href="${SITE_PATHS.video}">Watch</a></p><p>The short cut of this recorded run; then the <a href="${SITE_PATHS.walkthrough}">longer walkthrough</a>.</p><p class="muted where"><span>Links play on the ${PLANNED_LABEL}.</span> <span>In a clone: <code>${escapeHtml(clone.video.slice(0, clone.video.lastIndexOf("/") + 1))}</code></span></p></li>
 <li><p class="act"><a href="#replay">Replay</a></p><p>Step through the owner's eight actions with recorded balances, keys and receipts. Nothing is requested.</p></li>
-<li><p class="act"><a href="#verify">Verify</a></p><p>Opt-in, read-only checks from this page against a public RPC; no request until you press the button. Offline, from a clone: <code class="cmd">make verify</code> or <code class="cmd">node verify.mjs</code>.</p></li>
+<li><p class="act"><a href="#verify">Verify</a></p><p>Opt-in, read-only checks against a public RPC; no request until you press the button. Offline, from a clone: <code class="cmd">make verify</code> or <code class="cmd">node verify.mjs</code>.</p></li>
 </ol>`;
+}
+
+/** Where the source and the owner console are: on the hosted site by relative link, in a clone by path. */
+export function linksLine(ev: Evidence): string {
+  const clone = bundlePaths(ev.source.product_commit);
+  return `<p class="site-links"><span>Source: <a href="${REPO_URL}" rel="noopener noreferrer">${escapeHtml(REPO_URL.replace(/^https:\/\//, ""))}</a></span> <span><a href="${SITE_PATHS.console}">Owner console</a> on the ${PLANNED_LABEL}; in a clone <code>${escapeHtml(clone.console)}</code></span> <span>This page in a clone: <code>${escapeHtml(clone.page)}</code>; ${PLANNED_LABEL} <code>${escapeHtml(PLANNED_SITE)}</code></span></p>`;
 }
 
 const KEY_TEXT = (present: boolean | null): string => (present === null ? "no grant key" : present ? "key registered" : "key removed");
@@ -57,17 +87,17 @@ const KEY_TEXT = (present: boolean | null): string => (present === null ? "no gr
 export function mainnetState(live: LiveView): { cls: string; text: string } {
   if (live.kind === "absent") return { cls: "not-run", text: "pending approval: no mainnet transaction has been executed" };
   if (live.kind === "rejected") return { cls: "missing", text: `not shown: ${LIVE_MAINNET_PATH} is not mainnet evidence` };
-  const r = revocationResult(live.ev.assertions);
-  const steps = live.ev.assertions.filter((a) => a.id.startsWith("step-") && !/-relay_withheld$/.test(a.id));
-  const failed = steps.filter((a) => !a.passed).length;
+  const v = runVerdict(live.ev);
+  const r = v.revocation;
   const parts = [
     `${String(live.ev.receipts.length)} transactions`,
-    r.cls === "success" ? "revocation test passed" : r.cls === "failure" ? `revocation test failed: ${r.text}` : r.cls === "not-run" ? `revocation test not run: ${r.text}` : `revocation test ${r.text}`,
-    ...(failed > 0 ? [`${String(failed)} of ${String(steps.length)} steps did not hold`] : []),
-    ...(live.ev.unknowns.length > 0 ? ["run stopped"] : []),
+    // "passed" is said of the revocation test only when the whole run holds; otherwise the relay is one step that held.
+    v.holds ? "revocation test passed" : r.cls === "success" ? RELAY_STEP_ONLY : r.cls === "failure" ? `revocation test failed: ${r.text}` : r.cls === "not-run" ? `revocation test not run: ${r.text}` : `revocation test ${r.text}`,
+    ...(v.failedSteps > 0 ? [`${String(v.failedSteps)} of ${String(v.steps)} steps did not hold`] : []),
+    ...(v.failedPreflight > 0 ? [`${String(v.failedPreflight)} preflight checks did not hold`] : []),
+    ...(v.stopped ? ["run stopped"] : []),
   ];
-  const cls = r.cls === "success" && failed === 0 && live.ev.unknowns.length === 0 ? "success" : r.cls === "failure" || failed > 0 ? "failure" : "inconclusive";
-  return { cls, text: parts.join(" · ") };
+  return { cls: v.cls, text: parts.join(" · ") };
 }
 
 export function stateStrip(ev: Evidence, binding: DemoBinding, passed: number, total: number, live: LiveView, stages: readonly Stage[]): string {
@@ -75,7 +105,7 @@ export function stateStrip(ev: Evidence, binding: DemoBinding, passed: number, t
   const m = mainnetState(live);
   const cell = (k: string, v: string): string => `<div><dt>${escapeHtml(k)}</dt><dd>${v}</dd></div>`;
   return `<dl class="state-strip" aria-label="Where the evidence stands">
-${cell("Evidence", `${modeBadge(ev.mode)} revision <code>${escapeHtml(ev.source.product_commit.slice(0, 7))}</code>${ev.source.dirty ? " (dirty tree)" : ""} ${word(binding.certified ? "passed" : "uncertified", binding.certified ? "certified for this demo" : "not certified for this demo")}`)}
+${cell("Evidence", `${modeBadge(ev.mode)} revision <code>${escapeHtml(ev.source.product_commit.slice(0, 7))}</code>${ev.source.dirty ? " (dirty tree)" : ""} ${word(binding.certified ? "passed" : "uncertified", binding.certified ? "certified for this demo" : "not certified for this demo")} ${certifiedLink()}`)}
 ${cell("Gates", `${String(passed)} / ${String(total)} passed and certified`)}
 ${cell("Mainnet", word(m.cls, m.text))}
 ${cell(`End of the ${ev.mode} run`, end === null ? `<span class="muted">no recorded state</span>` : escapeHtml(`grant ${end.grant_status} · ${KEY_TEXT(end.key_present)} · open orders ${String(end.open_orders)}`))}
@@ -101,7 +131,7 @@ function noKeyFact(ev: Evidence, results: Results): string {
         }.</p>`;
   const account = mandate === undefined ? "" : `<p>${word(mandate.passed ? "success" : "failure", mandate.passed ? "held" : "did not hold")} <a href="#check-mandate-no-keys">The mandate account has no access key</a>; only its contract acts for it.</p>`;
   const report = results.contract === null ? none("contract boundary report (BOUNDARY.contract)") : `<p>Forbidden calls refused by the contract and the key: ${reportLink(results.contract.report.file, "BOUNDARY.contract report")}.</p>${reportDetails(results.contract.report)}`;
-  return `<article class="fact" id="fact-key"><h3>1. No key</h3><p>The agent's only key is a function-call key limited to <code>propose_order</code>. The order-signing key exists only as MPC shares, and the contract requests each signature after checking the limits.</p>${recorded}${account}${report}<p class="note-line">In this ${escapeHtml(ev.mode)} run the MPC signer is a labelled test double</p></article>`;
+  return `<article class="fact" id="fact-key"><h3>1. No signing key</h3><p>The agent's only key is a function-call key limited to <code>propose_order</code>. ${ev.mode === "mainnet" ? "The order-signing key exists only as MPC shares" : `By design the order-signing key exists only as MPC shares; in this ${escapeHtml(ev.mode)} evidence the signer is a single labelled test double, not the MPC network`}, and the contract requests each signature after checking the limits.</p>${recorded}${account}${report}<p class="note-line">In this ${escapeHtml(ev.mode)} run the MPC signer is a labelled test double</p></article>`;
 }
 
 function limitsFact(results: Results): string {
@@ -134,17 +164,17 @@ const ordinal = (n: number): string => {
   return `${String(n)}${suffix}`;
 };
 
-function stopFact(results: Results): string {
+function stopFact(ev: Evidence, results: Results, ttlSec: number | null): string {
   const { openOrders, regrant } = results;
   const open = openOrders === null ? none("open-order-limit result (T4.open-order-limit)") : openOrderResult(openOrders.data, openOrders.report);
   const after = regrant?.data.relays.filter((r) => r.after_confirmed_removal) ?? [];
   const t1 = regrant === null ? none("regrant result (T1.withheld-regrant)") : `<p>${plural(after.length, "relay")} of withheld orders after confirmed key removal, including after a regrant with a fresh key: ${plural(after.filter((r) => r.executed).length, "execution")} · ${reportLink(regrant.report.file, "T1.withheld-regrant report")}</p>`;
-  return `<article class="fact" id="fact-stop"><h3>3. Stop and exit</h3><p>Revocation removes the grant key at the verifier, the held order is rejected while unexpired, a regrant uses a fresh key, and recovery needs no agent, oracle or MPC. Orders may still execute until removal is confirmed.</p>${open}${t1}</article>`;
+  return `<article class="fact" id="fact-stop"><h3>3. Stop and exit</h3><p>Revocation removes the grant key at the verifier, the held order is rejected while unexpired, a regrant uses a fresh key, and recovery needs no agent, oracle or MPC. Orders may still execute until removal is confirmed. ${escapeHtml(claimSize(ev.mode, ttlSec))}</p>${open}${t1}</article>`;
 }
 
-export function factsSection(ev: Evidence, results: Results, label: string): string {
+export function factsSection(ev: Evidence, results: Results, label: string, ttlSec: number | null): string {
   return `<section class="facts-block" id="facts" aria-labelledby="facts-h"><h2 id="facts-h">Three checkable facts</h2>${provenance(label)}
-<div class="fact-grid">${noKeyFact(ev, results)}${limitsFact(results)}${stopFact(results)}</div></section>`;
+<div class="fact-grid">${noKeyFact(ev, results)}${limitsFact(results)}${stopFact(ev, results, ttlSec)}</div></section>`;
 }
 
 /** The section every provenance label links to. `modes` is the existing execution-modes key, kept verbatim. */

@@ -1,4 +1,4 @@
-// Renders the static evidence page. The lead line opens onto the owner's eight-step evidence replay, with the
+// Renders the static evidence page. The display name and the lead line open onto the owner's eight-step evidence replay, with the
 // full journey, reproduction paths, measured defenses and alternatives, mainnet receipts (or the pending panel), the
 // opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
 // acceptance gates per case, the T5 baseline, the Agent API comparison, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
@@ -19,21 +19,18 @@ import { LIFECYCLE_SVG } from "./lifecycle.js";
 import { liveView, loadLive, mainnetBody, type LiveView } from "./mainnet.js";
 import { LegacyGateReport, loadGateReports } from "./reports.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance, ownerJourney, priceText, revocationStory, share, shortHash, stageNumber, stateLine, usd, usdc, wnear, type JourneyStep, type Stage } from "./story.js";
-import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS } from "../evidence/journey.js";
+import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, REPO_URL, SITE_PATHS, bundlePaths } from "../evidence/journey.js";
 import { agentApiBody } from "./related.js";
 import { challengeBody, challengeView, loadChallenge } from "./challenge.js";
-import { LEAD_LINE, POSITION, actionsBlock, factsSection, pageLayout, provenance, realSection, runProvenance, stateStrip, type PageBlock } from "./landing.js";
+import { DISPLAY_NAME, LEAD_LINE, POSITION, actionsBlock, certifiedDefinition, claimSizeLine, factsSection, linksLine, pageLayout, provenance, realSection, runProvenance, stateStrip, type PageBlock } from "./landing.js";
 import { STYLES } from "./styles.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
 export { escapeHtml } from "./html.js";
-export { LEAD_LINE, PAGE_LAYOUT, POSITION } from "./landing.js";
+export { DISPLAY_NAME, LEAD_LINE, PAGE_LAYOUT, POSITION } from "./landing.js";
 
-/**
- * The previous lead line and sentence. The page now opens with LEAD_LINE and POSITION (landing.ts); these stay
- * exported for the video until it moves to the new lead line.
- */
-export const HEADLINE = "Give an AI agent trading power. Keep the power to stop it.";
+/** The lead line (the page's H1) under its video-facing name, and the video's one-sentence claim. */
+export const HEADLINE = LEAD_LINE;
 export const SUBTITLE =
   "The agent only proposes trades; a NEAR contract signs those within the owner's limits, and once the owner's revocation is confirmed, every outstanding order signed under that grant fails and the owner takes the assets back without the agent.";
 
@@ -179,6 +176,9 @@ const statusBadge = (status: GateStatus): string => `<span class="status ${statu
 const caseBadge = (c: CaseResult, certified: boolean): string =>
   c.status === "passed" && !certified ? word("uncertified", "passed, not certified for this demo") : word(c.status, c.status);
 
+/** Where a recorded file is: the path its command writes, and the committed bundle of the demo's revision. */
+const recordedAt = (ev: Evidence, file: string): string => `out/evidence/${file} (committed with the bundle as evidence/${ev.source.product_commit.slice(0, 7)}/${file})`;
+
 const section = (num: string, tag: string, id: string, title: string, body: string): string =>
   `<section class="folio" id="${id}" aria-labelledby="${id}-h"><div class="num" aria-hidden="true">${num}<small>${tag}</small></div><div class="body"><h2 id="${id}-h">${title}</h2>${body}</div></section>`;
 
@@ -263,7 +263,7 @@ function stepBody(step: Step, ev: Evidence): string {
 function demonstrationSection(ev: Evidence): string {
   const steps = storySteps(ev);
   const base = runLabels(ev);
-  const intro = `<p class="source">Source: out/evidence/demo.json · ${escapeHtml(ev.command)} · ${String(ev.receipts.length)} transactions, ${String(ev.assertions.length)} story checks. Story checks never mark an acceptance gate.</p>
+  const intro = `<p class="source">Source: ${escapeHtml(recordedAt(ev, "demo.json"))} · ${escapeHtml(ev.command)} · ${String(ev.receipts.length)} transactions, ${String(ev.assertions.length)} story checks. Story checks never mark an acceptance gate.</p>
 <p>${ev.mode === "mainnet" ? "Steps labelled <em>mainnet</em> carry NEAR mainnet transaction hashes." : "<strong>No mainnet receipts in this evidence.</strong> Sandbox steps ran our contract and the pinned verifier WASM locally with labelled test doubles."}</p>`;
   if (steps === null) {
     // Older evidence without step offsets: chronological transactions, then the story checks.
@@ -397,7 +397,7 @@ function journeyBlock(ev: Evidence, stages: readonly Stage[]): string {
 function storySection(ev: Evidence): string {
   const stages = revocationStory(ev);
   return `<section class="story" id="story" aria-labelledby="story-h"><h2 id="story-h">The journey in detail: ${String(stages.length)} recorded stages from one ${escapeHtml(ev.mode)} run</h2>
-<p class="source">Every value is read from out/evidence/demo.json (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1), and its state line is read through contract and verifier views at the end of that step. Story checks never mark an acceptance gate (§2).</p>
+<p class="source">Every value is read from ${escapeHtml(recordedAt(ev, "demo.json"))} (${escapeHtml(ev.command)}, revision ${escapeHtml(ev.source.product_commit.slice(0, 7))}${ev.source.dirty ? ", dirty tree" : ""}); each stage links to the transactions and story checks it shows (§1), and its state line is read through contract and verifier views at the end of that step. Story checks never mark an acceptance gate (§2).</p>
 <ol class="stages">${stages.map((s) => stageCard(s, ev)).join("\n")}</ol></section>`;
 }
 
@@ -449,18 +449,24 @@ function attackLogSection(ev: Evidence, acc: Acceptance | null, binding: DemoBin
       : `Acceptance case BOUNDARY.attacks: ${report.status}${report.status === "passed" && !binding.certified ? ", not certified for this demo" : ""} (${report.files.join(", ")}).`;
   const counts = layerCounts(rows);
   return section("§A", "attacks", "attacks", title,
-    `<p class="source">Source: the attack-* story checks of out/evidence/demo.json. Each layer is the boundary the attack suite classified from the observed result; each source line was located at demo time by searching this checkout for the text the layer returned. Origins: synthetic injected requests and scripted direct calls are written by us, never model output. ${escapeHtml(reportLine)}</p>
+    `<p class="source">Source: the attack-* story checks of ${escapeHtml(recordedAt(ev, "demo.json"))}. Each layer is the boundary the attack suite classified from the observed result; each source line was located at demo time by searching this checkout for the text the layer returned. Origins: synthetic injected requests and scripted direct calls are written by us, never model output. ${escapeHtml(reportLine)}</p>
 <p><strong>${String(counts.reduce((sum, [, n]) => sum + n, 0))} of ${String(rows.length)} refused</strong>: ${counts.map(([l, n]) => `${escapeHtml(l)} ${String(n)}`).join(" · ")}</p>
 ${body}${injectionBlock}`);
 }
 
-/** The planned hosting locations, always labelled as planned and unpublished; never a link. */
-const plannedLine = (): string =>
-  `<p class="planned">${chip("pending", PLANNED_LABEL)} Page <code>${escapeHtml(PLANNED_URLS.page)}</code> · console <code>${escapeHtml(PLANNED_URLS.console)}</code>. Nothing was hosted there when this page was rendered.</p>
-<p class="planned">${chip("pending", PLANNED_LABEL)} Short video <code>${escapeHtml(PLANNED_URLS.video)}</code> · walkthrough <code>${escapeHtml(PLANNED_URLS.walkthrough)}</code>.</p>`;
+/**
+ * Where the page, console and cuts are served and where the same files are in a clone. State-independent: these
+ * bytes are read from a clone and served on the site, so nothing here says whether the site is published.
+ */
+const whereLine = (ev: Evidence): string => {
+  const clone = bundlePaths(ev.source.product_commit);
+  return `<p class="planned">On the ${PLANNED_LABEL} (<code>${escapeHtml(PLANNED_URLS.page)}</code>) this page is the root, with the <a href="${SITE_PATHS.console}">owner console</a> at <code>${SITE_PATHS.console}</code> and the cuts at <code>${SITE_PATHS.video}</code> and <code>${SITE_PATHS.walkthrough}</code>; the links on this page are relative to that root.</p>
+<p class="planned">In a clone the same files are <code>${escapeHtml(clone.page)}</code>, <code>${escapeHtml(clone.console)}</code>, <code>${escapeHtml(clone.video)}</code> and <code>${escapeHtml(clone.walkthrough)}</code>, where the relative links above do not resolve; a local build writes <code>out/page/</code>, <code>out/console/</code> and <code>out/video/</code>. Source: <a href="${REPO_URL}" rel="noopener noreferrer">${escapeHtml(REPO_URL)}</a>.</p>`;
+};
 
-function pathsSection(live: LiveView): string {
-  const video = `${chip("pending", PLANNED_LABEL)} <code>${escapeHtml(PLANNED_URLS.video)}</code> (local build: out/video/bounded-mandate-short.mp4)`;
+function pathsSection(ev: Evidence, live: LiveView): string {
+  const clone = bundlePaths(ev.source.product_commit);
+  const video = `<a href="${SITE_PATHS.video}">Short cut</a> · <a href="${SITE_PATHS.walkthrough}">longer walkthrough</a> (in a clone: <code>${escapeHtml(clone.video)}</code>, <code>${escapeHtml(clone.walkthrough)}</code>)`;
   const mainnet =
     live.kind === "mainnet"
       ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
@@ -468,8 +474,8 @@ function pathsSection(live: LiveView): string {
   return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
 <li><p class="do">Watch the short video</p><p class="see">See the eight journey steps captioned with this run's numbers.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
-<li><p class="do">Run locally</p><p class="see"><strong>Quick sandbox demo.</strong> Run <code>make demo</code> and open <code>out/page/index.html</code>. The story runs locally without funds or a model key.</p><p class="see"><strong>Full certification.</strong> On a clean revision run <code>make test &amp;&amp; make demo</code>, then open the page. If you ran the demo first, use <code>make test &amp;&amp; make page</code> to refresh its page from the saved demo and completed gates without running the story again. Certification requires matching revision, spec, fixtures and WASMs.</p></li>
-</ol>${plannedLine()}</section>`;
+<li><p class="do">Run locally</p><p class="see"><strong>Check the committed evidence.</strong> <code>make verify</code> (Node only, offline) checks the certified bundle's files and required cases without rerunning them.</p><p class="see"><strong>Quick demo: prebuilt, uncertified, no Rust.</strong> <code>make quick</code> runs the story on the deployment candidate with prebuilt test doubles and writes only <code>out/quick/</code>; its page is labelled uncertified.</p><p class="see"><strong>Certified path (needs Rust).</strong> On a clean revision run <code>make test &amp;&amp; make demo</code>, then open <code>out/page/index.html</code>. <code>make demo</code> alone runs the story from source but certifies nothing; after it, <code>make test &amp;&amp; make page</code> refreshes the page from the saved demo and the completed gates without running the story again. Certification requires matching revision, spec, fixtures and WASMs.</p></li>
+</ol>${whereLine(ev)}</section>`;
 }
 
 function gatesSection(acc: Acceptance | null, binding: DemoBinding, views: readonly GateView[]): string {
@@ -497,7 +503,7 @@ function gatesSection(acc: Acceptance | null, binding: DemoBinding, views: reado
         .map((c) => `<tr><th scope="row"><code>${escapeHtml(c.id)}</code></th><td>${caseBadge(c, binding.certified)}</td><td>${escapeHtml(c.reason)}</td></tr>`)
         .join("")}</tbody></table></div>`;
   return section("§2", "gates", "gates", "Acceptance gates",
-    `<p class="source">Source: out/evidence/acceptance.json. ${binding.certified ? "Certified for this demo." : `Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}.`} Details in §6.</p>
+    `<p class="source">Source: out/evidence/acceptance.json (committed with a certified bundle as evidence/&lt;revision&gt;/acceptance.json). ${binding.certified ? "Certified for this demo." : `Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}.`} Details in §6.</p>
 <div class="scroll"><table><caption>Every required case per gate</caption><thead><tr><th scope="col">Gate</th><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead><tbody>${rows}</tbody></table></div>${rescue}`);
 }
 
@@ -682,6 +688,8 @@ export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string
   const labels = runLabels(ev);
   const sandboxLabel = provenance(runProvenance(ev, labels));
   const challenge = challengeView(extras.challenge);
+  // The order lifetime of this run's grant: the policy supplied with the evidence, else the one recorded in grant-active.
+  const ttlSec = (policy ?? z.object({ policy: Policy }).safeParse(ev.assertions.find((a) => a.id === "grant-active")?.observed).data?.policy)?.order_ttl_sec ?? null;
   const blocks: Record<PageBlock, string> = {
     replay: `<section class="replay-block" aria-label="Replay">${sandboxLabel}${journeyBlock(ev, stages)}
 ${binding.certified ? "" : `<p class="banner">Not certified for this demo: ${escapeHtml(binding.reasons.join("; "))}. No gate is shown as passed.</p>`}
@@ -691,7 +699,7 @@ ${outcomeBlock(ev)}
 ${anyFailed ? `<p class="banner fail">At least one acceptance case failed, was mismatched or duplicated. See §2.</p>` : ""}
 ${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
     story: storySection(ev),
-    paths: pathsSection(live),
+    paths: pathsSection(ev, live),
     benchmark: section("§B", "sandbox", "benchmark", "Legitimate trades and hostile requests", benchmarkBody(results)),
     attacks: attackLogSection(ev, acc, binding),
     alternatives: section("§A2", "sandbox", "revocation-alternatives", "What happens to orders after the owner acts?", revocationAlternativesBody(results)),
@@ -706,7 +714,7 @@ ${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
     policy: policySection(policy),
     provenance: provenanceSection(ev, acc, binding),
     legacy: legacySection(legacy),
-    challenge: challenge === null ? "" : section("§O", "challenge", "challenge", "Open challenge: a separate grant whose agent key is public", challengeBody(challenge)),
+    challenge: challenge === null ? "" : section("§O", "challenge", "challenge", "Open challenge: a separate grant, apart from the completed run", challengeBody(challenge)),
   };
   return `<!doctype html>
 <html lang="en">
@@ -716,24 +724,27 @@ ${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src '${scriptHash(script)}'; connect-src https:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
-<title>${escapeHtml(LEAD_LINE)} — evidence (${escapeHtml(ev.mode)})</title>
+<title>${escapeHtml(DISPLAY_NAME)} — evidence (${escapeHtml(ev.mode)})</title>
 <style>${STYLES}</style>
 </head>
 <body>
 <a class="skip" href="#story">Skip to the journey in detail</a>
 <main class="dossier">
 <header class="docket">
-<p class="kicker">Bounded mandate · evidence dossier · NEAR Intents · USDC / wNEAR</p>
-<p class="chips" role="status">${headerChips(ev, binding, live)}</p>
+<p class="kicker">${escapeHtml(DISPLAY_NAME)}</p>
 <h1 class="lead-line">${escapeHtml(LEAD_LINE)}</h1>
 <p class="position lead-sub">${escapeHtml(POSITION)}</p>
-${actionsBlock()}
+${actionsBlock(ev)}
+${claimSizeLine(ev.mode, ttlSec)}
 ${stateStrip(ev, binding, passedCount, views.length, live, stages)}
+${linksLine(ev)}
+<p class="chips" role="status">${headerChips(ev, binding, live)}</p>
+${certifiedDefinition()}
 ${provenance(live.kind === "mainnet" ? `NEAR mainnet receipts first, then the ${runProvenance(ev, labels)}` : runProvenance(ev, labels))}
 </header>
-${factsSection(ev, results, binding.certified ? `certified ${ev.mode} acceptance reports · selected samples · test doubles as labelled` : `${ev.mode} evidence, not backed by a certified acceptance run here · test doubles as labelled`)}
+${factsSection(ev, results, binding.certified ? `certified ${ev.mode} acceptance reports · selected samples · test doubles as labelled` : `${ev.mode} evidence, not backed by a certified acceptance run here · test doubles as labelled`, ttlSec)}
 ${pageLayout(live, challenge !== null).map((b) => blocks[b]).join("\n")}
-<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no external files, fonts or links needed. Its one inline script makes network requests only after you press “Run read-only checks” (§V). Evidence schema version ${String(ev.schema_version)}.</footer>
+<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no external file or font is loaded; links to the source, console and cuts are followed only when you choose them. Its one inline script makes network requests only after you press “Run read-only checks” (§V). Evidence schema version ${String(ev.schema_version)}.</footer>
 </main>
 <script>${script}</script>
 </body>

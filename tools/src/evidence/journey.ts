@@ -48,15 +48,32 @@ export function demoSteps(environment: Record<string, string>): DemoStep[] | nul
   return parsed.success && parsed.data.length > 0 ? parsed.data : null;
 }
 
-/** Single configuration of the planned (not yet published) hosting locations. Always shown with PLANNED_LABEL. */
+/**
+ * Single configuration of the hosted site and the source repository. The names keep "planned" because recorded
+ * evidence carries them (console-review `view.planned_url`); nothing derived from them may state whether the site is
+ * or is not published: the same page bytes are read from a clone before publication and served on the site after it.
+ */
 export const PLANNED_SITE = "https://gryyny.github.io/bounded-mandate/";
+/** Routes of the hosted site, relative to its base. Pages link to these relatively, never root-absolutely. */
+export const SITE_PATHS = {
+  console: "console/",
+  video: "video/bounded-mandate-short.mp4",
+  walkthrough: "video/bounded-mandate-demo.mp4",
+} as const;
 export const PLANNED_URLS = {
   page: PLANNED_SITE,
-  console: `${PLANNED_SITE}console/`,
-  video: `${PLANNED_SITE}video/bounded-mandate-short.mp4`,
-  walkthrough: `${PLANNED_SITE}video/bounded-mandate-demo.mp4`,
+  console: `${PLANNED_SITE}${SITE_PATHS.console}`,
+  video: `${PLANNED_SITE}${SITE_PATHS.video}`,
+  walkthrough: `${PLANNED_SITE}${SITE_PATHS.walkthrough}`,
 } as const;
-export const PLANNED_LABEL = "planned, unpublished";
+export const REPO_URL = "https://github.com/gryyny/bounded-mandate";
+/** Label recorded beside `view.planned_url` and shown beside the site's URLs: where it is served, not whether it is. */
+export const PLANNED_LABEL = "hosted site";
+/** Where the same files are in a clone: the certified bundle of a revision, relative to the repository root. */
+export const bundlePaths = (revision: string): { page: string; console: string; video: string; walkthrough: string } => {
+  const dir = `evidence/${revision.slice(0, 7)}`;
+  return { page: `${dir}/page/index.html`, console: `${dir}/console/index.html`, video: `${dir}/${SITE_PATHS.video}`, walkthrough: `${dir}/${SITE_PATHS.walkthrough}` };
+};
 /** Where `make demo` writes the console view, relative to the repository root. */
 export const CONSOLE_LOCAL_PATH = "out/console/index.html";
 
@@ -99,7 +116,8 @@ export const ConsoleReview = z.object({
     /** Repository-relative path of the console view rendered by this run, or null when this run rendered none. */
     local_path: z.string().nullable(),
     planned_url: z.string(),
-    planned_label: z.literal(PLANNED_LABEL),
+    /** The label recorded at demo time; evidence up to 0bcb3f4 recorded "planned, unpublished". Readers do not display it. */
+    planned_label: z.string(),
   }),
   /** Read from the rendered console; absent in older evidence, whose review compared Node views only. */
   rendered: ConsoleRendered.optional(),
