@@ -222,7 +222,7 @@ export function cargoDependencies(meta: CargoMeta, wasm: ReadonlySet<string>): D
 const Manifest = z.object({ files: z.record(z.string(), z.looseObject({ kind: z.string(), license: z.string().optional() })) });
 
 /** Kinds produced by this repository; everything else in fixtures/ is external and must be named in NOTICE. */
-const OWN_KINDS = new Set(["generated-vectors", "deployment-candidate", "provenance-record"]);
+const OWN_KINDS = new Set(["generated-vectors", "deployment-candidate", "provenance-record", "prebuilt-test-double"]);
 
 export interface FixtureDisclosure {
   path: string;

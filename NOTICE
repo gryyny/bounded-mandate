@@ -29,6 +29,11 @@ fixtures/sputnik/sputnikdao2-2.3.1.wasm
 fixtures/vectors/oracle.json
   Read-only responses of NEAR mainnet aggregate-oracle.near (public chain data).
 
+fixtures/signer/v1-signer-eddsa-sign.json
+  Read-only records of a third party's NEAR mainnet v1.signer sign request, its
+  response and derived_public_key views (public chain data). Provenance in
+  fixtures/signer/v1-signer-eddsa-sign.provenance.json.
+
 fixtures/wallets/near-connect.json
   Wallet entries (names, descriptions, icon and website URLs, features,
   permissions) from the NEAR Connect wallet manifest,

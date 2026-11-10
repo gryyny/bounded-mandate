@@ -4,7 +4,7 @@
 // revokes through its owner controls, in headless Chromium, signed by the local sandbox test signer (not a wallet).
 // Nothing here touches a public network.
 import { createHash } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { decide, decisionRecord, judge, submitProposal, type AgentDecision } from "../agent/adapter.js";
@@ -37,7 +37,7 @@ import { balances, fillerKey, postPrices, setupWorld, type World } from "./world
 import { valueUnits } from "../agent/snapshot.js";
 import { canonical } from "../live/ledger.js";
 import { simulationProblem } from "../live/verify.js";
-import { renderPage } from "../page/render.js";
+import { renderPage, type RenderExtras } from "../page/render.js";
 import { renderConsole } from "../console/render.js";
 import { fmtShort, policyLines } from "../console/client.js";
 import { CONSOLE_INTENT_SCHEMA, intentSha256 } from "../console/intent.js";
@@ -126,7 +126,7 @@ function previewProblems(shown: [string, string][], want: [string, string][]): s
   return shown.length === want.length ? out : [...out, `${String(shown.length)} rows shown, ${String(want.length)} expected`];
 }
 
-async function story(world: World, rec: Recorder, unknowns: string[], identifiers: Record<string, string>, session: ConsoleSession): Promise<void> {
+async function story(world: World, rec: Recorder, unknowns: string[], identifiers: Record<string, string>, session: ConsoleSession, outRoot: string): Promise<void> {
   const { client, mandate, verifier } = world;
 
   await rec.step("Grant and limits");
@@ -216,7 +216,7 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   rec.check("nep413-cross-check", "T2", "TypeScript NEP-413 prehash equals the contract's payload_hash", prehash === first.payload_hash, { ts: prehash, contract: first.payload_hash });
 
   await rec.step("Filler fills the first order (actual trade on the pinned verifier)");
-  const statePath = join(REPO_ROOT, "out/demo/filler-state.json");
+  const statePath = join(REPO_ROOT, outRoot, "demo/filler-state.json");
   rmSync(statePath, { force: true }); // fresh sandbox chain: previous runs' order ids are unrelated
   const filler = new Filler({ client, mandate, verifier, account: world.filler.account, key: fillerKey(world), statePath });
   const before = await balances(world, mandate.id);
@@ -438,16 +438,56 @@ async function story(world: World, rec: Recorder, unknowns: string[], identifier
   await rec.close();
 }
 
-function render(evidence: Evidence, outDir: string): string {
-  // Gate status comes only from out/evidence/acceptance.json written by make test; demo checks never mark a gate.
-  return `rendered ${renderPage(evidence, outDir, { policy: DEMO_POLICY })}`;
+/** One run of the story. `make demo` uses DEMO_RUN; `make quick` (src/quick/main.ts) passes its pinned prebuilt set. */
+export interface DemoRun {
+  command: string;
+  banner: string;
+  /** Output root relative to the repository: out/evidence, out/page, out/console and out/demo live under it. */
+  outRoot: string;
+  /** WASMs to deploy; default: the target/near builds. */
+  wasm?: World["wasm"];
+  /** Where the deployed mandate WASM came from, as the console profile names it. */
+  wasmSource?: string;
+  /** Stated first among the run's unknowns. */
+  labels: readonly string[];
+  environment: Readonly<Record<string, string>>;
+  /** Checks established before the story (e.g. pinned hashes); recorded in the evidence. */
+  preChecks: readonly { id: string; gate: string; description: string; passed: boolean; observed: unknown }[];
+  /** Rendering of the evidence page; default: bound to out/evidence/acceptance.json. */
+  page: Pick<RenderExtras, "acceptance" | "latestRunId" | "live" | "reports">;
+  /** Applied to the written page and console HTML. */
+  decorate: (html: string) => string;
 }
 
-async function main(): Promise<number> {
+export const DEMO_RUN: DemoRun = {
+  command: "make demo",
+  banner: "bounded-mandate demo (sandbox; test doubles for MPC, oracle and tokens; no model-provider calls)",
+  outRoot: "out",
+  labels: [],
+  environment: {},
+  preChecks: [],
+  page: {},
+  decorate: (html) => html,
+};
+
+function render(evidence: Evidence, outDir: string, run: DemoRun): string {
+  // Gate status comes only from out/evidence/acceptance.json written by make test; demo checks never mark a gate.
+  const path = renderPage(evidence, outDir, { policy: DEMO_POLICY, ...run.page });
+  decorateFile(path, run);
+  return `rendered ${path}`;
+}
+
+function decorateFile(path: string, run: DemoRun): void {
+  if (run === DEMO_RUN) return;
+  writeFileSync(path, run.decorate(readFileSync(path, "utf8")));
+}
+
+export async function runDemo(run: DemoRun): Promise<number> {
   const coldStart = Date.now();
-  console.log("bounded-mandate demo (sandbox; test doubles for MPC, oracle and tokens; no model-provider calls)");
+  console.log(run.banner);
   const net = await LocalNetwork.start();
   const unknowns: string[] = [
+    ...run.labels,
     "Sandbox execution only: MPC signer, oracle and tokens are labelled test doubles; the verifier is the pinned mainnet WASM.",
     "No mainnet execution in this run; network latency on mainnet is not represented by sandbox timing.",
     "The console review and the revocation run in headless Chromium with owner controls via the local sandbox test signer (not a wallet); no external wallet is exercised.",
@@ -456,7 +496,7 @@ async function main(): Promise<number> {
   const identifiers: Record<string, string> = {};
   try {
     // The owner holds no wNEAR token registration, so its withdrawal exercises storage registration (see WorldOptions).
-    const world = await setupWorld(net, { ownerUnregistered: ["wnear"] });
+    const world = await setupWorld(net, { ownerUnregistered: ["wnear"], ...(run.wasm === undefined ? {} : { wasm: run.wasm }) });
     const setupMs = Date.now() - coldStart;
     Object.assign(identifiers, {
       mandate: world.mandate.id,
@@ -472,6 +512,7 @@ async function main(): Promise<number> {
     });
     console.log(`setup (sandbox start, deploy, fund): ${setupMs} ms`);
     const rec = new Recorder(() => journeyState(world));
+    for (const c of run.preChecks) rec.check(c.id, c.gate, c.description, c.passed, c.observed);
     const binding = sourceBinding(REPO_ROOT, world.wasm.mandate.sha256, Object.values(world.wasm));
     const timings: Record<string, string> = { setup_ms: String(setupMs) };
     const draft = () => ({
@@ -486,9 +527,10 @@ async function main(): Promise<number> {
         ...timings,
         console_driver: `${CONSOLE_BROWSER_LABEL}; ${OWNER_CONTROLS_LABEL}`,
         owner_setup: "owner storage registration on the wNEAR token removed after its deposit (sandbox setup), so the withdrawal registers it",
+        ...run.environment,
         steps: JSON.stringify(rec.steps),
       }),
-      command: "make demo",
+      command: run.command,
       identifiers,
       receipts: rec.receipts,
       assertions: rec.assertions,
@@ -496,13 +538,16 @@ async function main(): Promise<number> {
     });
     // The console served to the browser shows this run's evidence so far as its recorded section.
     const browserStart = Date.now();
-    const session = await ConsoleSession.start(world, () => Evidence.parse(draft()));
+    const session = await ConsoleSession.start(world, () => Evidence.parse(draft()), {
+      screensDir: join(REPO_ROOT, run.outRoot, "console/screens"),
+      ...(run.wasmSource === undefined ? {} : { wasmSource: run.wasmSource }),
+    });
     const browserMs = Date.now() - browserStart;
     timings.browser_start_ms = String(browserMs);
     console.log(`browser start (headless Chromium, console served by the local sandbox test signer): ${String(browserMs)} ms`);
     const storyStart = Date.now();
     try {
-      await story(world, rec, unknowns, identifiers, session);
+      await story(world, rec, unknowns, identifiers, session, run.outRoot);
     } finally {
       await session.stop();
     }
@@ -513,19 +558,21 @@ async function main(): Promise<number> {
     if (binding.integrity_error !== null) rec.check("integrity", "INTEGRITY", "spec and fixture hashes match fixtures/manifest.json", false, binding.integrity_error);
     const finalDraft = draft();
     // The static console view is rendered from this run's evidence; the console stage then records where it was written.
-    const consolePath = renderConsole(Evidence.parse(finalDraft));
+    const consolePath = renderConsole(Evidence.parse(finalDraft), join(REPO_ROOT, run.outRoot, "console"));
+    decorateFile(consolePath, run);
     const consoleRel = relative(REPO_ROOT, consolePath);
-    if (consoleRel !== CONSOLE_LOCAL_PATH) throw new Error(`console written to ${consoleRel}, expected ${CONSOLE_LOCAL_PATH}`);
+    const consoleWant = run === DEMO_RUN ? CONSOLE_LOCAL_PATH : `${run.outRoot}/console/index.html`;
+    if (consoleRel !== consoleWant) throw new Error(`console written to ${consoleRel}, expected ${consoleWant}`);
     const evidence = Evidence.parse({
       ...finalDraft,
       assertions: finalDraft.assertions.map((a) => (a.id === "console-review" ? { ...a, observed: { ...(a.observed as ConsoleReview), view: { ...(a.observed as ConsoleReview).view, local_path: consoleRel } } } : a)),
     });
     console.log(`console: ${consoleRel}`);
-    const outDir = join(REPO_ROOT, "out/evidence");
+    const outDir = join(REPO_ROOT, run.outRoot, "evidence");
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "demo.json"), `${JSON.stringify(evidence, null, 2)}\n`);
-    console.log(`\nevidence: out/evidence/demo.json`);
-    console.log(`page: ${render(evidence, join(REPO_ROOT, "out/page"))}`);
+    console.log(`\nevidence: ${run.outRoot}/evidence/demo.json`);
+    console.log(`page: ${render(evidence, join(REPO_ROOT, run.outRoot, "page"), run)}`);
     const failed = evidence.assertions.filter((a) => !a.passed);
     console.log(`\nsetup ${setupMs} ms | story ${storyMs} ms | ${evidence.assertions.length - failed.length}/${evidence.assertions.length} assertions passed | browser start ${String(browserMs)} ms (not in setup or story)`);
     for (const f of failed) console.log(`FAILED: ${f.id} [${f.gate}] ${f.description}`);
@@ -536,5 +583,5 @@ async function main(): Promise<number> {
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  process.exitCode = await main();
+  process.exitCode = await runDemo(DEMO_RUN);
 }

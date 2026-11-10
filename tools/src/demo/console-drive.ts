@@ -17,7 +17,6 @@ import { REPO_ROOT } from "../near/sandbox.js";
 import type { Evidence } from "../types.js";
 import type { World } from "./world.js";
 
-const SCREENS = join(REPO_ROOT, "out/console/screens");
 const POLL_MS = 250;
 const Rows = z.array(z.tuple([z.string(), z.string()]));
 
@@ -64,9 +63,17 @@ export interface RevokeResult {
   screenshot: Screenshot | null;
 }
 
+export interface ConsoleSessionOptions {
+  /** Where screenshots are written; default out/console/screens. */
+  screensDir?: string;
+  /** Where the deployed mandate WASM came from, as the console profile names it. */
+  wasmSource?: string;
+}
+
 export class ConsoleSession {
   private constructor(
     private readonly world: World,
+    private readonly screens: string,
     readonly signer: LocalSandboxSigner,
     private readonly browser: Browser,
     private readonly page: Page,
@@ -76,7 +83,7 @@ export class ConsoleSession {
   ) {}
 
   /** Serves the console for this sandbox through the test signer and opens it in headless Chromium. */
-  static async start(world: World, evidence: () => Evidence): Promise<ConsoleSession> {
+  static async start(world: World, evidence: () => Evidence, opts: ConsoleSessionOptions = {}): Promise<ConsoleSession> {
     const status = await world.client.nodeStatus();
     const profile = sandboxProfile({
       rpc_url: world.client.rpcUrl,
@@ -85,7 +92,7 @@ export class ConsoleSession {
       mandate_id: world.mandate.id,
       code_hash: codeHashOf(world.wasm.mandate.bytes),
       verifier_id: world.verifier.id,
-      source: "local build target/near/bounded_mandate",
+      source: opts.wasmSource ?? "local build target/near/bounded_mandate",
     });
     const signer = await LocalSandboxSigner.start({
       rpcUrl: world.client.rpcUrl,
@@ -102,7 +109,7 @@ export class ConsoleSession {
       if (m.type() === "error") errors.push(m.text());
     });
     await page.goto(`${signer.origin}/`);
-    return new ConsoleSession(world, signer, browser, page, profile, `chromium ${browser.version()} headless (playwright)`, errors);
+    return new ConsoleSession(world, opts.screensDir ?? join(REPO_ROOT, "out/console/screens"), signer, browser, page, profile, `chromium ${browser.version()} headless (playwright)`, errors);
   }
 
   async stop(): Promise<void> {
@@ -117,8 +124,8 @@ export class ConsoleSession {
   }
 
   private async shot(selector: string, name: string): Promise<Screenshot> {
-    mkdirSync(SCREENS, { recursive: true });
-    const path = join(SCREENS, `${name}.png`);
+    mkdirSync(this.screens, { recursive: true });
+    const path = join(this.screens, `${name}.png`);
     await this.page.locator(selector).screenshot({ path });
     return { path: relative(REPO_ROOT, path), sha256: createHash("sha256").update(readFileSync(path)).digest("hex") };
   }

@@ -51,10 +51,12 @@ export interface WorldOptions {
    * registration; the default leaves the owner registered on both tokens.
    */
   ownerUnregistered?: readonly Asset[];
+  /** WASMs to deploy instead of the target/near builds (`make quick` passes the pinned prebuilt set). */
+  wasm?: World["wasm"];
 }
 
 export async function setupWorld(net: LocalNetwork, opts: WorldOptions = {}): Promise<World> {
-  const wasm = loadWorldWasm();
+  const wasm = opts.wasm ?? loadWorldWasm();
   const client = net.client;
   const root = net.root.id;
   const operator = await net.createAccount("operator", { balanceNear: 50n });

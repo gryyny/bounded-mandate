@@ -1,0 +1,44 @@
+{
+  "schema": "bounded-mandate/prebuilt-test-doubles/v1",
+  "label": "PREBUILT TEST DOUBLES, UNCERTIFIED, NOT A REPRODUCIBLE BUILD",
+  "reproducible": false,
+  "statement": "These are test doubles for external protocols, used only by make quick so the sandbox story runs without Rust. They were built with the repository's normal non-reproducible build, so a rebuild on another host or toolchain install may produce different bytes; their hashes pin these exact bytes, not a build recipe. make test and make demo build the stubs from source and are the certified path. The mandate make quick deploys is the reproducible deployment candidate fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, not a file in this directory.",
+  "source": {
+    "revision": "d653c6a44d99ce9e0520795932b241c593a5322c",
+    "stubs_tree": "d9d6aa4319b3e6e9d70462053e203cd974d0f5dc",
+    "cargo_lock_sha256": "10c4629a53da9db7f797ddd5db1ed280afcdd1b925b70c77811b4447a48088e1",
+    "dirty": false
+  },
+  "toolchain": {
+    "rust_toolchain_toml_sha256": "eb74525e1acb5d1d3b13c2813ce459e0bb3025212255be4fc0e0fd1dfc5a054c",
+    "channel": "1.97.1",
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo_near": "cargo-near 0.22.0",
+    "host": "aarch64-apple-darwin"
+  },
+  "build_command": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/<crate>/Cargo.toml",
+  "built_at": "2026-11-09T23:47:00Z",
+  "files": {
+    "mock_ft.wasm": {
+      "crate": "mock-ft",
+      "manifest_path": "stubs/mock-ft/Cargo.toml",
+      "role": "Test double NEP-141 token; deployed twice as the USDC and wNEAR test tokens",
+      "bytes": 156415,
+      "sha256": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0"
+    },
+    "mock_oracle.wasm": {
+      "crate": "mock-oracle",
+      "manifest_path": "stubs/mock-oracle/Cargo.toml",
+      "role": "Test double of aggregate-oracle.near: operator-set prices; never oracle output",
+      "bytes": 126377,
+      "sha256": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+    },
+    "mock_mpc.wasm": {
+      "crate": "mock-mpc",
+      "manifest_path": "stubs/mock-mpc/Cargo.toml",
+      "role": "Test double of the MPC signer v1.signer: signs with deterministic Ed25519 TEST keys anyone can recompute; never MPC output",
+      "bytes": 237504,
+      "sha256": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+    }
+  }
+}

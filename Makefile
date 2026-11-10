@@ -1,8 +1,8 @@
-# Public targets: test, demo, page, live, verify. Everything else is an implementation detail.
+# Public targets: test, demo, quick, page, live, verify. Everything else is an implementation detail.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := test
-.PHONY: test demo page live verify
+.PHONY: test demo quick page live verify
 
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
@@ -48,6 +48,13 @@ demo:
 	$(BROWSER)
 	$(call build_wasm)
 	$(TSX) src/demo/main.ts
+
+# The demo story without Rust: the deployment candidate and hash-pinned prebuilt test doubles (fixtures/prebuilt).
+# Prebuilt and uncertified; writes only out/quick/. make test and make demo are the certified path.
+quick:
+	$(NPM_CI)
+	$(BROWSER)
+	$(TSX) src/quick/main.ts
 
 # Checks the committed evidence bundle without a toolchain (Node 20+, no install); it does not rerun the tests.
 verify:

@@ -74,6 +74,33 @@
       "kind": "provenance-record",
       "source": "Read-only mainnet RPC and FastNEAR transaction-index queries recorded by the repository author for signer/v1-signer-eddsa-sign.json",
       "license": "MIT (this repository)"
+    },
+    "prebuilt/mock_ft.wasm": {
+      "sha256": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+      "kind": "prebuilt-test-double",
+      "source": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-ft/Cargo.toml at product commit d653c6a44d99ce9e0520795932b241c593a5322c (stubs/ unchanged since 9491d9a), rustc 1.97.1 per rust-toolchain.toml, cargo-near 0.22.0, host aarch64-apple-darwin. NOT a reproducible build: pins these bytes only. Test double used only by make quick (prebuilt, uncertified); provenance in prebuilt/provenance.json",
+      "reproduced_from_source": false,
+      "license": "MIT (this repository)"
+    },
+    "prebuilt/mock_oracle.wasm": {
+      "sha256": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+      "kind": "prebuilt-test-double",
+      "source": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-oracle/Cargo.toml at product commit d653c6a44d99ce9e0520795932b241c593a5322c (stubs/ unchanged since 9491d9a), rustc 1.97.1 per rust-toolchain.toml, cargo-near 0.22.0, host aarch64-apple-darwin. NOT a reproducible build: pins these bytes only. Test double used only by make quick (prebuilt, uncertified); provenance in prebuilt/provenance.json",
+      "reproduced_from_source": false,
+      "license": "MIT (this repository)"
+    },
+    "prebuilt/mock_mpc.wasm": {
+      "sha256": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+      "kind": "prebuilt-test-double",
+      "source": "cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-mpc/Cargo.toml at product commit d653c6a44d99ce9e0520795932b241c593a5322c (stubs/ unchanged since 9491d9a), rustc 1.97.1 per rust-toolchain.toml, cargo-near 0.22.0, host aarch64-apple-darwin. NOT a reproducible build: pins these bytes only. Test double used only by make quick (prebuilt, uncertified); provenance in prebuilt/provenance.json",
+      "reproduced_from_source": false,
+      "license": "MIT (this repository)"
+    },
+    "prebuilt/provenance.json": {
+      "sha256": "ba91e1684b2355bef6f956f5fabca67a3f65b91c240530928dc8c921e3059a84",
+      "kind": "provenance-record",
+      "source": "Build record of the prebuilt test doubles in prebuilt/: source revision, stubs tree, Cargo.lock and rust-toolchain.toml hashes, toolchain, exact build command, per-file sha256; states that the build is not reproducible",
+      "license": "MIT (this repository)"
     }
   }
 }
