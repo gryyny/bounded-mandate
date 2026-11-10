@@ -325,6 +325,31 @@ describe("the challenge record carries an earlier record forward only when it is
   });
 
   // gate: LIVE
+  // The reviewer's counterexample: refreshing a closed challenge with the open manifest made it "inactive" and
+  // dropped its close manifest and receipts from the latest record.
+  it("keeps a completed close when the record is refreshed or a close re-run does not complete", async () => {
+    const m = offlineManifest(tmp());
+    const revoked = chainGrant({ status: "revoked" });
+    const closedRecord = record("closed");
+    const previous = ownRecord(m, revoked, { status: "closed", manifests: closedRecord.manifests, close: closedRecord.close });
+    expect(previous.close?.exit_code).toBe(0);
+    expect(previousProblems(previous, m, revoked as unknown as GrantView)).toEqual([]);
+    for (const over of [{}, { phase: "close", result: { exitCode: 1, message: "SYNTHETIC: close re-run failed" } }] as const) {
+      const got = await build(m, revoked, { previous, ...over });
+      expect([got.status, got.manifests.close, got.close, got.opened]).toEqual(["closed", previous.manifests.close, previous.close, previous.opened]);
+    }
+    // Controls. A close that completes now records its own manifest and receipts.
+    const again = await build(m, revoked, { phase: "close", result: { exitCode: 0, message: "completed" }, previous });
+    expect([again.status, again.manifests.close, again.close?.message]).toEqual(["closed", SHA, "completed"]);
+    // The grant is active again on chain (same epoch cannot be, but the status is read, not assumed): not closed.
+    expect((await build(m, chainGrant(), { previous })).status).toBe("open");
+    expect((await build(m, chainGrant(), { previous })).close).toBeNull();
+    // An earlier record that was never closed gives a refresh nothing to keep.
+    const neverClosed = await build(m, revoked, { previous: ownRecord(m, revoked) });
+    expect([neverClosed.status, neverClosed.close, neverClosed.manifests.close]).toEqual(["inactive", null, null]);
+  });
+
+  // gate: LIVE
   it("ignores an earlier record that differs in network, mandate, code, agent key or grant, one binding at a time", async () => {
     const m = offlineManifest(tmp());
     const active = chainGrant();

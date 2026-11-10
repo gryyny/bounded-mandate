@@ -207,11 +207,15 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
     const s = o.state.state === "released" || o.state.state === "rejected" ? `${o.state.state}:${o.state.reason}` : o.state.state;
     byState[s] = (byState[s] ?? 0) + 1;
   }
+  // A completed close stays recorded: a later refresh or a close re-run that did not complete (a failure, or nothing
+  // left to do) keeps the earlier record's close while the same grant is still revoked on chain.
+  const closedNow = phase === "close" && result.exitCode === 0 && challengeGrant?.status === "revoked";
+  const closedBefore = !closedNow && previous?.status === "closed" && previous.close !== null && challengeGrant?.status === "revoked" ? previous : null;
   const balance = async (asset: "usdc" | "wnear") => (await verifier.balance(m.accounts.mandate, m.mandate_config[asset].token)).toString();
   const record: ChallengeRecord = {
     schema: CHALLENGE_RECORD_SCHEMA,
     mode: m.network.name,
-    status: challengeGrant === null ? "not-opened" : phase === "close" && result.exitCode === 0 && challengeGrant.status === "revoked" ? "closed" : challengeGrant.status === "active" ? "open" : "inactive",
+    status: challengeGrant === null ? "not-opened" : closedNow || closedBefore !== null ? "closed" : challengeGrant.status === "active" ? "open" : "inactive",
     generated_at: new Date().toISOString(),
     separate_from_completed_run: true,
     network: { chain_id: status.chain_id, genesis_hash: status.genesis_hash },
@@ -225,7 +229,7 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
       publication: KEY_PUBLICATION,
       publication_url: input.publicationUrl ?? previous?.agent_key.publication_url ?? null,
     },
-    manifests: { open: phase === "open" ? input.manifestSha256 : (previous?.manifests.open ?? null), close: phase === "close" ? input.manifestSha256 : null },
+    manifests: { open: phase === "open" ? input.manifestSha256 : (previous?.manifests.open ?? null), close: closedBefore !== null ? closedBefore.manifests.close : phase === "close" ? input.manifestSha256 : null },
     opened,
     grant:
       challengeGrant === null
@@ -248,8 +252,10 @@ export async function challengeRecord(input: RecordInput): Promise<ChallengeReco
     challenge_orders: { total: mine.length, by_state: byState },
     mandate_balances: { usdc: await balance("usdc"), wnear: await balance("wnear") },
     close:
-      phase === "close"
-        ? { exit_code: result.exitCode, message: result.message, receipts: (result.evidence?.receipts ?? []).map((r) => ({ label: r.label, tx_hash: r.tx_hash ?? null, method: methodOf(r), outcome: r.outcome })) }
+      closedBefore !== null
+        ? closedBefore.close
+        : phase === "close"
+          ? { exit_code: result.exitCode, message: result.message, receipts: (result.evidence?.receipts ?? []).map((r) => ({ label: r.label, tx_hash: r.tx_hash ?? null, method: methodOf(r), outcome: r.outcome })) }
         : null,
     ...(input.previous !== null && input.previous.opened !== null && ignored.length > 0 ? { previous_record_ignored: ignored } : {}),
     shows: CHALLENGE_SHOWS,
