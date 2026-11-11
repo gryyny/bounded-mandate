@@ -2,9 +2,17 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/b480057",
+      "revision": "b48005737a8594f171990e387258649133a1d977",
+      "status": "certified",
+      "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
+      "run": "evidence/b480057/run.json",
+      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1507 s cold, 198 Rust and 823 TypeScript tests passed, acceptance run 20261110T231805526Z-2ca01ad9786c. make demo exit 0 in 60 s warm, 59/59 story checks (setup 15.6 s, story 20.0 s, browser start 0.4 s). make quick 60/60 in 39 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42922155040: make test exit 0 in 2137 s, acceptance run 20261110T232259961Z-b7537f7d5618, make demo 59/59 in 63 s (setup 12.8 s, story 19.9 s); a separate job with no Rust toolchain ran make quick 60/60 in 43 s (87 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Supersedes 348a14d after a second independent review: verify --mainnet now counts a fill as a trade only when it executed the mandate's proposed order and moved its amounts, a refreshed challenge record keeps its completed close, and the CI skip rule reads the changed-file list from a file; contract source and the deployment candidate did not change. Sandbox only; the mainnet paths are exercised against synthetic chain responses and sandbox runs, not mainnet."
+    },
+    {
       "path": "evidence/348a14d",
       "revision": "348a14dce7603c846b4b53e02269f7e3e6ce3124",
-      "status": "certified",
+      "status": "superseded",
       "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/348a14d/run.json",
       "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1499 s cold, 198 Rust and 813 TypeScript tests passed, acceptance run 20261110T195023440Z-276450991eb5. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.6 s, story 20.1 s, browser start 0.3 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42889198706: make test exit 0 in 2341 s, acceptance run 20261110T195328388Z-88b342ac651d, make demo 59/59 in 80 s (setup 14.4 s, story 20.5 s); a separate job with no Rust toolchain ran make quick 60/60 in 43 s (86 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Supersedes 173942f after an independent review: verify --mainnet, the live runner's reports, the challenge record, the mainnet page verdict and the CI skip rule changed; contract source and the deployment candidate did not. Sandbox only; the mainnet paths are exercised against synthetic chain responses and sandbox runs, not mainnet."

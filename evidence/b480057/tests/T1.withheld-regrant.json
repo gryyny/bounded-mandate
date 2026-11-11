@@ -1,0 +1,197 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T1",
+  "case": "withheld-regrant",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261110T231805526Z-2ca01ad9786c",
+  "source": {
+    "revision": "b48005737a8594f171990e387258649133a1d977",
+    "dirty": false
+  },
+  "spec_sha256": "f75c6f31613a480a2dbc7951552e14f2f60af1f6d499439ce7f6385825da34f5",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "target/debug/deps/t1_revocation-47286f49319fd2b2",
+  "generated_at_unix": 1794353085,
+  "data": {
+    "relays": [
+      {
+        "label": "before-removal",
+        "order_id": 0,
+        "epoch": 1,
+        "after_confirmed_removal": false,
+        "executed": true,
+        "bundle_sha256": "e0ade394a830c7c1e2e21b4921852b192fa1cf455ce9ffcc61f1bdb92fbe0377",
+        "mandate_nonce": "Vij2xgDImJWcADh4qqrS5hgPueLuoRs2lCxzo+BvLII=",
+        "filler_nonce": "Vij2xgDImJWcADh4qqrS5hgBAQEBAQEBAQEBAQEBAQE=",
+        "mandate_nonce_used": true,
+        "filler_nonce_used": true,
+        "signing_public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+        "transaction_hash": "FTgjYkr7ci77TuwccpCFz2mHfnhdVXgWvRFbbhohHQQ7",
+        "verifier_error": "",
+        "verifier_failure_receipt": null,
+        "deadline_margin_ns_at_least": "56427178000"
+      },
+      {
+        "label": "withheld-after-revoke",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false,
+        "bundle_sha256": "17de666ae9dc8e887d7721d3e55d51cfe9460f676acc9d08bb1d669ae67ac8ff",
+        "mandate_nonce": "Vij2xgDImJWcADh4qqrS5hghCds6O/+n5xOEaSh8TYQ=",
+        "filler_nonce": "Vij2xgDImJWcADh4qqrS5hgCAgICAgICAgICAgICAgI=",
+        "mandate_nonce_used": false,
+        "filler_nonce_used": false,
+        "signing_public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+        "transaction_hash": "92TkExw3YKyk4wMu2dkAishAvdVaA22eGUKZahuExFD8",
+        "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) } })",
+        "verifier_failure_receipt": {
+          "id": "BVxZmjSyWJc7nVEgrxBVrDUZgxXiQeWpqmZjZ6ZycZHd",
+          "block_hash": "6C3XA1Pfwf4SrB6TuPYdoUnQgs97XquNVGTDpJNd6nJ4",
+          "executor": "intents.test.near"
+        },
+        "deadline_margin_ns_at_least": "52625601000"
+      },
+      {
+        "label": "withheld-after-regrant",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false,
+        "bundle_sha256": "17de666ae9dc8e887d7721d3e55d51cfe9460f676acc9d08bb1d669ae67ac8ff",
+        "mandate_nonce": "Vij2xgDImJWcADh4qqrS5hghCds6O/+n5xOEaSh8TYQ=",
+        "filler_nonce": "Vij2xgDImJWcADh4qqrS5hgCAgICAgICAgICAgICAgI=",
+        "mandate_nonce_used": false,
+        "filler_nonce_used": false,
+        "signing_public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+        "transaction_hash": "ExgCxhfYnEfv2RcPWbXqGPa4MEKv26YQNvVgNkE66vUf",
+        "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) } })",
+        "verifier_failure_receipt": {
+          "id": "2GZGTCRjdtjsJ7vsTDSyQKhpWbEcCQ9DRDGXD6qTDetb",
+          "block_hash": "Dh4LYa64w3ogYZukz4Ueaxj2f4t68XsMqefjJjHTHrjE",
+          "executor": "intents.test.near"
+        },
+        "deadline_margin_ns_at_least": "51384923000"
+      },
+      {
+        "label": "new-grant-order",
+        "order_id": 2,
+        "epoch": 2,
+        "after_confirmed_removal": false,
+        "executed": true,
+        "bundle_sha256": "2c696fa3f0793335bcb8cdf0e1737404fa48381136cb96686147ed4255b1d5a8",
+        "mandate_nonce": "Vij2xgDImJWcADh4qqrS5hjryE4jB6QOMBvbLanfa90=",
+        "filler_nonce": "Vij2xgDImJWcADh4qqrS5hgEBAQEBAQEBAQEBAQEBAQ=",
+        "mandate_nonce_used": true,
+        "filler_nonce_used": true,
+        "signing_public_key": "ed25519:6tv7BgWV1qxzt539h9dAaBSckXHfAW67GyxkknjNdnyN",
+        "transaction_hash": "7PnV4wspg9Ha6DfVRAM7mtLXXMHfk3XzTWswrteJfig8",
+        "verifier_error": "",
+        "verifier_failure_receipt": null,
+        "deadline_margin_ns_at_least": "49871084000"
+      },
+      {
+        "label": "epoch1-after-epoch3",
+        "order_id": 1,
+        "epoch": 1,
+        "after_confirmed_removal": true,
+        "executed": false,
+        "bundle_sha256": "17de666ae9dc8e887d7721d3e55d51cfe9460f676acc9d08bb1d669ae67ac8ff",
+        "mandate_nonce": "Vij2xgDImJWcADh4qqrS5hghCds6O/+n5xOEaSh8TYQ=",
+        "filler_nonce": "Vij2xgDImJWcADh4qqrS5hgCAgICAgICAgICAgICAgI=",
+        "mandate_nonce_used": false,
+        "filler_nonce_used": false,
+        "signing_public_key": "ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB",
+        "transaction_hash": "iNafTQkBUUmsJUBWQLePHB4r7kjGrComyii4PHYNQ1k",
+        "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:4r13J7gVEewKP8XCzwVoii8Wu5mf1dBRkDwvhWinCbXB' doesn't exist for account 'mandate.test.near'\")) }) } })",
+        "verifier_failure_receipt": {
+          "id": "7JfZzihC7TwZHY1zDKwipbHtmyvkNDMFA6w59gyoe36k",
+          "block_hash": "5b29gLe1QFo89DfaQmnpxSU4Lp8hT171ysRdPq6CJa1X",
+          "executor": "intents.test.near"
+        },
+        "deadline_margin_ns_at_least": "46871893000"
+      },
+      {
+        "label": "epoch2-after-epoch3",
+        "order_id": 3,
+        "epoch": 2,
+        "after_confirmed_removal": true,
+        "executed": false,
+        "bundle_sha256": "39b4b174d6d6d639d1022cd1a53b932ed689d1fe9d8124d11ae9bb61ae7917d6",
+        "mandate_nonce": "Vij2xgDImJWcADh4qqrS5hhyqw4TUvSeU+/LTkmau+0=",
+        "filler_nonce": "Vij2xgDImJWcADh4qqrS5hgGBgYGBgYGBgYGBgYGBgY=",
+        "mandate_nonce_used": false,
+        "filler_nonce_used": false,
+        "signing_public_key": "ed25519:6tv7BgWV1qxzt539h9dAaBSckXHfAW67GyxkknjNdnyN",
+        "transaction_hash": "FCPPJcoxSWampcqCJscomS8XeAcMNiLSQv9hozGFjc9L",
+        "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:6tv7BgWV1qxzt539h9dAaBSckXHfAW67GyxkknjNdnyN' doesn't exist for account 'mandate.test.near'\")) }) } })",
+        "verifier_failure_receipt": {
+          "id": "EiVe24qhxyu5u8GDr8wGid8zvVpW51Pv5yzNDQrruzrE",
+          "block_hash": "EL44EbKTdHxWbbCUvbiPfeisSHCXS1kWtM6Ct421Crs5",
+          "executor": "intents.test.near"
+        },
+        "deadline_margin_ns_at_least": "46484299000"
+      }
+    ],
+    "pre_removal_simulations": [
+      {
+        "order_id": "1",
+        "epoch": 1,
+        "bundle_sha256": "17de666ae9dc8e887d7721d3e55d51cfe9460f676acc9d08bb1d669ae67ac8ff",
+        "min_deadline": "2026-11-10T23:25:32Z",
+        "intents_executed": [
+          {
+            "intent_hash": "CpggLzHxzLZp6cgBQnUYrprSEVVQKuMTMyWsVyY92FPu",
+            "account_id": "mandate.test.near",
+            "nonce": "Vij2xgDImJWcADh4qqrS5hghCds6O/+n5xOEaSh8TYQ="
+          },
+          {
+            "intent_hash": "7L2rTgUqxvDemdDYpq42uFHd6N7rNQwgrcUPMMcRWYcn",
+            "account_id": "filler.test.near",
+            "nonce": "Vij2xgDImJWcADh4qqrS5hgCAgICAgICAgICAgICAgI="
+          }
+        ],
+        "invariant_violated": false,
+        "negative_controls": {
+          "mandate_only_invariant_violation": {
+            "error": "unmatched_deltas",
+            "unmatched_deltas": {
+              "nep141:usdc.test.near": "-99999900",
+              "nep141:wnear.test.near": "33166666666666666666666667"
+            }
+          },
+          "same_bundle_without_filler_wnear": "unable to fulfill the query request\n\nCaused by:\n    handler error: [Function call returned an error: \"wasm execution failed with error: HostError(GuestPanic { panic_msg: \\\"insufficient balance or overflow\\\" })\"]"
+        }
+      },
+      {
+        "order_id": "3",
+        "epoch": 2,
+        "bundle_sha256": "39b4b174d6d6d639d1022cd1a53b932ed689d1fe9d8124d11ae9bb61ae7917d6",
+        "min_deadline": "2026-11-10T23:25:32Z",
+        "intents_executed": [
+          {
+            "intent_hash": "DR9Znh5U3mRURusY161fTAPEaoC8ojYcZTqnKoZ2re6i",
+            "account_id": "mandate.test.near",
+            "nonce": "Vij2xgDImJWcADh4qqrS5hhyqw4TUvSeU+/LTkmau+0="
+          },
+          {
+            "intent_hash": "FE9f1vAN2TuPhJQyzQvUMGeHtNy9sBdutFddv9D18bev",
+            "account_id": "filler.test.near",
+            "nonce": "Vij2xgDImJWcADh4qqrS5hgGBgYGBgYGBgYGBgYGBgY="
+          }
+        ],
+        "invariant_violated": false
+      }
+    ],
+    "executions_after_confirmed_removal": 0,
+    "notes": [],
+    "rejection_rule": "after confirmed removal, the verifier receipt must name the exact missing signing key and mandate while the order is unexpired; both bundle nonces remain unused and verifier balances remain unchanged"
+  }
+}
