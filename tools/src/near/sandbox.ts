@@ -45,6 +45,16 @@ export class LocalNetwork {
   }
 
   /**
+   * The same chain with `parent` as the creating account and its own RPC client: `createAccount(name)` then makes
+   * `<name>.<parent>`, signed by the parent. Independent worlds can share one sandbox process without sharing an
+   * account, a signing key or a nonce. `stop()` on any view stops the shared process.
+   */
+  scoped(parent: SandboxAccount & { key: KeyPair }): LocalNetwork {
+    const client = new NearClient(this.client.rpcUrl);
+    return new LocalNetwork(this.sandbox, client, { ...parent, account: client.account(parent.id, parent.key) }, this.version);
+  }
+
+  /**
    * Creates `<name>.<root>` in one root-signed transaction: optional code, initializer and exactly one key
    * (full access, a restricted function-call key, or none so that only the contract controls the account).
    */
