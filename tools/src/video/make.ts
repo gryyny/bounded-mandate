@@ -1113,7 +1113,7 @@ async function main(): Promise<void> {
     demo_dirty: ev.source.dirty,
     acceptance: acc === null ? null : { run_id: acc.run_id, revision: acc.revision, certified: acc.certified, complete: acc.complete },
     certification: { certified_for_this_demo: binding.certified, reasons: binding.reasons, inputs: binding.inputs },
-    mainnet_receipts_shown: live.kind === "mainnet",
+    mainnet_receipts_shown: mainnet.kind === "complete",
     mainnet_segment: {
       state: mainnet.kind,
       statement: mainnet.statement,
