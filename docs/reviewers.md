@@ -214,6 +214,22 @@ The removal snapshot is the block in which the successful `remove_public_key` re
 - **What it shows.** A historical replay of chain state: the bundle was executable at the preceding snapshot and refused at the removal snapshot. It does not show when the counterparty created its signature.
 - **How it is tested today.** Gate REPLAY runs `verify.mjs` and the panel on shared synthetic cases against a local archival RPC stub and requires the same result from both. Nothing has been replayed against mainnet.
 
+### Later proof reader, original funded runner
+
+The approved-run candidate remains **b480057**. The expanded lab, example and historical proof reader have their own later revision; they do not change the runner's identity or retroactively add cases to its certification. Keep the original `evidence/b480057/` bytes unchanged.
+
+To check the original 37-case bundle with this later reader, give it a separate checkout containing the original spec, fixtures and bundle. `1b9d2ea` is the original evidence commit (it contains the b480057 implementation and bundle):
+
+```sh
+git clone https://github.com/gryyny/bounded-mandate.git /tmp/bounded-mandate-original
+git -C /tmp/bounded-mandate-original checkout --detach 1b9d2ea
+node verify.mjs --root /tmp/bounded-mandate-original --bundle evidence/b480057 --rules bundle
+```
+
+Run the last command from the later reader's checkout. It must report the original list's **37 of 48** current cases, explicitly lacking the eleven added cases, while still checking the original spec, fixtures and deployment candidate. `--no-checkout` is an offline bundle-integrity option; it skips the candidate and cannot establish the historical replay.
+
+After a separately approved b480057 mainnet run, curate a **new**, hash-covered bundle beside the original, containing that run's original source identities, original acceptance records and `live-mainnet.json`; add its index entry without changing the original bundle. From the later reader's checkout use the same original root and `--rules bundle`, select that new bundle with `--bundle`, and add `--mainnet`. Do not substitute a later demo revision for the run's source revision or use `--live` to treat an unhashed external file as certified evidence. Before such a run, `--mainnet` must exit nonzero because the mainnet record is absent. Synthetic RPC test cases exercise the replay rules, not a real run.
+
 ## What the demo runs
 
 Nine stages, in order, on a local sandbox with labelled test doubles and recorded model output. They follow the owner journey above (stages 1 and 2 are its first step); hostile requests run before the withheld order is signed, so the order keeps more of its lifetime for the relay:

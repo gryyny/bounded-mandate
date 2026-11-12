@@ -18,4 +18,5 @@ node_modules/
 /.claude/
 /.codex/
 /.pi/
+/.playwright-cli/
 .DS_Store
