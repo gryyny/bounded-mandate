@@ -2,7 +2,7 @@
 
 This is the canonical product specification for one competition-ready bounded trading mandate.
 
-Status: selected; implemented and certified in sandbox, with no mainnet run yet. Execution results belong in the status register, not here. The source-verified primitives below are inputs, not proof that our code works.
+Status: selected; implemented and certified in sandbox, with no mainnet run yet. The historical replay, sandbox lab and integration example (added 12 November 2026) are specified here and not yet certified. Execution results belong in the status register, not here. The source-verified primitives below are inputs, not proof that our code works.
 
 ## Product and claim
 
@@ -16,7 +16,7 @@ This does not guarantee principal, profit, execution availability or a maximum t
 
 Required:
 - One owner; exactly USDC on NEAR and wNEAR, identified by exact token IDs and decimals.
-- One Rust production contract crate; one TypeScript package for agent, filler, replay, evidence and static-page generation.
+- One Rust production contract crate; one TypeScript package for agent, filler, replay, evidence, static-page generation and the sandbox lab. The integration example is a separate small client outside that package.
 - The contract's current grant-derived Ed25519 key is the only registered signing key on its Intents account. Predecessor authorization remains enabled.
 - The agent uses a restricted function-call key whose only allowed method is `propose_order`, with a finite gas allowance. The contract independently enforces its role checks.
 - Contract-built NEP-413 `token_diff` orders; the agent never supplies arbitrary signing bytes.
@@ -26,8 +26,9 @@ Required:
 - A static owner console (no backend). Ordinary visitors get a read-only view of policy, grant status, key presence, orders, balances, recovery state and evidence provenance. The owner's revoke, recover and withdrawal actions are previewed exactly and signed outside the page's custody: the page holds no private key or model credential, enforces owner, network and deployment checks before enabling a control, survives cancelled signatures and reloads during pending actions, and never resubmits automatically. Each signed action is handed to the runner by transaction hash and verified there.
 - A tested DAO-owner integration: a pinned Sputnik DAO account as the fixed owner, exercising grant, revoke, recovery and withdrawal through threshold-voted proposals in sandbox. The contract's owner semantics are unchanged; the DAO is one owner account, not a pool or a grantor of third-party money.
 - Predecessor-authorized recovery to the fixed owner, independent of oracle, agent, breaker and MPC.
+- A read-only historical replay of the withheld order in the verification panel and `verify.mjs`, a sandbox lab a visitor can operate, and a small integration example (sections below).
 
-Excluded: pooled shares, fees on third-party money, multi-member pooled or DAO-as-grantor-of-others' funds, cross-chain entry/exit, public solver relay, taker-pays-first, generic execution, a backend service or hosted application holding keys or credentials, a second hackathon entry, or deprecated/unverified primitives. The static owner console and the single-owner DAO integration above are admitted deliberately.
+Excluded: pooled shares, fees on third-party money, multi-member pooled or DAO-as-grantor-of-others' funds, cross-chain entry/exit, public solver relay, taker-pays-first, generic execution, a backend service or hosted application holding keys or credentials, a second hackathon entry, or deprecated/unverified primitives. The static owner console and the single-owner DAO integration above are admitted deliberately. The sandbox lab is the one admitted exception to the backend exclusion, within the limits of its section.
 
 ## Authority lifecycle
 
@@ -104,6 +105,36 @@ After a completed mainnet run, the owner may open a challenge: a new deposit and
 - The cost is bounded by the challenge deposit and the agent's allowance. An unknown contract defect could lose the deposit; the owner weighs that before approving. After judging the owner revokes, recovers and withdraws.
 
 
+## Historical replay of the withheld order
+
+After a mainnet run, the verification panel and `verify.mjs` replay the withheld bundle read-only against archival state. The removal snapshot is the block in which the successful `remove_public_key` receipt of the revoke executed; the preceding snapshot is that block's `prev_hash`. Neither is the block that included the revoke transaction. The result is verified only when all of these hold:
+
+- The bundle is read from the relay transaction on chain, and its mandate order is bound to an order the mandate logged as signed in an earlier block.
+- At the preceding snapshot the order's signing key is registered for the mandate on the verifier, and `simulate_intents` accepts the exact relayed bundle: every intent executed, no invariant violation.
+- At the removal snapshot the key is absent, and `simulate_intents` refuses the identical bundle because that key does not exist for the mandate.
+- Both snapshots' block times are before every deadline in the bundle.
+- The relay transaction itself failed on the verifier for the same removed key, in a block before the order's deadline.
+- The mandate and the verifier have, at both snapshots, the code hashes the run's evidence records for them; the mandate's is the deployment candidate's.
+
+State a provider cannot serve yields inconclusive; evidence that contradicts any item yields failed; neither is shown as verified. An altered bundle, another key, other blocks or an expired order cannot produce the verified result. The panel and `verify.mjs` apply the same rules and agree on the same inputs. The live runner and its evidence format are unchanged: the replay reads a completed run. It is described as a historical replay of chain state. It shows the bundle was executable at the preceding snapshot; it does not show when the counterparty created its signature.
+
+## Sandbox lab
+
+A lab lets a visitor operate a sandbox treasury: set limits and grant, make a permitted trade, attempt an unsafe trade, make a poor but permitted trade, withhold a signed order, revoke, retry the withheld order, and recover. It runs locally (`make lab`) and may run as a hosted service. Hosting needs the owner's separate approval of a reviewable deployment and its cost.
+
+- It runs a sandbox chain with the exact deployment candidate, the pinned verifier and the labelled test doubles. Every result comes from execution, with inspectable receipts; no outcome is computed outside the contracts.
+- It holds only disposable keys created for that sandbox: no public-network key, owner credential or model credential. It sends nothing to a public network. A hosted lab offers visitors only its listed actions and read-only views, never the raw sandbox RPC.
+- Two simultaneous sessions cannot alter each other's balances, oracle, signer, authority or time-dependent outcomes; the lab uses no shared time control. Reset gives a clean, reproducible starting state.
+- An exported scenario names the source revision, the WASM hashes and the test doubles, and replays locally to the same outcomes.
+- Resource limits and cleanup keep one visitor from disabling the service for others.
+- Every surface labels results as sandbox with test doubles. When the lab is unreachable the page says so and offers the recorded replay, labelled recorded; it never looks like a successful interactive run.
+- A comparison view reproduces the owner's alternatives from equal starting conditions: wait for expiry, cancel a complete nonce list, cancel an incomplete list, cancellation with the signer unavailable, remove the key and resume with a fresh key, and re-add the same key.
+- Existing evidence and mainnet claims remain independent of the lab; the lab's implementation and isolation receive their own acceptance tests. The owner console and its custody rule are unchanged, and the lab adds no grant editor for a public network.
+
+## Integration example
+
+A small independent strategy client, separate from the demo harness, uses only documented interfaces: the agent's function-call key, `propose_order` and the contract's views. Against a local sandbox it proposes an allowed trade, meets a refusal, and observes revocation. One documented command runs it from a fresh clone with no funds or model credential. It is an example, not an SDK.
+
 ## Acceptance tests
 
 `make test` runs all local gates; none may be replaced by a recorded pass string. Mock external dependencies explicitly, while executing actual contract logic and the pinned verifier WASM. Retain seeds and replayable failures. A gate passes only when every one of its required cases passed in one run of a clean source revision, with spec, fixture and WASM hashes bound to that run. Missing cases leave the gate incomplete. Demo checks are not acceptance results.
@@ -128,12 +159,17 @@ Also require:
 - The console's owner flow runs in a real browser against sandbox through a labelled local signing adapter: wrong owner and wrong network disable the controls, a cancelled signature and a reload during a pending action resubmit nothing, and the runner imports the resulting hashes. This does not establish compatibility with any external wallet.
 - The DAO-owner case passes against pinned Sputnik code in sandbox: insufficient approvals execute nothing, threshold approval executes grant, revoke and recovery, and recovery reaches the DAO's Intents account. If it cannot pass, the claim is withdrawn rather than weakened.
 - If the open challenge template is shipped, its sandbox case passes on the exact deployment binary: after a completed run, a new deposit and a fresh grant; an adversary holding the agent key fails every withdrawal, transfer, key and policy attempt; permitted trades stay inside the caps, concession bound and breaker; the earlier withheld order stays rejected; with the allowance and the proposal budget exhausted, the owner's revoke, recovery and withdrawal still work. If it cannot pass, the template is withdrawn rather than weakened.
+- The historical replay's rules are tested on recorded cases shared by the panel and `verify.mjs`: the verified result needs every listed item; an altered bundle, a bundle not bound to a signed-order event, another key, the inclusion block or any other wrong snapshot, an expired order, a changed code hash and a relay that did not fail for that key each yield failed; unavailable archival state yields inconclusive; both implementations return the same result for each case. On mainnet it is exercised only after the approved run.
+- The lab's sandbox cases pass on the exact deployment candidate: two simultaneous sessions stay isolated in balances, oracle, signer and authority; reset restores the starting state; different limits change the outcomes; an unlisted action and a raw RPC request are refused; an exported scenario replays to the same outcomes; session limits and cleanup hold under a flood from one client; the unreachable state is labelled and never shown as a run. The comparison view's outcomes come from execution and match the matched comparison of the alternatives. If a case cannot pass, the lab or that view is withdrawn rather than weakened.
+- The integration example runs from a fresh clone with its documented command and reaches all three observations: an accepted proposal, a refusal and the revocation.
 
 T1/T4 failure blocks the corresponding claim; T2/T2b failure blocks signing safety; T3 failure blocks the stated policy; T5 failure leaves competitive differentiation unresolved. Keep independent corrective work moving without claiming these gates passed.
 
 ## Demonstration
 
 Show the mandate reviewed in the console; grant and limits; a bounded agent proposal and an actual permitted trade; another signed order withheld; malicious requests rejected; owner revocation through the owner controls, confirmed; the still-unexpired withheld order rejected on submission; recovery into the owner's Intents account with agent/oracle/MPC unavailable; then, separately, the owner's withdrawal of both assets to its NEAR account. The unfunded demo uses recorded genuine model output and labelled test doubles; it never implies a new model call or mainnet execution. An expired order, a malformed signature or an unrelated failure is never evidence of revocation.
+
+The page offers four paths: try (operate the sandbox lab), compare (reproduce the owner's alternatives), verify (inspect the real mainnet trade, removal, rejection and recovery, with the historical replay) and integrate (run the independent client example).
 
 The deterministic replay tells this complete story in under a minute after documented setup. Cold installation/build time is measured separately. Clearly label sandbox execution, recorded mainnet receipts and any actual live run. Never guarantee that network delays fit the replay's duration.
 
