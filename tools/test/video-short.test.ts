@@ -2,6 +2,7 @@
 // nothing here ran on a chain, and no frames are rendered.
 import { describe, expect, it } from "vitest";
 import { bindDemo } from "../src/evidence/binding.js";
+import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { attackRows, layerCounts, revocationStory } from "../src/page/story.js";
 import { type Evidence } from "../src/types.js";
 import { escapeHtml as esc } from "../src/page/html.js";
@@ -56,6 +57,21 @@ const TITLES = [
 ];
 
 describe("short video cut", () => {
+  it("paginates the walkthrough gate inventory without dropping or repeating a required case", () => {
+    const gates = walk(storyEvidence()).filter((s) => s.title.startsWith("Acceptance gates"));
+    expect(gates).toHaveLength(Math.ceil(Object.keys(REQUIRED_CASES).length / 10));
+    for (const [i, s] of gates.entries()) {
+      expect(s.title).toContain(`${String(i + 1)}/${String(gates.length)}`);
+      expect(s.body.match(/<tr>/g)?.length).toBeLessThanOrEqual(10);
+    }
+    const inventory = gates.map((s) => s.body).join("");
+    for (const [gate, names] of Object.entries(REQUIRED_CASES)) {
+      expect(inventory.split(`<th>${gate}<br>`)).toHaveLength(2);
+      const row = inventory.split(`<th>${gate}<br>`)[1]?.split("</tr>")[0] ?? "";
+      for (const name of names) expect(row.split(`>${esc(name)}: not run</span>`)).toHaveLength(2);
+    }
+  });
+
   it("states the problem, then trades, refusals and the held order, revocation and rejection, the funds' return, and where to verify", () => {
     const scenes = short();
     expect(scenes.map((s) => s.title)).toEqual(TITLES);

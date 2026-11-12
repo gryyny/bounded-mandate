@@ -214,7 +214,8 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   };
   const caseRows = Object.entries(REQUIRED_CASES)
     .map(([g, names]) => `<tr><th>${esc(g)}<br><small>${esc(GATE_LABEL[g] ?? "")}</small></th><td>${names.map((n) => pill(g, n)).join(" ")}</td></tr>`);
-  const splitCases = Math.ceil(caseRows.length / 2);
+  // Keep the expanded gate inventory readable at 1080p rather than shrinking or clipping its rows.
+  const gatePages = Array.from({ length: Math.ceil(caseRows.length / 10) }, (_, i) => caseRows.slice(i * 10, (i + 1) * 10));
   const counted = Object.entries(REQUIRED_CASES).flatMap(([g, names]) => names.filter((n) => acc?.cases.some((c) => c.gate === g && c.case === n && c.status === "passed"))).length;
   const totalCases = Object.values(REQUIRED_CASES).flat().length;
   const t5 = acc?.baseline ?? null;
@@ -388,12 +389,12 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
       strip: stateAfter("Owner withdrawal"),
     },
     ...mainnetScenes(mainnet, "walkthrough"),
-    {
+    ...gatePages.map((rows, i): Scene => ({
       kind: "summary",
-      title: `Acceptance gates per case: ${String(counted)} of ${String(totalCases)} passed`,
-      body: `${binding.certified ? "" : `<p class="note">Amber: passed in the acceptance run, but not certified for this demo.</p>`}<div class="split"><table class="cases">${caseRows.slice(0, splitCases).join("")}</table><table class="cases">${caseRows.slice(splitCases).join("")}</table></div><p class="note">Emergency owner-key rescue, reported separately and never counted toward T4: ${esc(rescue === undefined ? "not reported" : rescue.status)}.</p>`,
-      captions: [binding.certified ? `${String(counted)} of ${String(totalCases)} required cases passed, certified for this demo.` : `${String(counted)} of ${String(totalCases)} required cases passed, but this run is not certified for this demo.`, "The emergency owner-key rescue is reported separately; it never counts as ordinary recovery."],
-    },
+      title: `Acceptance gates: ${String(counted)} of ${String(totalCases)} passed · ${String(i + 1)}/${String(gatePages.length)}`,
+      body: `${binding.certified ? "" : `<p class="note">Amber: passed in the acceptance run, but not certified for this demo.</p>`}<div class="split"><table class="cases">${rows.slice(0, Math.ceil(rows.length / 2)).join("")}</table><table class="cases">${rows.slice(Math.ceil(rows.length / 2)).join("")}</table></div><p class="note">Emergency owner-key rescue, reported separately and never counted toward T4: ${esc(rescue === undefined ? "not reported" : rescue.status)}.</p>`,
+      captions: [i === 0 ? (binding.certified ? `${String(counted)} of ${String(totalCases)} required cases passed, certified for this demo.` : `${String(counted)} of ${String(totalCases)} required cases passed, but this run is not certified for this demo.`) : "The remaining required cases, including the historical replay, sandbox lab and independent client example.", ...(i === gatePages.length - 1 ? ["The emergency owner-key rescue is reported separately; it never counts as ordinary recovery."] : [])],
+    })),
     ...(results?.trades == null || results.alternatives == null ? [] : [proofScene(results.trades.data, results.alternatives.data)]),
     {
       kind: "summary",
