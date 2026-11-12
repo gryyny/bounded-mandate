@@ -2,7 +2,10 @@
 // SYNTHETIC specimens only: the sandbox story and the mainnet-shaped evidence are built for testing; nothing ran on a
 // chain. The console page and the two cuts the page links to are SYNTHETIC stand-ins (a stub page and placeholder
 // bytes), there only so the page's links resolve. Served from 127.0.0.1 under the project path; no other host is requested.
+// The last block adds a SYNTHETIC lab stand-in on 127.0.0.1 to exercise the opt-in lab buttons.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -125,6 +128,92 @@ describe.each([
         await ctx.close();
       }
     } finally {
+      await new Promise<void>((ok) => server.close(() => { ok(); }));
+    }
+  });
+});
+
+// The lab here is a SYNTHETIC stand-in: a local HTTP server that answers the health route and one page. No sandbox
+// chain runs and nothing is executed; the test is about the page's own control, its CSP and what it says.
+describe("evidence page in Chromium: the lab control (SYNTHETIC lab stand-in)", () => {
+  it("requests nothing before a click, says a lab that does not answer is unreachable, and opens one that does", async () => {
+    let health: Record<string, unknown> | null = { service: "SYNTHETIC other service" };
+    const hits: string[] = [];
+    const lab = createServer((req, res) => {
+      hits.push(req.url ?? "");
+      if (req.url === "/api/health" && health !== null) {
+        res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": req.headers.origin ?? "*" });
+        res.end(JSON.stringify(health));
+      } else if (req.url === "/") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end("<!doctype html><title>SYNTHETIC lab stand-in</title><p id=\"stand-in\">SYNTHETIC lab stand-in, not a lab</p>");
+      } else {
+        res.writeHead(503).end();
+      }
+    });
+    await new Promise<void>((ok) => lab.listen(0, "127.0.0.1", ok));
+    const labUrl = `http://127.0.0.1:${String((lab.address() as AddressInfo).port)}/`;
+    const dir = mkdtempSync(join(tmpdir(), "bm-page-lab-"));
+    dirs.push(dir);
+    const page = join(dir, "index.html");
+    writeFileSync(page, renderHtml(storyEvidence(), { acceptance: null, live: null, challenge: null, labUrl }));
+    const root = assembleSite({ page, ...standIns(join(dir, "src")), out: join(dir, "site") });
+    // Both inline scripts are pinned by hash; the site check accepts no unpinned or stale one.
+    const report = await checkSite(root, ["", SITE_PATHS.console]);
+    expect(report.problems).toEqual([]);
+    const { server, origin } = await serveSite(root);
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      const p = await ctx.newPage();
+      const requests: string[] = [];
+      const errors: string[] = [];
+      p.on("request", (r) => requests.push(r.url()));
+      p.on("pageerror", (e) => errors.push(e.message));
+      const home = `${origin}${PLANNED_BASE}`;
+      await p.goto(home, { waitUntil: "load" });
+      expect(requests).toEqual([home]);
+      expect(hits).toEqual([]);
+      expect(await p.locator("#lab-status-try").textContent()).toBe("");
+      expect(await p.locator("#lab-status-try").isVisible()).toBe(false);
+
+      // 1. Something else answers on that address: unreachable, nothing opened.
+      await p.click("#lab-open-try");
+      await p.waitForSelector("#lab-status-try.unreachable");
+      expect(await p.locator("#lab-status-try").textContent()).toBe(`The lab at ${labUrl.slice(0, -1)} is unreachable (its answer is not the sandbox lab's health record). Nothing was run, and nothing on this page is a lab result. Use the recorded replay below, which is recorded and not interactive, or run the lab from a clone with make lab.`);
+      expect(p.url()).toBe(home);
+      expect(hits).toEqual(["/api/health"]);
+      expect(requests).toEqual([home, `${labUrl}api/health`]);
+      // The recorded replay it points to is on the page, labelled recorded.
+      expect(await p.locator("#path-try .lab-recorded").textContent()).toContain("recorded, not interactive");
+      expect(await p.locator("#path-try .lab-recorded a").getAttribute("href")).toBe("#replay");
+
+      // 2. The health route fails, with no header that lets the page read the answer: the Compare button says unreachable
+      // too (the browser reports a failed fetch), and the page stays.
+      health = null;
+      await p.click("#lab-open-compare");
+      await p.waitForSelector("#lab-status-compare.unreachable");
+      expect(await p.locator("#lab-status-compare").textContent()).toMatch(/^The lab at http:\/\/127\.0\.0\.1:[0-9]+ is unreachable \(.+\)\. Nothing was run, and nothing on this page is a lab result\./);
+      expect(p.url()).toBe(home);
+
+      // 3. The stand-in answers as the sandbox lab: the visitor is sent to it.
+      health = { service: "bounded-mandate-lab", mode: "sandbox", ok: true };
+      await p.click("#lab-open-try");
+      await p.waitForURL(labUrl);
+      expect(await p.locator("#stand-in").textContent()).toBe("SYNTHETIC lab stand-in, not a lab");
+      expect(errors).toEqual([]);
+
+      // 4. Nothing listens at the address any more: a refused connection is unreachable too.
+      await new Promise<void>((ok) => lab.close(() => { ok(); }));
+      lab.closeAllConnections();
+      const q = await ctx.newPage();
+      await q.goto(home, { waitUntil: "load" });
+      await q.click("#lab-open-try");
+      await q.waitForSelector("#lab-status-try.unreachable");
+      expect(await q.locator("#lab-status-try").textContent()).toMatch(/^The lab at http:\/\/127\.0\.0\.1:[0-9]+ is unreachable \(.+\)\. Nothing was run, and nothing on this page is a lab result\./);
+      expect(q.url()).toBe(home);
+    } finally {
+      await ctx.close();
+      if (lab.listening) await new Promise<void>((ok) => lab.close(() => { ok(); }));
       await new Promise<void>((ok) => server.close(() => { ok(); }));
     }
   });

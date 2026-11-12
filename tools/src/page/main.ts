@@ -1,4 +1,5 @@
 // Regenerate the page from an already recorded demo and the latest local acceptance files.
+// MANDATE_LAB_URL=<https URL of a running lab> links the Try and Compare paths to it; unset, the page links no lab.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";

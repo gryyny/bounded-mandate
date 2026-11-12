@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { REPO_ROOT } from "../evidence/report.js";
 import { escapeHtml } from "../page/html.js";
+import { LEAD_LINE } from "../page/landing.js";
 import { STYLES } from "../page/styles.js";
 import { MAINNET_GENESIS_HASH } from "../page/verify.js";
 import { asObject, asString, canonicalJson, chainOutcome, receiptViews, rpcCall, rpcErrorText, sha256Hex, statusKind } from "../page/verify-client.js";
@@ -325,7 +326,7 @@ export function renderConsoleHtml(evidence: unknown, opts: ConsoleOptions = {}):
 <header class="docket">
 <p class="kicker">Bounded mandate · owner console · NEAR Intents · USDC / wNEAR</p>
 <p class="chips"><span class="mode label">static page</span> <span class="mode label">no backend</span> <span class="mode label">holds no keys</span></p>
-<p class="lead">Give an AI agent trading power. Keep the power to stop it.</p>
+<p class="lead">${escapeHtml(LEAD_LINE)}</p>
 <h1>Review the mandate. Revoke, recover and withdraw as its owner.</h1>
 <p class="position">Anyone can read the grant, its limits, the key on the verifier, open orders and balances. Only the contract's owner can act, and only by signing outside this page.</p>
 ${JOURNEY_GUIDE}

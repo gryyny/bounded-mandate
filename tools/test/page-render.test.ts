@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { ACCEPTANCE_SCHEMA, type Acceptance, type BaselineOutcome, type CaseResult, type T5Data } from "../src/evidence/schema.js";
 import { LIVE_MAINNET_PATH, isTxHash, liveView, loadLive, mainnetBody, revocationResult, runVerdict } from "../src/page/mainnet.js";
@@ -282,6 +282,33 @@ describe("evidence page: escaping and self-containment", () => {
     expect(html).not.toMatch(/<(video|audio|source|track|embed|object)\b|\bposter=|\bautoplay\b/i);
     expect(html).toContain("Content-Security-Policy");
     expect(gateStatus(html, "T1")).toBe("not-run");
+  });
+
+  it("links a lab only when the build names one: MANDATE_LAB_URL for renderPage, unless the caller passes labUrl", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bm-page-lab-"));
+    dirs.push(dir);
+    const build = (extras: { labUrl?: string | null } = {}): string => readFileSync(renderPage(specimen(), dir, { acceptance: null, latestRunId: null, live: null, challenge: null, ...extras }), "utf8");
+    const LAB = "https://lab.synthetic.invalid";
+    try {
+      vi.stubEnv("MANDATE_LAB_URL", "");
+      const none = build();
+      expect(none.match(/<script\b/gi)).toHaveLength(1);
+      expect(none).not.toContain("data-lab=");
+      expect(none).toContain("<strong>No lab is linked from this page.</strong>");
+      vi.stubEnv("MANDATE_LAB_URL", LAB);
+      const linked = build();
+      expect(linked.match(/<script\b/gi)).toHaveLength(2);
+      expect(linked).toContain(`connect-src https: ${LAB}; form-action`);
+      expect(linked).toContain('<button type="button" id="lab-open-try">');
+      // An explicit option wins over the environment, in both directions.
+      expect(build({ labUrl: null })).toBe(none);
+      vi.stubEnv("MANDATE_LAB_URL", "");
+      expect(build({ labUrl: LAB })).toBe(linked);
+      vi.stubEnv("MANDATE_LAB_URL", "not a url");
+      expect(() => build()).toThrow(/MANDATE_LAB_URL is not a URL/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -745,10 +772,10 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
   });
 
   it("heads the page with the lead line and the two sentences", () => {
-    expect(html).toContain('<p class="kicker">Bounded Mandate: AI trading on NEAR Intents without a signing key</p>\n<h1 class="lead-line">Give an AI agent trading power. Keep the power to stop it.</h1>');
+    expect(html).toContain('<p class="kicker">Bounded Mandate: AI trading on NEAR Intents without a signing key</p>\n<h1 class="lead-line">Give an AI agent trading authority without unrestricted control of your treasury.</h1>');
     expect(html).not.toMatch(/keyless|No key\b|without a key|holds no key/i);
     expect(html).toContain(
-      `<p class="position lead-sub">${escapeHtml("An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.")}</p>`,
+      `<p class="position lead-sub">${escapeHtml("The agent names a side, an amount and a price concession up to your maximum; a contract prices the order from the oracle, then builds and signs it for NEAR Intents inside your size and turnover limits. One owner call removes the signing key, so signed orders that have not executed fail once removal is confirmed, and recovery returns the remaining assets without the agent.")}</p>`,
     );
     expect(html).not.toContain("Revoke the entire grant—including outstanding signed orders");
     // No instant-revocation, first/only, profit or guaranteed-loss wording in the first screen.

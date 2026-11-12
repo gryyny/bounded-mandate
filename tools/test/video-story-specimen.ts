@@ -1,5 +1,6 @@
-// SYNTHETIC specimens for the revocation story, the mainnet section and the short video. Every value below is
-// invented here for testing the renderers and is labelled as such; none is a recorded run.
+// SYNTHETIC specimens for the revocation story, the mainnet section, the short video and its mainnet segment. Every
+// value below is invented here for testing the renderers and is labelled as such; none is a recorded run, and the
+// mainnet-shaped evidence never touched a chain.
 import { createHash } from "node:crypto";
 import { type Assertion, Evidence, type Receipt } from "../src/types.js";
 import { OWNER_CONTROLS_LABEL, removedKeyError } from "../src/evidence/journey.js";
@@ -327,4 +328,66 @@ export function expiredStoryEvidence(): Evidence {
         : a,
     ),
   };
+}
+
+/** SYNTHETIC inputs of the mainnet-shaped run below, in raw units; the tests derive expected text from these. */
+export const MAINNET_RUN = {
+  revision: "f".repeat(40),
+  before: { usdc: 5_000_000n, wnear: 0n },
+  sell: 1_000_000n, // 1.00 USDC
+  buy: 293_100n * 10n ** 18n, // 0.2931 wNEAR
+  relayedNs: 1_800_000_000_000_000_000n,
+  deadlineNs: 1_800_000_041_000_000_000n, // 41 s later
+  steps: "check,grant,propose,fill,propose,withhold,revoke,relay_withheld,recover,recover",
+} as const;
+
+/**
+ * SYNTHETIC mainnet-shaped evidence in the live runner's format (step verifications `step-<n>-<kind>`, receipts bound
+ * to their step): syntactically valid hashes, never executed. `relay` is the withheld order's classification; null
+ * leaves the relay out. Only "rejected_revoked_key" makes it a completed run.
+ */
+export function mainnetRunEvidence(relay: "rejected_revoked_key" | "executed" | "inconclusive" | null = "rejected_revoked_key"): Evidence {
+  const m = MAINNET_RUN;
+  const after = { usdc: m.before.usdc - m.sell, wnear: m.before.wnear + m.buy };
+  const step = (n: number, kind: string, observed: unknown = {}, passed = true): Assertion => ({ id: `step-${String(n)}-${kind}`, gate: "LIVE", description: `${kind}: terminal verification (SYNTHETIC)`, passed, observed });
+  const sent = (n: number, label: string, signer: string, detail: Record<string, unknown> = {}, outcome: Receipt["outcome"] = "success"): Receipt => ({
+    label: `${label} (SYNTHETIC)`,
+    tx_hash: txHash(`SYNTHETIC mainnet ${label}`),
+    block_height: 1000 + n,
+    outcome,
+    detail: { step: n, signer_id: signer, ...detail },
+  });
+  const rejected = relay === "rejected_revoked_key";
+  return evidence({
+    mode: "mainnet",
+    source: { ...SOURCE, product_commit: m.revision },
+    command: "MANDATE_LIVE=1 make live (SYNTHETIC)",
+    environment: { chain_id: "mainnet", label: "SYNTHETIC", manifest_steps: m.steps },
+    identifiers: { mandate: "mandate.synthetic.near", owner: "owner.synthetic.near", verifier: "intents.near" },
+    receipts: [
+      sent(2, "owner grant", "owner.synthetic.near"),
+      sent(3, "agent propose_order", "agent.synthetic.near"),
+      sent(4, "filler execute_intents", "filler.synthetic.near", { order_id: "1" }),
+      sent(5, "agent propose_order, withheld", "agent.synthetic.near"),
+      sent(7, "owner revoke", "owner.synthetic.near"),
+      ...(relay === null ? [] : [sent(8, "filler relay of the withheld order", "filler.synthetic.near", { order_id: "2", bundle_sha256: STORY.bundleSha256, withheld_relay: true }, relay === "executed" ? "success" : "failure")]),
+      sent(9, "owner recover usdc", "owner.synthetic.near", { asset: "usdc" }),
+      sent(10, "owner recover wnear", "owner.synthetic.near", { asset: "wnear" }),
+    ],
+    assertions: [
+      step(1, "check"),
+      step(2, "grant", { epoch: 1, public_key: STORY.key }),
+      step(3, "propose", { order_id: "1", state: { state: "signed" } }),
+      step(4, "fill", { mandate_before: pairStr(m.before), mandate_after: pairStr(after) }),
+      step(5, "propose", { order_id: "2", state: { state: "signed" } }),
+      step(6, "withhold", { order_id: "2" }),
+      step(7, "revoke", { status: "revoked", key_absent: true, verifier_keys: [], outstanding: "0" }),
+      ...(relay === null
+        ? []
+        : [step(8, "relay_withheld", { order_id: "2", revoked_key: STORY.key, executed_at_ns: m.relayedNs.toString(), deadline_ns: m.deadlineNs.toString(), tx_success: relay === "executed", classification: relay }, rejected)]),
+      step(9, "recover", { asset: "usdc", lost: after.usdc.toString(), gained: after.usdc.toString() }),
+      step(10, "recover", { asset: "wnear", lost: after.wnear.toString(), gained: after.wnear.toString() }),
+    ],
+    unknowns: [],
+  });
 }

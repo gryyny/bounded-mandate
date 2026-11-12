@@ -1,8 +1,8 @@
 # Bounded Mandate: AI trading on NEAR Intents without a signing key
 
-Give an AI agent trading power. Keep the power to stop it.
+Give an AI agent trading authority without unrestricted control of your treasury.
 
-An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.
+The agent names a side, an amount and a price concession up to your maximum; a contract prices the order from the oracle, then builds and signs it for NEAR Intents inside your size and turnover limits. One owner call removes the signing key, so signed orders that have not executed fail once removal is confirmed, and recovery returns the remaining assets without the agent.
 
 **The problem.** Pausing an agent stops new orders, but orders it already signed stay valid until they expire or are cancelled one by one. Here `revoke` removes the grant's signing key at the verifier; once removal is confirmed, every outstanding order fails. The gain over waiting is at most the order lifetime: 60 s in the demo, 120 s proposed for mainnet (not approved or run).
 
@@ -20,7 +20,7 @@ An AI agent trades your treasury on NEAR Intents without holding a signing key. 
 | Mainnet | **Not run**: no mainnet transaction. |
 | Public links | **Planned, unpublished**; after publication: [page](https://gryyny.github.io/bounded-mandate/), [console](https://gryyny.github.io/bounded-mandate/console/), [short video](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4). |
 
-**Try it** from a clone; no funds or model key:
+**Run it** from a clone; no funds or model key:
 
 | Do | Needs | See |
 | --- | --- | --- |
@@ -29,6 +29,17 @@ An AI agent trades your treasury on NEAR Intents without holding a signing key. 
 | `make test && make demo` | Rust, `cargo-near`, Node 24 | `CERTIFIED: run …`, then `59/59 assertions passed` |
 
 `make verify` checks committed evidence and reruns nothing. `SHA256SUMS` is unsigned: it detects accidental or partial change, not a self-consistent rewrite, so trust rests on the commit history and on rerunning `make test`. [Setup, timings, outputs](docs/reviewers.md#running-the-demo-and-the-gates); [evidence page](evidence/b480057/page/index.html).
+
+## Four paths
+
+Each is also on the evidence page. The lab and the client example are newer than the certified b480057 bundle and are not part of it.
+
+| Path | What you do | How |
+| --- | --- | --- |
+| **Try** | Operate a sandbox treasury in the lab: set limits and grant, trade, attempt an unsafe trade, withhold a signed order, revoke, retry it, recover. Sandbox execution with labelled test doubles. | `make lab` |
+| **Compare** | Reproduce the owner's alternatives from equal starting conditions: wait for expiry, cancel a complete or an incomplete nonce list, cancel with the signer unavailable, remove the key, re-add the same key. | `make lab`, Compare tab. Certified comparison: gate COMPARE ([report](evidence/b480057/tests/COMPARE.revocation-alternatives.json), [write-up](docs/comparison.md#compared-with-simpler-alternatives-compare)) |
+| **Verify** | Inspect the mainnet trade, key removal, rejection and recovery, with the historical replay of the withheld order. **No mainnet run yet**: today this checks the committed evidence and the verifier's code hash. | `make verify`; [read-only checks](docs/reviewers.md#verify-on-mainnet-read-only) |
+| **Integrate** | Run a small strategy client, separate from the demo, that uses the agent's function-call key, `propose_order` and the contract's views. An example, not an SDK. | `make example` |
 
 ## Three checkable facts
 

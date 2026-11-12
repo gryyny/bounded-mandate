@@ -252,6 +252,27 @@ ol.actions code.cmd { white-space: nowrap; word-break: normal; }
 ol.actions .act { font: 600 1.15rem/1.2 var(--serif); margin-top: 0; }
 ol.actions .where { font-size: .8rem; }
 ol.actions .where span { display: inline-block; }
+p.path-nav { margin: 0 0 .6rem; font: 600 .78rem/1.5 var(--mono); display: flex; flex-wrap: wrap; gap: .1rem 1rem; }
+p.path-nav span { color: var(--muted); }
+section.four-paths { margin-top: 2rem; }
+section.four-paths h2 { font-size: 1.5rem; }
+ol.four { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 760px) { ol.four { grid-template-columns: minmax(0, 1fr); } }
+ol.four code { white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+ol.four .lab-note code { white-space: normal; overflow-wrap: anywhere; }
+ol.four > li { background: var(--sheet); border: 1px solid var(--rule-strong); border-top: 4px solid var(--accent); padding: .9rem 1.1rem; min-width: 0; overflow-wrap: anywhere; }
+ol.four h3 { margin: 0 0 .4rem; font: 600 1.25rem/1.2 var(--serif); }
+ol.four p { margin: .45rem 0; font-size: .92rem; }
+ol.four .path-modes { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .5rem; }
+ol.four .mode, ol.four .status { white-space: normal; line-height: 1.35; }
+ol.four .lab-note { font-size: .82rem; color: var(--muted); }
+ol.four .lab-recorded { border-top: 1px dashed var(--rule-strong); padding-top: .5rem; }
+.lab-controls button { font: 700 .78rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: .6rem .9rem; border: 2px solid var(--accent); background: var(--sheet); color: var(--accent); cursor: pointer; }
+.lab-controls button:disabled { opacity: .5; cursor: progress; }
+.lab-status:empty { display: none; }
+.lab-status { font: .8rem/1.5 var(--mono); color: var(--muted); }
+.lab-status.unreachable { color: var(--fail); background: var(--fail-bg); padding: .5rem .6rem; }
+.mode.recorded { color: var(--m-sandbox); border: 1px dotted currentColor; }
 p.claim-size { margin: 0 0 .7rem; font-size: .92rem; max-width: 86ch; }
 p.site-links { margin: 0 0 .8rem; font-size: .84rem; display: flex; flex-wrap: wrap; gap: .25rem 1.4rem; overflow-wrap: anywhere; }
 a.defn { display: block; margin-top: .25rem; font-size: .74rem; }

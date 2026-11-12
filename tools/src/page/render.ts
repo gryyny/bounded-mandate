@@ -1,4 +1,5 @@
-// Renders the static evidence page. The display name and the lead line open onto the owner's eight-step evidence replay, with the
+// Renders the static evidence page. The display name and the lead line open onto the four paths (try, compare, verify,
+// integrate) and the owner's eight-step evidence replay, with the
 // full journey, reproduction paths, measured defenses and alternatives, mainnet receipts (or the pending panel), the
 // opt-in read-only verification panel, the regrant and disclosure sandbox cases, the full demonstration,
 // acceptance gates per case, the T5 baseline, the Agent API comparison, claim and limits, policy, provenance. A gate shows "passed" only when acceptance.json is
@@ -22,7 +23,7 @@ import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, layerCounts, offBalance
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, REPO_URL, SITE_PATHS, bundlePaths } from "../evidence/journey.js";
 import { agentApiBody } from "./related.js";
 import { challengeBody, challengeView, loadChallenge } from "./challenge.js";
-import { DISPLAY_NAME, LEAD_LINE, POSITION, actionsBlock, certifiedDefinition, claimSizeLine, factsSection, linksLine, pageLayout, provenance, realSection, runProvenance, stateStrip, type PageBlock } from "./landing.js";
+import { DISPLAY_NAME, LAB_URL_ENV, LEAD_LINE, POSITION, actionsBlock, certifiedDefinition, claimSizeLine, factsSection, fourPaths, labLink, labScript, linksLine, pageLayout, pathNav, provenance, realSection, runProvenance, stateStrip, type LabLink, type PageBlock } from "./landing.js";
 import { STYLES } from "./styles.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
@@ -61,6 +62,12 @@ export interface RenderExtras {
    * an invalid record is not rendered. `renderPage` loads out/challenge/evidence/challenge-<network>.json when omitted.
    */
   challenge?: unknown;
+  /**
+   * URL of a running sandbox lab that the Try and Compare paths may open after an explicit click and a health check.
+   * `null` or omitted in `renderHtml`: no lab is linked, and the paths say how to run it locally. `renderPage` reads
+   * the MANDATE_LAB_URL environment variable when this is omitted.
+   */
+  labUrl?: string | null;
   /** @deprecated Ignored: gate status comes only from acceptance.json. */
   gateReports?: unknown;
 }
@@ -91,6 +98,9 @@ export const GATE_LABEL: Record<string, string> = {
   AGENT: "runner sale budgets bound the agent; no-transaction provider rehearsal",
   COMPARE: "the owner's alternatives compared on the verifier: wait, cancel nonces, remove the key",
   SIGNER: "a recorded read-only mainnet signer response, decoded and verified in the unit VM (not a mainnet run of our signing)",
+  REPLAY: "the historical replay's rules on shared synthetic cases, in verify.mjs and the page (no chain)",
+  LAB: "the sandbox lab: workflow, session isolation, reset, refusals, export and replay, limits, the comparison view",
+  EXAMPLE: "the independent strategy client against a local sandbox: accepted, refused, revoked",
 };
 
 const json = (value: unknown): string => {
@@ -109,6 +119,7 @@ interface Inputs {
   policy: Policy | null;
   legacy: { label: string; reports: LegacyGateReport[] } | null;
   live: LiveView;
+  lab: LabLink | null;
 }
 
 function parseInputs(evidence: unknown, extras: RenderExtras): Inputs {
@@ -134,7 +145,7 @@ function parseInputs(evidence: unknown, extras: RenderExtras): Inputs {
             return parsed.success ? parsed.data : fail(`legacy report #${String(i)}`, parsed.error);
           }),
         };
-  return { ev: ev.data, acc, binding: bindDemo(ev.data, acc, extras.latestRunId ?? null), policy, legacy, live: liveView(extras.live) };
+  return { ev: ev.data, acc, binding: bindDemo(ev.data, acc, extras.latestRunId ?? null), policy, legacy, live: liveView(extras.live), lab: labLink(extras.labUrl) };
 }
 
 /** Mode of one demo step: the run's mode unless the receipt declares a weaker, valid one. */
@@ -471,7 +482,7 @@ function pathsSection(ev: Evidence, live: LiveView): string {
     live.kind === "mainnet"
       ? `<p class="see">See: the run's NEAR mainnet transactions on nearblocks.io, and read-only RPC commands that check them without a wallet, account or funds.</p><p><a href="#mainnet">Mainnet receipts</a> · <a href="#verify">check them from this page</a></p>`
       : `<p class="see">See: <strong>Mainnet run: pending approval — no mainnet transaction has been executed.</strong> There are no mainnet receipts to inspect yet.</p><p><a href="#mainnet">Mainnet status</a> · <a href="#verify">read-only checks you can run from this page</a></p>`;
-  return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Three ways to check it</h2><ol class="path-list">
+  return `<section class="paths" id="paths" aria-labelledby="paths-h"><h2 id="paths-h">Watch it, inspect receipts, or reproduce it locally</h2><ol class="path-list">
 <li><p class="do">Watch the short video</p><p class="see">See the eight journey steps captioned with this run's numbers.</p><p>${video}</p></li>
 <li><p class="do">Inspect public mainnet receipts</p>${mainnet}</li>
 <li><p class="do">Run locally</p><p class="see"><strong>Check the committed evidence.</strong> <code>make verify</code> (Node only, offline) checks the certified bundle's files and required cases without rerunning them.</p><p class="see"><strong>Quick demo: prebuilt, uncertified, no Rust.</strong> <code>make quick</code> runs the story on the deployment candidate with prebuilt test doubles and writes only <code>out/quick/</code>; its page is labelled uncertified.</p><p class="see"><strong>Certified path (needs Rust).</strong> On a clean revision run <code>make test &amp;&amp; make demo</code>, then open <code>out/page/index.html</code>. <code>make demo</code> alone runs the story from source but certifies nothing; after it, <code>make test &amp;&amp; make page</code> refreshes the page from the saved demo and the completed gates without running the story again. Certification requires matching revision, spec, fixtures and WASMs.</p></li>
@@ -678,8 +689,10 @@ function legacySection(legacy: Inputs["legacy"]): string {
 
 /** Pure renderer; throws when the evidence, acceptance, policy or legacy reports fail schema validation. */
 export function renderHtml(evidence: unknown, extras: RenderExtras = {}): string {
-  const { ev, acc, binding, policy, legacy, live } = parseInputs(evidence, extras);
+  const { ev, acc, binding, policy, legacy, live, lab } = parseInputs(evidence, extras);
   const script = clientScript();
+  // The lab control is the page's second script and exists only when a lab is configured.
+  const labClient = lab === null ? null : labScript();
   const views = gateViews(acc, binding);
   const results = sandboxResults(acc, binding, extras.reports ?? []);
   const passedCount = views.filter((v) => v.status === "passed").length;
@@ -721,7 +734,7 @@ ${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src '${scriptHash(script)}'; connect-src https:; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src '${scriptHash(script)}'${labClient === null ? "" : ` '${scriptHash(labClient)}'`}; connect-src https:${lab === null ? "" : ` ${lab.origin}`}; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <title>${escapeHtml(DISPLAY_NAME)} — evidence (${escapeHtml(ev.mode)})</title>
@@ -735,6 +748,7 @@ ${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
 <h1 class="lead-line">${escapeHtml(LEAD_LINE)}</h1>
 <p class="position lead-sub">${escapeHtml(POSITION)}</p>
 ${actionsBlock(ev)}
+${pathNav()}
 ${claimSizeLine(ev.mode, ttlSec)}
 ${stateStrip(ev, binding, passedCount, views.length, live, stages)}
 ${linksLine(ev)}
@@ -742,11 +756,12 @@ ${linksLine(ev)}
 ${certifiedDefinition()}
 ${provenance(live.kind === "mainnet" ? `NEAR mainnet receipts first, then the ${runProvenance(ev, labels)}` : runProvenance(ev, labels))}
 </header>
+${fourPaths(ev, live, lab, `<code>COMPARE</code> (${escapeHtml(GATE_LABEL.COMPARE ?? "")}): ${statusBadge(views.find((v) => v.gate === "COMPARE")?.status ?? "not-run")}`)}
 ${factsSection(ev, results, binding.certified ? `certified ${ev.mode} acceptance reports · selected samples · test doubles as labelled` : `${ev.mode} evidence, not backed by a certified acceptance run here · test doubles as labelled`, ttlSec)}
 ${pageLayout(live, challenge !== null).map((b) => blocks[b]).join("\n")}
-<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no external file or font is loaded; links to the source, console and cuts are followed only when you choose them. Its one inline script makes network requests only after you press “Run read-only checks” (§V). Evidence schema version ${String(ev.schema_version)}.</footer>
+<footer>Generated by tools/src/page/render.ts from schema-validated evidence. Self-contained: no external file or font is loaded; links to the source, console and cuts are followed only when you choose them. ${lab === null ? "Its one inline script makes network requests only after you press “Run read-only checks” (§V)." : `Its two inline scripts make network requests only after you press a button: “Run read-only checks” (§V), or a lab button, which asks ${escapeHtml(lab.origin)} whether the lab is running.`} Evidence schema version ${String(ev.schema_version)}.</footer>
 </main>
-<script>${script}</script>
+<script>${script}</script>${labClient === null ? "" : `\n<script>${labClient}</script>`}
 </body>
 </html>
 `;
@@ -760,7 +775,7 @@ export function loadAcceptance(root: string): Acceptance | null {
   return parsed.success ? parsed.data : fail(path, parsed.error);
 }
 
-/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json, run id and mainnet evidence unless given. */
+/** Writes `<outDir>/index.html` and returns its path. Loads the repository's acceptance.json, run id, mainnet evidence and the lab URL setting unless given. */
 export function renderPage(evidence: Evidence, outDir: string, extras: RenderExtras = {}): string {
   const acceptance = extras.acceptance === undefined ? loadAcceptance(REPO_ROOT) : extras.acceptance;
   const runId = extras.latestRunId === undefined ? latestRunId(REPO_ROOT) : extras.latestRunId;
@@ -768,7 +783,8 @@ export function renderPage(evidence: Evidence, outDir: string, extras: RenderExt
   const reports = extras.reports ?? loadReportFiles(reportsDir(REPO_ROOT));
   const challenge = extras.challenge === undefined ? loadChallenge(REPO_ROOT) : extras.challenge;
   if (challenge !== null && challengeView(challenge) === null) console.warn("page: the open-challenge record does not validate; its panel is not rendered");
-  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId, live, reports, challenge });
+  const labUrl = extras.labUrl === undefined ? (process.env[LAB_URL_ENV] ?? null) : extras.labUrl;
+  const html = renderHtml(evidence, { ...extras, acceptance, latestRunId: runId, live, reports, challenge, labUrl });
   mkdirSync(outDir, { recursive: true });
   const path = join(outDir, "index.html");
   writeFileSync(path, html);

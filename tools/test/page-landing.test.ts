@@ -8,9 +8,10 @@ import { REQUIRED_CASES } from "../src/evidence/required.js";
 import { ACCEPTANCE_SCHEMA, type Acceptance, type CaseResult } from "../src/evidence/schema.js";
 import { PLANNED_LABEL, REPO_URL, SITE_PATHS, bundlePaths } from "../src/evidence/journey.js";
 import { loadReportFiles } from "../src/page/casefiles.js";
-import { CERTIFIED_DEFINITION, CERTIFIED_SHORT, DISPLAY_NAME, LEAD_LINE, PAGE_LAYOUT, POSITION } from "../src/page/landing.js";
+import { CERTIFIED_DEFINITION, CERTIFIED_SHORT, DISPLAY_NAME, LAB_SERVICE, LEAD_LINE, PAGE_LAYOUT, PATH_KEYS, POSITION, installLab, labLink, labScript, type LabFetch } from "../src/page/landing.js";
 import { RELAY_STEP_ONLY } from "../src/page/mainnet.js";
 import { HEADLINE, escapeHtml, renderHtml } from "../src/page/render.js";
+import { clientScript, scriptHash } from "../src/page/verify.js";
 import { type Assertion, Evidence, Policy } from "../src/types.js";
 import { storyEvidence, txHash } from "./video-story-specimen.js";
 
@@ -110,15 +111,39 @@ describe("landing: the first screen", () => {
 
   it("opens with the display name as the kicker, the lead line as the H1, the two sentences, three actions and the state strip, in that order", () => {
     expect(DISPLAY_NAME).toBe("Bounded Mandate: AI trading on NEAR Intents without a signing key");
-    expect(LEAD_LINE).toBe("Give an AI agent trading power. Keep the power to stop it.");
+    expect(LEAD_LINE).toBe("Give an AI agent trading authority without unrestricted control of your treasury.");
     expect(HEADLINE).toBe(LEAD_LINE);
     expect(first).toContain(`<p class="kicker">${DISPLAY_NAME}</p>\n<h1 class="lead-line">${LEAD_LINE}</h1>\n<p class="position lead-sub">${escapeHtml(POSITION)}</p>`);
     expect(html.match(/<h1\b/g)).toHaveLength(1);
-    expect(POSITION).toBe("An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.");
-    const order = ['class="kicker"', 'class="lead-line"', 'class="position lead-sub"', 'class="actions"', 'class="state-strip"'].map((n) => first.indexOf(n));
+    expect(POSITION).toBe("The agent names a side, an amount and a price concession up to your maximum; a contract prices the order from the oracle, then builds and signs it for NEAR Intents inside your size and turnover limits. One owner call removes the signing key, so signed orders that have not executed fail once removal is confirmed, and recovery returns the remaining assets without the agent.");
+    const order = ['class="kicker"', 'class="lead-line"', 'class="position lead-sub"', 'class="actions"', 'class="path-nav"', 'class="claim-size"', 'class="state-strip"'].map((n) => first.indexOf(n));
     expect(order.every((n) => n >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(html).toContain(`<title>${DISPLAY_NAME} — evidence (sandbox)</title>`);
+  });
+
+  it("states the agreed pitch: what the agent names, what the contract does, and nothing about a price or counterparty it cannot choose", () => {
+    // The agent chooses a concession up to the owner's maximum and the order names no counterparty.
+    for (const part of ["names a side, an amount and a price concession up to your maximum", "prices the order from the oracle", "inside your size and turnover limits", "signed orders that have not executed fail once removal is confirmed", "recovery returns the remaining assets without the agent"]) expect(POSITION).toContain(part);
+    for (const h of [html, render(live("rejected_revoked_key")), renderHtml(storyEvidence(), { acceptance: null, live: null })]) {
+      expect(h.replace(/<details[\s\S]*?<\/details>/g, "")).not.toMatch(/cannot choose|choose (its|the|a) (price|counterparty)|price or (its )?counterparty/i);
+      // The pitch itself, down to the facts, never mentions a counterparty; the historical replay further down may.
+      expect(h.slice(h.indexOf("<header"), h.indexOf('id="facts"'))).not.toMatch(/counterparty/i);
+    }
+    expect(`${LEAD_LINE} ${POSITION}`).not.toMatch(/\b(first|only|instant(ly)?)\b|guarantee|\bprofit/i);
+    // The expiry bound is on the first screen, in the block after the sentence about revocation.
+    expect(first.indexOf('class="claim-size"')).toBeGreaterThan(first.indexOf("One owner call removes the signing key"));
+  });
+
+  it("opens the README with the same lead line and the same two sentences as the page, the console and the cuts", () => {
+    const readme = readFileSync(join(repo, "README.md"), "utf8");
+    const opening = readme.slice(0, readme.indexOf("\n## "));
+    expect(opening.split("\n").slice(0, 5)).toEqual([`# ${DISPLAY_NAME}`, "", LEAD_LINE, "", POSITION]);
+    expect(opening).not.toMatch(/counterparty|cannot choose|\bthe (first|only)\b|\b(AI|LLM) (screener|reviewer|judge)/i);
+    // The README presents the same four paths, in the page's order.
+    const paths = readme.slice(readme.indexOf("\n## Four paths"), readme.indexOf("\n## Three checkable facts"));
+    expect([...paths.matchAll(/^\| \*\*([A-Za-z]+)\*\* \|/gm)].map((m) => (m[1] ?? "").toLowerCase())).toEqual([...PATH_KEYS]);
+    for (const command of ["`make lab`", "`make example`", "`make verify`", "gate COMPARE", "**No mainnet run yet**"]) expect(paths).toContain(command);
   });
 
   it("never calls the agent keyless: it holds a function-call key, and no signing key", () => {
@@ -285,7 +310,11 @@ describe("landing: the committed certified bundle renders through renderHtml", (
 
   it("shows it certified, every gate passed, with the lead line, the recorded lifetime and the bundle's own paths", () => {
     expect(strip(h)).toContain('<span class="status passed">certified for this demo</span>');
-    expect(strip(h)).toContain(`${String(Object.keys(REQUIRED_CASES).length)} / ${String(Object.keys(REQUIRED_CASES).length)} passed and certified`);
+    // The committed bundle may predate gates added since: it counts only the gates whose cases it recorded as passed.
+    const recorded = new Set(acc.cases.filter((c) => c.status === "passed").map((c) => c.id));
+    const passedGates = Object.entries(REQUIRED_CASES).filter(([gate, names]) => names.every((n) => recorded.has(`${gate}.${n}`))).length;
+    expect(passedGates).toBeGreaterThan(0);
+    expect(strip(h)).toContain(`${String(passedGates)} / ${String(Object.keys(REQUIRED_CASES).length)} passed and certified`);
     expect(head).toContain(`<h1 class="lead-line">${LEAD_LINE}</h1>`);
     expect(head).toContain(`bounded by the order lifetime: ${String(policy.order_ttl_sec)} s in this sandbox run.`);
     for (const path of Object.values(bundlePaths(entry.revision))) expect(h).toContain(path);
@@ -432,5 +461,208 @@ describe("landing: layout chosen from the evidence", () => {
     expect(body).toContain('<div class="verdict"><span class="status success">revocation test passed</span><p>withheld order rejected after confirmed revocation (rejected_revoked_key). The run completed every manifest step and every assertion held.</p>');
     expect(strip(h)).toContain('<span class="status success">2 transactions · revocation test passed</span>');
     expect(body).not.toContain("this step only");
+  });
+});
+
+// The lab is another service. Nothing below starts one: the lab URL is a SYNTHETIC address under .invalid, and the
+// health answers are SYNTHETIC objects handed to the page's own click handler through a fake fetch.
+describe("landing: four paths (try, compare, verify, integrate)", () => {
+  const LAB = "https://lab.synthetic.invalid/";
+  const plain = () => renderHtml(storyEvidence(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: null, reports: REPORTS });
+  const withLab = (labUrl: string = LAB, liveEvidence: Evidence | null = null) => renderHtml(storyEvidence(), { acceptance: acceptance(), latestRunId: "run-SYNTHETIC", live: liveEvidence, reports: REPORTS, labUrl });
+  const paths = (h: string): string => h.slice(h.indexOf('<section class="four-paths"'), h.indexOf("</section>", h.indexOf('<section class="four-paths"')));
+  const path = (h: string, key: string): string => {
+    const start = h.indexOf(`<li id="path-${key}">`);
+    return h.slice(start, h.indexOf("</li>", start));
+  };
+  const scripts = (h: string): string[] => [...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
+  const csp = (h: string): string => /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(h)?.[1] ?? "";
+  const RECORDED = '<span class="mode recorded">recorded, not interactive</span>';
+
+  it("offers the four paths right after the first screen, in order, each under its own heading, and links them from the first screen", () => {
+    for (const h of [plain(), withLab(), render(live("rejected_revoked_key"))]) {
+      expect([...paths(h).matchAll(/<li id="path-([a-z]+)"><h3>([A-Za-z]+)<\/h3>/g)].map((m) => `${m[1] ?? ""} ${m[2] ?? ""}`)).toEqual(["try Try", "compare Compare", "verify Verify", "integrate Integrate"]);
+      expect(h.indexOf("</header>")).toBeLessThan(at(h, "start"));
+      expect(at(h, "start")).toBeLessThan(at(h, "facts"));
+      const head = h.slice(h.indexOf("<header"), h.indexOf("</header>"));
+      expect(head).toContain(`<p class="path-nav"><span>Four paths:</span> ${PATH_KEYS.map((k) => `<a href="#path-${k}">${k.charAt(0).toUpperCase()}${k.slice(1)}</a>`).join(" ")}</p>`);
+    }
+  });
+
+  it("with no lab configured, Try and Compare say how to run the lab locally and offer what is recorded, labelled recorded", () => {
+    const h = plain();
+    const tryPath = path(h, "try");
+    expect(tryPath).toContain('<strong>No lab is linked from this page.</strong> Run it from a clone: <code class="cmd">make lab</code>.');
+    expect(tryPath).toContain(`${RECORDED} Or step through <a href="#replay">the recorded replay</a> of one sandbox run on this page: recorded results, not a run you operate.`);
+    expect(tryPath).toContain('<span class="mode sandbox" title="execution mode">sandbox</span> <span class="mode label">test doubles: MPC, oracle, tokens</span>');
+    const compare = path(h, "compare");
+    expect(compare).toContain('Run it from a clone: <code class="cmd">make lab</code>, then open its Compare tab.');
+    for (const alternative of ["wait for expiry", "cancel a complete nonce list", "cancel an incomplete list", "cancel with the signer unavailable", "remove the key and resume with a fresh key", "re-add the same key"]) expect(compare).toContain(alternative);
+    // The certified comparison is named by its gate, with the status this page's acceptance run gives it.
+    expect(compare).toContain(`${RECORDED} Acceptance gate <code>COMPARE</code> (`);
+    expect(compare).toContain('<span class="status passed">✓ passed</span>');
+    expect(compare).toContain('<a href="#revocation-alternatives">What happens to orders after the owner acts?</a>');
+    expect(compare).toContain("<code>docs/comparison.md</code> in a clone");
+    // No control, no second script and nothing that could reach a lab.
+    expect(paths(h)).not.toMatch(/<button|data-lab|lab-status/);
+    expect(scripts(h)).toEqual([clientScript()]);
+    expect(csp(h)).toContain(`script-src '${scriptHash(clientScript())}'; connect-src https:; form-action 'none'`);
+    expect(h).toContain("Its one inline script makes network requests only after you press “Run read-only checks” (§V).");
+  });
+
+  it("never shows the COMPARE gate as passed without a certified run bound to this page", () => {
+    const compare = path(renderHtml(storyEvidence(), { acceptance: null, live: null }), "compare");
+    expect(compare).toContain('<span class="status not-run">– not run</span>');
+    expect(compare).not.toContain("✓ passed");
+  });
+
+  it("Verify says that no mainnet run is recorded, and shows the run's own verdict words once one is", () => {
+    const none = path(plain(), "verify");
+    expect(none).toContain("<strong>No mainnet run is recorded: no mainnet transaction has been executed.</strong> There is no mainnet trade, removal, rejection or recovery to inspect yet, and nothing on this page is a mainnet result.");
+    expect(none).toContain('<a href="#mainnet">Mainnet status</a> · <a href="#verify">the read-only verification panel</a>');
+    expect(none).toContain('<span class="mode pending">no mainnet run</span>');
+    expect(none).toContain('<code class="cmd">make verify</code>');
+    expect(paths(plain())).not.toMatch(/class="mode mainnet"|nearblocks/);
+    const rejectedFile = path(render(Evidence.parse({ ...live("rejected_revoked_key"), mode: "sandbox" })), "verify");
+    expect(rejectedFile).toContain("<strong>No mainnet run is shown: out/evidence/live-mainnet.json is not mainnet evidence.</strong>");
+    expect(rejectedFile).not.toContain('class="mode mainnet"');
+    const held = path(render(live("rejected_revoked_key")), "verify");
+    expect(held).toContain('<span class="mode mainnet" title="execution mode">mainnet</span> <span class="status success">2 transactions · revocation test passed</span>');
+    expect(held).toContain('<a href="#mainnet">The run\'s transactions and step verifications</a>');
+    // A run whose relay was not rejected, or that does not hold as a whole, is never worded as a pass here either.
+    for (const ev of [live("executed"), live("inconclusive"), live(null), live("rejected_revoked_key", { failedStep: true })]) {
+      const v = path(render(ev), "verify");
+      expect(v).not.toContain("revocation test passed");
+      expect(v).not.toContain('class="status success"');
+    }
+    expect(path(render(live("rejected_revoked_key", { failedStep: true })), "verify")).toContain(RELAY_STEP_ONLY);
+  });
+
+  it("Integrate names the one command, the example's source and that it is an example", () => {
+    const integrate = path(plain(), "integrate");
+    expect(integrate).toContain('From a clone, with no funds or model credential: <code class="cmd">make example</code>. Source: <code>examples/strategy-client/</code>. It is an example, not an SDK.');
+    expect(integrate).toContain("the agent's function-call key, <code>propose_order</code> and the contract's views");
+  });
+
+  it("with a lab configured, adds two opt-in buttons, a second script pinned by hash, and the lab's origin to connect-src, and nothing else", () => {
+    const h = withLab();
+    const lab = labLink(LAB);
+    expect(lab).toEqual({ url: LAB, origin: "https://lab.synthetic.invalid", health: "https://lab.synthetic.invalid/api/health" });
+    expect(paths(h)).toContain(`data-lab="${escapeHtml(JSON.stringify({ ...lab, service: LAB_SERVICE, timeout_ms: 8000 }))}"`);
+    expect(path(h, "try")).toContain('<button type="button" id="lab-open-try">Open the sandbox lab</button>');
+    expect(path(h, "compare")).toContain('<button type="button" id="lab-open-compare">Open the lab to compare</button>');
+    for (const key of ["try", "compare"]) {
+      expect(path(h, key)).toContain(`<p class="lab-status" id="lab-status-${key}" role="status" aria-live="polite"></p>`);
+      expect(path(h, key)).toContain("Opt-in: nothing is requested until you press the button. It then asks <code>https://lab.synthetic.invalid</code> whether the lab is running and, only if the lab answers, opens it there.");
+      // Before any click the status is empty, and what is recorded stays offered and labelled.
+      expect(path(h, key)).toContain(RECORDED);
+      expect(path(h, key)).toContain('<code class="cmd">make lab</code>');
+    }
+    expect(path(h, "compare")).toContain("In the lab, open the Compare tab.");
+    // The lab is reached by script after a click: no link, form, frame or preloaded resource points at it.
+    expect(h).not.toMatch(/(href|src|action)="https:\/\/lab\.synthetic\.invalid/);
+    expect(scripts(h)).toEqual([clientScript(), labScript()]);
+    expect(csp(h)).toContain(`script-src '${scriptHash(clientScript())}' '${scriptHash(labScript())}'; connect-src https: https://lab.synthetic.invalid; form-action 'none'`);
+    expect(labScript()).not.toMatch(/https?:\/\//);
+    expect(h).toContain("Its two inline scripts make network requests only after you press a button: “Run read-only checks” (§V), or a lab button, which asks https://lab.synthetic.invalid whether the lab is running.");
+    // A lab on this machine is reached over http, and that one origin is all connect-src gains.
+    expect(csp(withLab("http://127.0.0.1:8787"))).toContain("connect-src https: http://127.0.0.1:8787; form-action");
+    // Everything outside the four paths, the policy and the footer is the page without a lab.
+    const strip = (x: string): string => x.replace(paths(x), "").replace(/<meta http-equiv[^>]*>/, "").replace(/<footer>[\s\S]*?<\/footer>/, "").replace(/\n<script>[\s\S]*<\/script>\n<\/body>/, "\n</body>");
+    expect(strip(h)).toBe(strip(plain()));
+  });
+
+  it("accepts an https lab or one on this machine, and refuses any other address", () => {
+    expect(labLink(null)).toBeNull();
+    expect(labLink(undefined)).toBeNull();
+    expect(labLink("  ")).toBeNull();
+    expect(labLink("https://lab.synthetic.invalid/sandbox")).toEqual({ url: "https://lab.synthetic.invalid/sandbox/", origin: "https://lab.synthetic.invalid", health: "https://lab.synthetic.invalid/sandbox/api/health" });
+    expect(labLink("http://localhost:8787")?.health).toBe("http://localhost:8787/api/health");
+    for (const bad of ["lab.synthetic.invalid", "http://lab.synthetic.invalid/", "ftp://127.0.0.1/", "https://user:pw@lab.synthetic.invalid/", "https://lab.synthetic.invalid/?next=1", "https://lab.synthetic.invalid/#x", "javascript:alert(1)"]) {
+      expect(() => labLink(bad), bad).toThrow(/MANDATE_LAB_URL/);
+      expect(() => renderHtml(storyEvidence(), { acceptance: null, live: null, labUrl: bad }), bad).toThrow(/MANDATE_LAB_URL/);
+    }
+  });
+
+  // A stand-in for the two buttons, their status lines and the section; only what the handler touches.
+  const dom = (h: string) => {
+    const raw = /<section class="four-paths" id="start"[^>]* data-lab="([^"]*)"/.exec(h)?.[1] ?? null;
+    const unescaped = raw === null ? null : raw.replaceAll("&quot;", '"').replaceAll("&#39;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+    const el = () => {
+      const listeners: (() => void)[] = [];
+      return { textContent: "", className: "lab-status", disabled: false, getAttribute: (name: string): string | null => (name === "data-lab" ? unescaped : null), addEventListener: (_type: string, fn: () => void) => { listeners.push(fn); }, click: () => { for (const fn of listeners) fn(); } };
+    };
+    const els: Record<string, ReturnType<typeof el>> = { start: el(), "lab-open-try": el(), "lab-status-try": el(), "lab-open-compare": el(), "lab-status-compare": el() };
+    return { els, doc: { getElementById: (id: string) => els[id] ?? null } };
+  };
+  const answer = (body: unknown, ok = true, status = 200) => ({ ok, status, json: () => Promise.resolve(body) });
+  const settle = async (): Promise<void> => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+
+  it("asks the lab nothing before a click; after one, opens the lab only when its health record is the sandbox lab's", async () => {
+    for (const key of ["try", "compare"] as const) {
+      const { els, doc } = dom(withLab());
+      const asked: { url: string; init: Parameters<LabFetch>[1] }[] = [];
+      const opened: string[] = [];
+      installLab(doc, (url, init) => { asked.push({ url, init }); return Promise.resolve(answer({ service: LAB_SERVICE, mode: "sandbox", ok: true })); }, (url) => opened.push(url));
+      expect(asked).toEqual([]);
+      expect(els[`lab-status-${key}`]?.textContent).toBe("");
+      els[`lab-open-${key}`]?.click();
+      expect(asked.map((a) => a.url)).toEqual(["https://lab.synthetic.invalid/api/health"]);
+      expect(asked[0]?.init).toMatchObject({ method: "GET", credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store" });
+      expect(opened).toEqual([]);
+      await settle();
+      expect(opened).toEqual([LAB]);
+      expect(els[`lab-status-${key}`]?.textContent).toBe("The lab answered. Opening it: a separate site running a sandbox with test doubles.");
+      expect(els[`lab-status-${key}`]?.className).toBe("lab-status");
+    }
+  });
+
+  it("says the lab is unreachable, opens nothing and points to the recorded replay when the lab does not answer as the sandbox lab", async () => {
+    const failures: [string, () => ReturnType<LabFetch>, string][] = [
+      ["network error", () => Promise.reject(new TypeError("Failed to fetch (SYNTHETIC)")), "Failed to fetch (SYNTHETIC)"],
+      ["HTTP 503", () => Promise.resolve(answer({}, false, 503)), "its health check returned HTTP 503"],
+      ["another service", () => Promise.resolve(answer({ service: "SYNTHETIC other", mode: "sandbox" })), "its answer is not the sandbox lab's health record"],
+      ["not sandbox mode", () => Promise.resolve(answer({ service: LAB_SERVICE, mode: "mainnet" })), "its answer is not the sandbox lab's health record"],
+      ["not JSON", () => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError("Unexpected token (SYNTHETIC)")) }), "Unexpected token (SYNTHETIC)"],
+      ["an HTML page", () => Promise.resolve(answer("<html>SYNTHETIC</html>")), "its answer is not the sandbox lab's health record"],
+      ["shutting down", () => Promise.resolve(answer({ service: LAB_SERVICE, mode: "sandbox", ok: false })), "it reports that it is not running"],
+    ];
+    for (const [name, respond, reason] of failures) {
+      const { els, doc } = dom(withLab());
+      const opened: string[] = [];
+      installLab(doc, respond, (url) => opened.push(url));
+      els["lab-open-try"]?.click();
+      expect(els["lab-open-try"]?.disabled, name).toBe(true);
+      await settle();
+      expect(opened, name).toEqual([]);
+      expect(els["lab-status-try"]?.className, name).toBe("lab-status unreachable");
+      expect(els["lab-status-try"]?.textContent, name).toBe(`The lab at https://lab.synthetic.invalid is unreachable (${reason}). Nothing was run, and nothing on this page is a lab result. Use the recorded replay below, which is recorded and not interactive, or run the lab from a clone with make lab.`);
+      expect(els["lab-status-try"]?.textContent, name).not.toMatch(/opening|answered|success|passed/i);
+      // The other path's status is untouched, and the button can be pressed again.
+      expect(els["lab-status-compare"]?.textContent, name).toBe("");
+      expect(els["lab-open-try"]?.disabled, name).toBe(false);
+    }
+  });
+
+  it("the inlined script is that handler: evaluated as the page inlines it, it wires the buttons and fetches nothing on load", async () => {
+    const { els, doc } = dom(withLab());
+    const asked: string[] = [];
+    const opened: string[] = [];
+    const fetchStub = (url: string) => { asked.push(url); return Promise.reject(new TypeError("SYNTHETIC offline")); };
+    // Evaluating the page's own script text is the point: the tested code is byte-for-byte the inlined code.
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const run = new Function("document", "fetch", "location", labScript()) as (d: unknown, f: unknown, l: unknown) => void;
+    run(doc, fetchStub, { assign: (url: string) => opened.push(url) });
+    expect(asked).toEqual([]);
+    els["lab-open-compare"]?.click();
+    await settle();
+    expect(asked).toEqual(["https://lab.synthetic.invalid/api/health"]);
+    expect(opened).toEqual([]);
+    expect(els["lab-status-compare"]?.textContent).toContain("is unreachable (SYNTHETIC offline). Nothing was run");
+    // On a page without a lab there is nothing to wire.
+    const bare = dom(plain());
+    expect(() => { installLab(bare.doc, fetchStub, (url) => opened.push(url)); }).not.toThrow();
+    bare.els["lab-open-try"]?.click();
+    expect(asked).toHaveLength(1);
   });
 });

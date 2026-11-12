@@ -3,6 +3,9 @@
 // are refused and one signed order is held back; the owner revokes and the verifier rejects that order; the funds
 // return) and ends with where to verify; and the longer technical walkthrough of the same run, numbered by the owner's
 // eight steps, with an attack-log segment, gates and provenance. Every frame is checked to fit before it is captured.
+// When out/evidence/live-mainnet.json records a completed mainnet run, both cuts carry a mainnet segment built from it
+// (the trade, the confirmed key removal, the rejection of the withheld order and the recovery, each with its
+// transaction); without one, each cut states what it does not show (mainnetCut).
 // Captions only; any narration is added later by the owner. Not part of make test, make demo or CI.
 //
 // Usage (from the repository root):
@@ -33,13 +36,14 @@ import { REPO_ROOT, reportsDir, treeState } from "../evidence/report.js";
 import { REQUIRED_CASES } from "../evidence/required.js";
 import { bindDemo, latestRunId, type DemoBinding } from "../evidence/binding.js";
 import type { Acceptance } from "../evidence/schema.js";
-import { liveView, loadLive } from "../page/mainnet.js";
+import { z } from "zod";
+import { EXPLORER_TX, LIVE_MAINNET_PATH, RELAY_STEP_ONLY, isTxHash, liveView, loadLive, runVerdict, type LiveView } from "../page/mainnet.js";
 import { loadReportFiles } from "../page/casefiles.js";
-import { GATE_LABEL, HEADLINE, escapeHtml as esc, loadAcceptance } from "../page/render.js";
+import { GATE_LABEL, HEADLINE, POSITION, escapeHtml as esc, loadAcceptance } from "../page/render.js";
 import { sandboxResults } from "../page/results.js";
 import { AGENT_OBJECTIVE, allocation, attackRows, isoNs, modelReason, ownerJourney, priceText, readable, revocationStory, share, shortHash, unboundReceipts, units, usdc, withheldIdentity, wnear, type JourneyStep, type StageKey } from "../page/story.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, ConsoleRevoke, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, REPO_URL, demoSteps, type Screenshot, type StepState } from "../evidence/journey.js";
-import { Evidence } from "../types.js";
+import { Evidence, type Assertion, type Receipt } from "../types.js";
 
 const OUT = join(REPO_ROOT, "out/video");
 const W = 1920;
@@ -99,6 +103,8 @@ interface Scene {
   strip?: StepState | null;
   /** Stage label shown in the strip. */
   stage?: string;
+  /** A scene of the mainnet segment: the slide names the run's revision where sandbox scenes show the demo's certification. */
+  mainnet?: { revision: string };
 }
 
 const list = (items: string[]): string => `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
@@ -112,7 +118,7 @@ function certification(binding: DemoBinding): { chip: string; sentence: string }
     : { chip: "Not certified for this demo", sentence: `Not certified for this demo: ${binding.reasons.join("; ")}. No gate counts as passed.` };
 }
 
-export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string, results?: ReturnType<typeof sandboxResults>): Scene[] {
+export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding: DemoBinding, steps: LogStep[], shots: Record<string, Buffer>, modelName: string, results?: ReturnType<typeof sandboxResults>, mainnet: MainnetCut = mainnetCut({ kind: "absent" })): Scene[] {
   const A = new Map(ev.assertions.map((a) => [a.id, a]));
   const obs = (id: string): unknown => {
     const a = A.get(id);
@@ -239,7 +245,12 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
   const out: Scene[] = [
     {
       kind: "summary",
-      labels: DEMO_LABELS,
+      // The sandbox labels end in "No mainnet"; with a recorded mainnet run the opening says instead what follows.
+      ...(mainnet.kind === "complete"
+        ? { provenance: "Summary · one local sandbox run with test doubles, then one NEAR mainnet run" }
+        : mainnet.kind === "incomplete"
+          ? { provenance: "Summary · one local sandbox run with test doubles" }
+          : { labels: DEMO_LABELS }),
       title: HEADLINE,
       body: `<p class="claim">The mandate contract builds and signs every trade itself; the agent can only propose within immutable limits. After the owner's confirmed key removal, withheld signed orders fail, and the owner recovers assets without the agent, oracle or signer.</p>${rail(ownerJourney(ev, [...story.values()]), -1)}`,
       captions: [HEADLINE, "Claim: the contract builds and signs every trade; after confirmed key removal, withheld orders fail and the owner recovers without agent, oracle or signer.", status.sentence],
@@ -376,6 +387,7 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
       captions: [withdrawal?.caption ?? "Owner withdrawal: not in this evidence."],
       strip: stateAfter("Owner withdrawal"),
     },
+    ...mainnetScenes(mainnet, "walkthrough"),
     {
       kind: "summary",
       title: `Acceptance gates per case: ${String(counted)} of ${String(totalCases)} passed`,
@@ -398,9 +410,16 @@ export function walkthroughScenes(ev: Evidence, acc: Acceptance | null, binding:
     {
       kind: "summary",
       title: "Limits",
-      body: list([...ev.unknowns, status.sentence].map(esc)),
+      body: list([...ev.unknowns, status.sentence, ...(mainnet.kind === "none" ? [] : [mainnet.statement])].map(esc)),
       captions: [
-        `Limits: sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution; ${proposal === null ? "the first order used a scripted proposal, not model output" : "the model step is a replay"}. No guarantee of profit or a maximum loss.`,
+        `Limits: ${
+          mainnet.kind === "complete"
+            ? "the sandbox scenes use test doubles for MPC, oracle and tokens, and the mainnet segment is one approved run"
+            : mainnet.kind === "none"
+              ? "sandbox only, with test doubles for MPC, oracle and tokens; no mainnet execution"
+              : "the scenes are sandbox only, with test doubles for MPC, oracle and tokens"
+        }; ${proposal === null ? "the first order used a scripted proposal, not model output" : "the model step is a replay"}. No guarantee of profit or a maximum loss.`,
+        ...(mainnet.kind === "incomplete" || mainnet.kind === "not-evidence" ? [mainnet.statement] : []),
         "Revocation is not instant: signed orders can still execute while it is pending. The claim covers orders after confirmed key removal.",
       ],
     },
@@ -480,14 +499,208 @@ const beatsBody = (steps: readonly JourneyStep[], of: readonly number[]): string
   return `${rail(steps, of.at(-1) ?? -1)}${beats.join("")}<p class="bound">Evidence: ${bound.join(" · ")}</p>`;
 };
 
+// ---- mainnet segment -----------------------------------------------------------------------------
+
+export interface MainnetTx {
+  label: string;
+  outcome: Receipt["outcome"];
+  hash: string;
+  /** The transaction on the explorer the evidence page links. */
+  url: string;
+}
+
+export type MainnetPartKey = "trade" | "removal" | "rejection" | "recovery";
+
+export interface MainnetPart {
+  key: MainnetPartKey;
+  title: string;
+  /** What the run's own step verification recorded, as one or two sentences; also the part's caption. */
+  line: string;
+  txs: MainnetTx[];
+}
+
+/**
+ * What a cut may show of mainnet. "complete": a recorded mainnet run that holds as a whole (runVerdict) and whose
+ * trade, removal, rejection and recovery each have a verified step and a transaction; only then are there parts.
+ * "incomplete": a mainnet run is recorded but is not shown as a completed run. "not-evidence": a live file exists but
+ * is not mainnet evidence. "none": no run. Outside "complete" the cut has no mainnet scene and says `statement`.
+ */
+export interface MainnetCut {
+  kind: "none" | "not-evidence" | "incomplete" | "complete";
+  /** Mainnet transactions the evidence page presents (0 without a recorded mainnet run). */
+  transactions: number;
+  /** On the closing slide, and narrated in the walkthrough: the whole reason. */
+  statement: string;
+  /** In the short cut's closing caption: brief enough to share one frame with the sentence before it, so the cut keeps its length. */
+  caption: string;
+  /** Source revision the run was made from; null without a recorded mainnet run. */
+  revision: string | null;
+  parts: MainnetPart[];
+}
+
+const LIVE_STEP = /^step-([1-9][0-9]*)-([a-z_]+)(?:-attempt-([1-9][0-9]*))?$/;
+const Digits = z.string().regex(/^[0-9]+$/);
+const Balances = z.object({ usdc: Digits, wnear: Digits });
+const LiveDetail = z.object({ step: z.union([z.number(), z.string()]).optional(), order_id: z.union([z.number(), z.string()]).optional() });
+const FillObserved = z.object({ mandate_before: Balances, mandate_after: Balances });
+const ProposeObserved = z.object({ order_id: z.union([z.number(), z.string()]) });
+const RevokeObserved = z.object({ status: z.literal("revoked"), key_absent: z.literal(true) });
+const RelayObserved = z.object({ classification: z.literal("rejected_revoked_key"), executed_at_ns: Digits, deadline_ns: Digits });
+const RecoverObserved = z.object({ asset: z.enum(["usdc", "wnear"]), gained: Digits });
+
+/** Mainnet amounts are small: wNEAR to six places, and never a non-zero amount written as zero. */
+const liveAmount = (asset: "usdc" | "wnear", raw: string): string => {
+  const text = asset === "usdc" ? units(raw, 6, 2) : units(raw, 24, 6).replace(/0+$/, "").replace(/\.$/, "");
+  return BigInt(raw) !== 0n && /^[0.]+$/.test(text) ? `${raw} base units of ${asset === "usdc" ? "USDC" : "wNEAR"}` : `${text} ${asset === "usdc" ? "USDC" : "wNEAR"}`;
+};
+
+/**
+ * The mainnet segment, from the live evidence alone. A part is built only from a step verification that held and names
+ * what it claims: the removal needs the key recorded absent, the rejection the removed-key classification before the
+ * order's deadline. Anything less leaves the cut without a segment and with a sentence saying why.
+ */
+export function mainnetCut(live: LiveView): MainnetCut {
+  if (live.kind === "absent") {
+    return { kind: "none", transactions: 0, statement: "Mainnet run: pending approval — no mainnet transaction has been executed.", caption: "Mainnet run pending approval; no mainnet transaction executed.", revision: null, parts: [] };
+  }
+  if (live.kind === "rejected") {
+    return {
+      kind: "not-evidence",
+      transactions: 0,
+      statement: `No mainnet run is shown: ${LIVE_MAINNET_PATH} is not mainnet evidence (${live.reasons.join("; ")}).`,
+      caption: "No mainnet run is shown: the live evidence file is not mainnet evidence.",
+      revision: null,
+      parts: [],
+    };
+  }
+  const ev = live.ev;
+  const verdict = runVerdict(ev);
+  const count = ev.receipts.length;
+  const revision = ev.source.product_commit;
+  const notShown = (why: string, brief: string): MainnetCut => ({
+    kind: "incomplete",
+    transactions: count,
+    statement: `A mainnet run is recorded (${String(count)} transactions, on the evidence page) but is not shown here as a completed run: ${why}. This cut has no mainnet segment.`,
+    caption: `A mainnet run is recorded but not shown as complete: ${brief}.`,
+    revision,
+    parts: [],
+  });
+  if (verdict.revocation.cls !== "success") {
+    const brief = { failure: "its revocation test failed", inconclusive: "its revocation test is inconclusive", "not-run": "no withheld order was relayed" }[verdict.revocation.cls];
+    return notShown(`its revocation test is not a pass (${verdict.revocation.text})`, brief);
+  }
+  if (!verdict.holds) {
+    const shortfalls = [
+      ...(verdict.failedSteps > 0 ? [`${String(verdict.failedSteps)} of ${String(verdict.steps)} step verifications did not hold`] : []),
+      ...(verdict.failedPreflight > 0 ? [`${String(verdict.failedPreflight)} preflight checks did not hold`] : []),
+      ...(verdict.stopped ? ["the run stopped"] : []),
+      ...verdict.missing,
+    ];
+    return notShown(`the ${RELAY_STEP_ONLY}, and ${shortfalls.join("; ")}`, verdict.cls === "failure" ? "the run did not hold" : "the run is incomplete");
+  }
+
+  // Each step's latest attempt; in a run that holds, every one of them held.
+  const latest = new Map<number, { kind: string; attempt: number; assertion: Assertion }>();
+  for (const assertion of ev.assertions) {
+    const m = LIVE_STEP.exec(assertion.id);
+    if (m === null) continue;
+    const step = Number(m[1]);
+    const attempt = m[3] === undefined ? 1 : Number(m[3]);
+    if ((latest.get(step)?.attempt ?? 0) < attempt) latest.set(step, { kind: m[2] ?? "", attempt, assertion });
+  }
+  const stepsOf = (...kinds: string[]): { step: number; observed: unknown }[] =>
+    [...latest.entries()].filter(([, s]) => kinds.includes(s.kind) && s.assertion.passed).sort(([a], [b]) => a - b).map(([step, s]) => ({ step, observed: s.assertion.observed }));
+  const detail = (r: Receipt) => LiveDetail.safeParse(r.detail).data ?? {};
+  const txsOf = (step: number): MainnetTx[] =>
+    ev.receipts.flatMap((r) => (r.tx_hash !== undefined && isTxHash(r.tx_hash) && String(detail(r).step) === String(step) ? [{ label: r.label, outcome: r.outcome, hash: r.tx_hash, url: `${EXPLORER_TX}${r.tx_hash}` }] : []));
+
+  const fills = stepsOf("fill");
+  const fill = fills[0];
+  // The proposal behind the trade, when the fill's receipt and a proposal's verification name the same order.
+  const filledOrder = fill === undefined ? undefined : ev.receipts.map(detail).find((d) => String(d.step) === String(fill.step))?.order_id;
+  const proposal = filledOrder === undefined ? undefined : stepsOf("propose").find((p) => String(ProposeObserved.safeParse(p.observed).data?.order_id) === String(filledOrder));
+  const moved = FillObserved.safeParse(fill?.observed).data;
+  const delta = (asset: "usdc" | "wnear"): bigint => (moved === undefined ? 0n : BigInt(moved.mandate_after[asset]) - BigInt(moved.mandate_before[asset]));
+  const [paid, received] = delta("usdc") < 0n ? (["usdc", "wnear"] as const) : (["wnear", "usdc"] as const);
+  const tradeLine =
+    moved !== undefined && delta(paid) < 0n && delta(received) > 0n
+      ? `The mandate's order is filled: it pays ${liveAmount(paid, (-delta(paid)).toString())} and receives ${liveAmount(received, delta(received).toString())}.`
+      : "The mandate's order is filled.";
+
+  const revokes = stepsOf("revoke", "revoke_external");
+  const relays = stepsOf("relay_withheld");
+  const relay = RelayObserved.safeParse(relays[0]?.observed).data;
+  const recovers = stepsOf("recover", "recover_external");
+  const gained = new Map(recovers.flatMap((r) => { const o = RecoverObserved.safeParse(r.observed).data; return o === undefined ? [] : [[o.asset, o.gained] as const]; }));
+  const usdcBack = gained.get("usdc");
+  const wnearBack = gained.get("wnear");
+
+  const parts: MainnetPart[] = [
+    { key: "trade", title: "The trade", line: tradeLine, txs: [...(proposal === undefined ? [] : txsOf(proposal.step)), ...fills.flatMap((f) => txsOf(f.step))] },
+    { key: "removal", title: "Key removal, confirmed", line: "The owner revokes. The grant key's removal from the Intents verifier is confirmed.", txs: revokes.flatMap((r) => txsOf(r.step)) },
+    {
+      key: "rejection",
+      title: "The withheld order, rejected",
+      line: relay === undefined ? "" : `The run's withheld order is relayed ${String((BigInt(relay.deadline_ns) - BigInt(relay.executed_at_ns)) / 1_000_000_000n)} s before its deadline. The verifier rejects it: the signing key no longer exists.`,
+      txs: relays.flatMap((r) => txsOf(r.step)),
+    },
+    {
+      key: "recovery",
+      title: "Recovery",
+      line: usdcBack === undefined || wnearBack === undefined ? "Recovery returns both assets to the owner's Intents account." : `Recovery returns ${liveAmount("usdc", usdcBack)} and ${liveAmount("wnear", wnearBack)} to the owner's Intents account.`,
+      txs: recovers.flatMap((r) => txsOf(r.step)),
+    },
+  ];
+  const lacking = [
+    ...parts.filter((p) => p.txs.length === 0).map((p) => `no transaction of a verified step is recorded for ${p.key}`),
+    ...(revokes.length > 0 && !revokes.every((r) => RevokeObserved.safeParse(r.observed).success) ? ["the revoke verification does not record the grant revoked with its key absent from the verifier"] : []),
+    ...(relays.length > 0 && (relay === undefined || BigInt(relay.executed_at_ns) > BigInt(relay.deadline_ns)) ? ["the relay verification does not record a rejection before the order's deadline"] : []),
+  ];
+  if (lacking.length > 0) return notShown(`the run holds, but this cut cannot bind every part to its evidence: ${lacking.join("; ")}`, "its evidence is incomplete");
+  const shown = parts.reduce((n, p) => n + p.txs.length, 0);
+  return {
+    kind: "complete",
+    transactions: count,
+    statement: `The mainnet segment shows ${String(shown)} of the run's ${String(count)} transactions; all ${String(count)} are listed on the evidence page with explorer links.`,
+    caption: "Mainnet receipts are on the evidence page.",
+    revision,
+    parts,
+  };
+}
+
+export const MAINNET_PROVENANCE = "NEAR mainnet · one approved run · recorded receipts";
+const MAINNET_INTRO = "Separately, on NEAR mainnet, in one approved run.";
+
+const partHtml = (p: MainnetPart): string =>
+  `<div class="beat"><p class="status-line"><span class="pill ok">held on mainnet</span> <b>${esc(p.title)}</b></p><p class="beat-line">${esc(p.line)}</p>${p.txs
+    .map((t) => `<p class="tx">${esc(t.label)}${t.outcome === "failure" ? (p.key === "rejection" ? " · failed, as the rejection requires" : " · failed") : ""}<br><code>${esc(t.url.replace(/^https:\/\//, ""))}</code></p>`)
+    .join("")}</div>`;
+
+/**
+ * The mainnet segment's scenes; none unless the cut is complete. The short cut tells the four parts in two scenes, the
+ * walkthrough one part per scene. Every sentence is the part's line, which mainnetCut built from the run's evidence.
+ */
+export function mainnetScenes(cut: MainnetCut, form: "short" | "walkthrough"): Scene[] {
+  if (cut.kind !== "complete" || cut.revision === null) return [];
+  const part = (key: MainnetPartKey): MainnetPart[] => cut.parts.filter((p) => p.key === key);
+  const base = { kind: "demo" as const, provenance: MAINNET_PROVENANCE, mainnet: { revision: cut.revision } };
+  if (form === "walkthrough") {
+    return cut.parts.map((p, i): Scene => ({ ...base, title: `M${String(i + 1)} · Mainnet: ${p.title.charAt(0).toLowerCase()}${p.title.slice(1)}`, body: partHtml(p), captions: [i === 0 ? `${MAINNET_INTRO} ${p.line}` : p.line] }));
+  }
+  const pair = (title: string, keys: readonly [MainnetPartKey, MainnetPartKey], intro: string): Scene => {
+    const ps = keys.flatMap(part);
+    return { ...base, title, body: ps.map(partHtml).join(""), captions: ps.map((p, i) => (i === 0 && intro !== "" ? `${intro} ${p.line}` : p.line)) };
+  };
+  return [
+    pair("On NEAR mainnet: a trade, then the owner removes the key", ["trade", "removal"], MAINNET_INTRO),
+    pair("On NEAR mainnet: the withheld order is rejected; the assets return", ["rejection", "recovery"], ""),
+  ];
+}
+
 /** The problem the short cut opens with, in one line. */
 export const PROBLEM = "An agent holding a trading key can exceed your limits, and orders it already signed can outlive your decision to stop it.";
-/**
- * The product in two sentences. Revocation and recovery are separate owner calls, orders executed before confirmed
- * removal stay executed, and the agent holds a propose-only function-call key, so the wording claims none of those away.
- */
-export const LEAD =
-  "An AI agent trades your treasury on NEAR Intents without holding a signing key. A contract signs each order inside your limits; one owner call voids every signed order that has not executed, and recovery returns the funds without the agent.";
+/** The product in two sentences: the page's, so the cut and the page cannot drift apart. */
+export const LEAD = POSITION;
 /** The source repository's URL, shown as text: the cut never says whether a URL is published. */
 export const PLANNED_REPO = REPO_URL;
 
@@ -529,8 +742,11 @@ const SHORT_BEATS: readonly { key: Beat; title: string; steps: readonly JourneyS
  * The short cut: the problem in one line, then the agent trades, hostile requests are refused while one signed order is
  * held back, the owner revokes and the verifier rejects that order, the funds return, and where to verify. One
  * provenance label per scene. Throws when any stage lacks its evidence.
+ *
+ * With a completed mainnet run the mainnet segment takes the place of the sandbox revocation and return scenes, which
+ * the walkthrough still shows: both would not fit SHORT_RANGE_S, and the opening slide says which run tells which steps.
  */
-export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: boolean, repro: Repro = { verify: null, quick: false }): Scene[] {
+export function shortScenes(ev: Evidence, binding: DemoBinding, mainnet: MainnetCut, repro: Repro = { verify: null, quick: false }): Scene[] {
   const stages = revocationStory(ev);
   const missing = stages.flatMap((s) => s.missing.map((m) => `${s.title}: ${m}`));
   if (missing.length > 0) throw new Error(`demo.json lacks evidence for the short cut: ${missing.join("; ")}`);
@@ -542,13 +758,15 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   const labelled = (key: JourneyStep["key"], label: string): boolean => step(key)?.labels.includes(label) === true;
   // "Replayed model recording" only when the trade's proposal is recorded model output; a scripted one is never called that.
   const replayed = labelled("trade", "recorded genuine model output") && ev.environment.model_mode === "recorded-model";
-  const what = replayed ? "One local sandbox run with labelled test doubles and a replayed model recording" : "One local sandbox run with labelled test doubles and a scripted proposal, not model output";
-  const mainnet = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run: pending approval — no mainnet transaction has been executed.";
+  const segment = mainnetScenes(mainnet, "short");
+  const sandbox = replayed ? "One local sandbox run with labelled test doubles and a replayed model recording" : "One local sandbox run with labelled test doubles and a scripted proposal, not model output";
+  const what = segment.length === 0 ? sandbox : `${sandbox}, then one approved NEAR mainnet run`;
+  // A recorded mainnet run, complete or not, is on the evidence page: the sandbox summary no longer says "no mainnet".
+  const recorded = mainnet.kind === "complete" || mainnet.kind === "incomplete";
   const notShown = steps.filter((j) => j.outcome !== "held");
   // The story outcome is the demo's; the certification sentence is the acceptance run's. Neither implies the other.
   const storyCaption =
     notShown.length === 0 ? "" : `In this run ${String(notShown.length)} of ${String(steps.length)} journey steps are not shown as evidence: ${notShown.map((j) => `${j.neutral} (${j.outcome})`).join(", ")}. `;
-  const mainnetCaption = mainnetShown ? "Mainnet receipts are on the evidence page." : "Mainnet run pending approval; no mainnet transaction executed.";
   // The recovery scene says a double was off only when a successful receipt switching it off precedes the owner's first
   // recover receipt; whether recovery itself held is the scene's title, not this label.
   const recovery = stages.find((s) => s.key === "recovered");
@@ -577,13 +795,17 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
   return [
     {
       kind: "summary",
-      provenance: `Summary of one local sandbox run${mainnetShown ? "" : " · no mainnet"}`,
+      provenance: segment.length > 0 ? "Summary of one local sandbox run and one NEAR mainnet run" : `Summary of one local sandbox run${recorded ? "" : " · no mainnet"}`,
       title: HEADLINE,
-      body: `<p class="claim problem">${esc(PROBLEM)}</p><p class="claim">${esc(LEAD)}</p>${rail(steps, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">${esc(what)}. Every number shown comes from out/evidence/demo.json.</p>`,
+      body: `<p class="claim problem">${esc(PROBLEM)}</p><p class="claim">${esc(LEAD)}</p>${rail(steps, -1)}<p class="objective">Agent's objective: ${esc(AGENT_OBJECTIVE)}. An instruction to the agent, not a rule the contract enforces.</p><p class="note">${esc(what)}. ${
+        segment.length === 0
+          ? "Every number shown comes from out/evidence/demo.json."
+          : esc(`Sandbox numbers come from out/evidence/demo.json, mainnet ones from ${LIVE_MAINNET_PATH}. Revocation, rejection and recovery are told from the mainnet run; their sandbox recording and the owner's withdrawal are in the walkthrough.`)
+      }</p>`,
       // The problem alone, then what the run is.
       captions: [PROBLEM, `${what}.`],
     },
-    ...SHORT_BEATS.map((beat, b): Scene => {
+    ...SHORT_BEATS.filter((beat) => segment.length === 0 || beat.key === "trade" || beat.key === "hostile").map((beat, b): Scene => {
       const of = beat.steps.flatMap((k) => { const i = steps.findIndex((j) => j.key === k); return i < 0 ? [] : [i]; });
       const js = of.flatMap((i) => (steps[i] === undefined ? [] : [steps[i]]));
       const off = js.filter((j) => j.outcome !== "held");
@@ -599,6 +821,7 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
         stage: `${String(b + 1)} of ${String(SHORT_BEATS.length)} · ${js.map((j) => j.rail).join(", ")}`,
       };
     }),
+    ...segment,
     {
       kind: "summary",
       provenance: "Commands and URLs",
@@ -607,10 +830,10 @@ export function shortScenes(ev: Evidence, binding: DemoBinding, mainnetShown: bo
         ...(repro.verify === null ? [] : [`<b>Check the committed evidence, no toolchain:</b> <code>${esc(repro.verify)}</code>. It checks the evidence bundle, not that the tests ran.`]),
         ...(repro.quick ? ["<b>Quick demo:</b> <code>make quick</code> (prebuilt WASM, uncertified)."] : ["<b>Demo:</b> <code>make demo</code>."]),
         "<b>Certified path:</b> <code>make test &amp;&amp; make demo</code>. No funds or model key needed.",
-        `<b>Mainnet receipts:</b> ${esc(mainnet)}`,
+        `<b>Mainnet:</b> ${esc(mainnet.statement)}`,
         `<b>Repository and evidence page (${esc(PLANNED_LABEL)}):</b> <code>${esc(PLANNED_REPO)}</code>, <code>${esc(PLANNED_URLS.page)}</code>`,
       ])}<p class="note">${esc(status.sentence)}</p>`,
-      captions: [`${storyCaption}Signed orders can still execute before confirmed key removal. ${mainnetCaption}`, repro_],
+      captions: [`${storyCaption}Signed orders can still execute before confirmed key removal. ${mainnet.caption}`, repro_],
     },
   ];
 }
@@ -623,7 +846,9 @@ const CSS = `
 .top { display: flex; gap: 12px; padding: 26px 48px 0; flex-wrap: wrap; align-items: center; }
 .chip { font: 600 20px/1 "SF Mono", Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 10px 14px; border: 2px solid #7fb6dc; color: #7fb6dc; border-radius: 4px; }
 .chip.model { border-color: #e6b450; color: #e6b450; } .chip.acc { margin-left: auto; border-color: #e0866f; color: #e0866f; } .chip.acc.ok { border-color: #6fcf9f; color: #6fcf9f; }
-h1 { font-size: 54px; line-height: 1.1; margin: 22px 48px 16px; }
+.chip.mainnet { border-color: #ece6d8; background: #ece6d8; color: #10141a; } .chip.acc.run { border-color: #ece6d8; color: #ece6d8; }
+.tx { font-size: 24px; line-height: 1.3; margin: 0 0 6px; color: #c9d6e3; } .tx code { font-size: 22px; }
+h1 { font-size: 54px; line-height: 1.1; margin: 22px 48px 16px; } h1.long { font-size: 42px; line-height: 1.2; margin-bottom: 25px; white-space: nowrap; }
 .body { margin: 0 48px; height: 690px; overflow: hidden; font-size: 28px; } .body.strip-on { height: 535px; }
 .body ul { margin: 8px 0; padding-left: 28px; } .body li { margin: 6px 0; }
 code { font: 22px "SF Mono", Menlo, monospace; color: #c9d6e3; }
@@ -675,15 +900,20 @@ function stripHtml(st: StepState | null, stage: string): string {
   return `<div class="strip">${cell("Stage", esc(stage), "stage")}${cell("Grant", esc(st.grant_status))}${cell("Grant key", key)}${cell("Open orders", String(st.open_orders))}${cell("Mandate (Intents)", two(st.mandate))}${cell("Owner (Intents)", two(st.owner_intents))}${cell("Owner (NEAR)", two(st.owner_near))}</div>`;
 }
 
+/** Longest title the full-size heading holds on one line; a longer one is set smaller, since a second line would push the fixed-height body into the caption. */
+const TITLE_ONE_LINE = 60;
+
 function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
   const labels = s.provenance === undefined ? [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])] : [s.provenance];
-  const chips = labels.map((l) => `<span class="chip${/^(Recorded|Scripted|Ordinary|Owner action|Owner controls|Owner console|Read-only)|·/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
+  const chips = labels.map((l) => `<span class="chip${s.mainnet !== undefined ? " mainnet" : /^(Recorded|Scripted|Ordinary|Owner action|Owner controls|Owner console|Read-only)|·/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
   const status = certification(binding);
-  const reason = binding.certified ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
+  // The demo's certification says nothing about the mainnet run, which was made from its own revision.
+  const corner = s.mainnet === undefined ? `<span class="chip acc${binding.certified ? " ok" : ""}">${esc(status.chip)}</span>` : `<span class="chip acc run">Mainnet run at revision ${esc(s.mainnet.revision.slice(0, 7))}</span>`;
+  const reason = binding.certified || s.mainnet !== undefined ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
   const strip = s.strip === undefined ? "" : stripHtml(s.strip, s.stage ?? s.title);
   return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
-<div class="top">${chips}<span class="chip acc${binding.certified ? " ok" : ""}">${esc(status.chip)}</span></div>${reason}
-<h1>${esc(s.title)}</h1><div class="body${strip === "" ? "" : " strip-on"}">${s.body}</div>${strip}<div class="caption">${esc(caption)}</div></body></html>`;
+<div class="top">${chips}${corner}</div>${reason}
+<h1${s.title.length > TITLE_ONE_LINE ? ' class="long"' : ""}>${esc(s.title)}</h1><div class="body${strip === "" ? "" : " strip-on"}">${s.body}</div>${strip}<div class="caption">${esc(caption)}</div></body></html>`;
 }
 
 interface PwPage {
@@ -854,7 +1084,8 @@ async function main(): Promise<void> {
   const modelFixture = readFileSync(files.model);
   if (sha256(modelFixture) !== ev.source.fixtures["model/normal.json"]) throw new Error("fixtures/model/normal.json differs from the hash recorded in demo.json");
   const modelName = (JSON.parse(modelFixture.toString("utf8")) as { model: string }).model;
-  const mainnetShown = liveView(loadLive(REPO_ROOT)).kind === "mainnet";
+  const live = liveView(loadLive(REPO_ROOT));
+  const mainnet = mainnetCut(live);
   const repro = reproFromMakefile(readFileSync(join(REPO_ROOT, "Makefile"), "utf8"));
 
   const browser = await loadPlaywright().chromium.launch({ channel: process.env.PW_CHANNEL ?? "chrome", headless: true });
@@ -863,8 +1094,8 @@ async function main(): Promise<void> {
     const { shots } = consoleShots(ev);
     const slide = await browser.newPage({ viewport: { width: W, height: H } });
     const cuts: Cut[] = [
-      { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnetShown, repro), pace: shortPace, range: SHORT_RANGE_S },
-      { name: "walkthrough", mp4: join(OUT, "bounded-mandate-demo.mp4"), srt: join(OUT, "captions.srt"), framesDir: join(OUT, "frames"), scenes: walkthroughScenes(ev, acc, binding, steps, shots, modelName, results), pace: walkthroughPace, range: null },
+      { name: "short", mp4: join(OUT, "bounded-mandate-short.mp4"), srt: join(OUT, "captions-short.srt"), framesDir: join(OUT, "frames-short"), scenes: shortScenes(ev, binding, mainnet, repro), pace: shortPace, range: SHORT_RANGE_S },
+      { name: "walkthrough", mp4: join(OUT, "bounded-mandate-demo.mp4"), srt: join(OUT, "captions.srt"), framesDir: join(OUT, "frames"), scenes: walkthroughScenes(ev, acc, binding, steps, shots, modelName, results, mainnet), pace: walkthroughPace, range: null },
     ];
     for (const cut of cuts) outputs[cut.name] = encode(cut, await renderFrames(slide, cut, binding));
   } finally {
@@ -881,7 +1112,13 @@ async function main(): Promise<void> {
     demo_dirty: ev.source.dirty,
     acceptance: acc === null ? null : { run_id: acc.run_id, revision: acc.revision, certified: acc.certified, complete: acc.complete },
     certification: { certified_for_this_demo: binding.certified, reasons: binding.reasons, inputs: binding.inputs },
-    mainnet_receipts_shown: mainnetShown,
+    mainnet_receipts_shown: live.kind === "mainnet",
+    mainnet_segment: {
+      state: mainnet.kind,
+      statement: mainnet.statement,
+      run_revision: mainnet.revision,
+      transactions: mainnet.parts.flatMap((p) => p.txs.map((t) => ({ part: p.key, label: t.label, outcome: t.outcome, tx_hash: t.hash, url: t.url }))),
+    },
     repro_paths_shown: repro,
     sources: {
       ...Object.fromEntries(Object.entries(files).map(([k, p]) => [k, { path: rel(p), sha256: hashOf(p) }])),

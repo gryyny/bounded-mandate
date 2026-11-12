@@ -7,6 +7,7 @@ import { signableOf } from "../src/console/intent.js";
 import { nearConnectBundle, scriptHash } from "../src/console/connector.js";
 import { consoleScript, consoleScriptHash, mainnetProfile, renderConsoleHtml, sandboxProfile } from "../src/console/render.js";
 import { ExternalHandoff, ExternalIntent, intentSha256 } from "../src/live/external.js";
+import { LEAD_LINE } from "../src/page/landing.js";
 import type { FetchFn } from "../src/page/verify-client.js";
 import { MAINNET_GENESIS_HASH } from "../src/page/verify.js";
 import { STORY, storyEvidence, txHash } from "./video-story-specimen.js";
@@ -183,7 +184,9 @@ describe("static rendering", () => {
   });
 
   it("leads with the journey and says where each step happens, with the console acting only in steps 5, 7 and 8", () => {
-    expect(html).toContain('<p class="lead">Give an AI agent trading power. Keep the power to stop it.</p>');
+    expect(html).toContain('<p class="lead">Give an AI agent trading authority without unrestricted control of your treasury.</p>');
+    // The console's lead is the page's lead line, not a copy of it.
+    expect(html).toContain(`<p class="lead">${LEAD_LINE}</p>`);
     const guide = html.slice(html.indexOf('<ol class="cjourney"'), html.indexOf("</ol>", html.indexOf('<ol class="cjourney"')));
     expect([...guide.matchAll(/<li( class="act")?><b><span>([1-8])<\/span>/g)].map((m) => `${m[2] ?? ""}${m[1] === undefined ? "" : " act"}`)).toEqual(["1", "2", "3", "4", "5 act", "6", "7 act", "8 act"]);
     expect(guide).toContain("Not instant: until key removal is confirmed, signed orders may still execute.");
