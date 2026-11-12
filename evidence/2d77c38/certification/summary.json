@@ -1,0 +1,34 @@
+{
+  "source": "2d77c38b17da3f2611dbf9f4fb11f7952acb199c",
+  "credential_environment": "allowlisted OS/toolchain environment; no model, public-network or GitHub credentials passed",
+  "steps": [
+    {
+      "command": "make test",
+      "started_at": "2026-11-12T14:12:49Z",
+      "exit_code": 0,
+      "elapsed_s": 1500.802,
+      "finished_at": "2026-11-12T14:37:49Z"
+    },
+    {
+      "command": "make demo",
+      "started_at": "2026-11-12T14:37:49Z",
+      "exit_code": 0,
+      "elapsed_s": 60.199,
+      "finished_at": "2026-11-12T14:38:50Z"
+    },
+    {
+      "command": "make quick",
+      "started_at": "2026-11-12T14:38:50Z",
+      "exit_code": 0,
+      "elapsed_s": 39.922,
+      "finished_at": "2026-11-12T14:39:30Z"
+    },
+    {
+      "command": "make example",
+      "started_at": "2026-11-12T14:39:30Z",
+      "exit_code": 0,
+      "elapsed_s": 25.284,
+      "finished_at": "2026-11-12T14:39:55Z"
+    }
+  ]
+}

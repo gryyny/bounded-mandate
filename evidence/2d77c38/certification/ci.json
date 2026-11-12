@@ -1,0 +1,349 @@
+{
+  "conclusion": "success",
+  "databaseId": 43234752930,
+  "headSha": "2d77c38b17da3f2611dbf9f4fb11f7952acb199c",
+  "jobs": [
+    {
+      "completedAt": "2026-11-12T14:12:23Z",
+      "conclusion": "success",
+      "databaseId": 131239021516,
+      "name": "changes",
+      "startedAt": "2026-11-12T14:12:17Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-12T14:12:18Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-12T14:12:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:22Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 2,
+          "startedAt": "2026-11-12T14:12:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:22Z",
+          "conclusion": "success",
+          "name": "Run # The list is read from a file, never through a pipe: with pipefail, a grep -q that exits at its first match",
+          "number": 3,
+          "startedAt": "2026-11-12T14:12:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:22Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 6,
+          "startedAt": "2026-11-12T14:12:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:22Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 7,
+          "startedAt": "2026-11-12T14:12:22Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/gryyny/bounded-mandate/actions/runs/43234752930/job/131239021516"
+    },
+    {
+      "completedAt": "2026-11-12T14:14:05Z",
+      "conclusion": "success",
+      "databaseId": 131239109721,
+      "name": "quick",
+      "startedAt": "2026-11-12T14:12:27Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-12T14:12:28Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-12T14:12:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:31Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 2,
+          "startedAt": "2026-11-12T14:12:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:32Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "number": 3,
+          "startedAt": "2026-11-12T14:12:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:56Z",
+          "conclusion": "success",
+          "name": "Headless Chromium and its system libraries",
+          "number": 4,
+          "startedAt": "2026-11-12T14:12:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:56Z",
+          "conclusion": "success",
+          "name": "No Rust toolchain on the path",
+          "number": 5,
+          "startedAt": "2026-11-12T14:12:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:13:40Z",
+          "conclusion": "success",
+          "name": "make quick",
+          "number": 6,
+          "startedAt": "2026-11-12T14:12:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:14:02Z",
+          "conclusion": "success",
+          "name": "make example",
+          "number": 7,
+          "startedAt": "2026-11-12T14:13:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:14:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "number": 13,
+          "startedAt": "2026-11-12T14:14:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:14:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 14,
+          "startedAt": "2026-11-12T14:14:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:14:02Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-11-12T14:14:02Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/gryyny/bounded-mandate/actions/runs/43234752930/job/131239109721"
+    },
+    {
+      "completedAt": "2026-11-12T15:03:38Z",
+      "conclusion": "success",
+      "databaseId": 131239109942,
+      "name": "test",
+      "startedAt": "2026-11-12T14:12:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-12T14:12:28Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-12T14:12:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:31Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 2,
+          "startedAt": "2026-11-12T14:12:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:13:56Z",
+          "conclusion": "success",
+          "name": "Free runner disk space",
+          "number": 3,
+          "startedAt": "2026-11-12T14:12:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:13:57Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "number": 4,
+          "startedAt": "2026-11-12T14:13:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:14:09Z",
+          "conclusion": "success",
+          "name": "Rust toolchain",
+          "number": 5,
+          "startedAt": "2026-11-12T14:13:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:16:18Z",
+          "conclusion": "success",
+          "name": "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830",
+          "number": 6,
+          "startedAt": "2026-11-12T14:14:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:16:32Z",
+          "conclusion": "success",
+          "name": "System packages for cargo-near",
+          "number": 7,
+          "startedAt": "2026-11-12T14:16:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:16:32Z",
+          "conclusion": "success",
+          "name": "cargo-near",
+          "number": 8,
+          "startedAt": "2026-11-12T14:16:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:16:59Z",
+          "conclusion": "success",
+          "name": "Headless Chromium and its system libraries for browser tests",
+          "number": 9,
+          "startedAt": "2026-11-12T14:16:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T15:02:19Z",
+          "conclusion": "success",
+          "name": "make test",
+          "number": 10,
+          "startedAt": "2026-11-12T14:16:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T15:03:33Z",
+          "conclusion": "success",
+          "name": "make demo",
+          "number": 11,
+          "startedAt": "2026-11-12T15:02:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T15:03:35Z",
+          "conclusion": "success",
+          "name": "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830",
+          "number": 20,
+          "startedAt": "2026-11-12T15:03:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T15:03:35Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "number": 21,
+          "startedAt": "2026-11-12T15:03:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T15:03:36Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 22,
+          "startedAt": "2026-11-12T15:03:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T15:03:36Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-11-12T15:03:36Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/gryyny/bounded-mandate/actions/runs/43234752930/job/131239109942"
+    },
+    {
+      "completedAt": "2026-11-12T14:12:40Z",
+      "conclusion": "success",
+      "databaseId": 131239110829,
+      "name": "verify",
+      "startedAt": "2026-11-12T14:12:27Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-12T14:12:29Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-12T14:12:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:31Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 2,
+          "startedAt": "2026-11-12T14:12:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:37Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "number": 3,
+          "startedAt": "2026-11-12T14:12:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:37Z",
+          "conclusion": "success",
+          "name": "node verify.mjs",
+          "number": 4,
+          "startedAt": "2026-11-12T14:12:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:37Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "number": 7,
+          "startedAt": "2026-11-12T14:12:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:37Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 8,
+          "startedAt": "2026-11-12T14:12:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-12T14:12:37Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-11-12T14:12:37Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/gryyny/bounded-mandate/actions/runs/43234752930/job/131239110829"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/gryyny/bounded-mandate/actions/runs/43234752930"
+}

@@ -1,0 +1,1 @@
+{"network":"none","read_only":true,"memory_bytes":3221225472,"nano_cpus":2000000000,"pids_limit":256,"cap_drop":["ALL"],"security_opt":["no-new-privileges"],"published_ports":{},"tmpfs":{"/tmp":"rw,size=2147483648,mode=1777"}}

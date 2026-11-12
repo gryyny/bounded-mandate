@@ -1,0 +1,96 @@
+{
+  "source_revision": "2d77c38b17da3f2611dbf9f4fb11f7952acb199c",
+  "note": "UI test screenshots are synthetic renderer checks, never mainnet evidence or release footage.",
+  "screenshots": [
+    {
+      "file": "reviews/screens/console-mobile.png",
+      "sha256": "0dde8a94813df19c3406798ad42ff00e4e5d0fa9916d724977972c6c4f1de2b2",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/dao-mobile.png",
+      "sha256": "80bc589c5175935e4b5714b87be42aa10326a283e28dcaee729878053b6f6c8a",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/page-desktop.png",
+      "sha256": "2e2c531b329f6d13db8233cd27ae412ac03c388db68df34db1acd1611f67fbc0",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/page-mobile.png",
+      "sha256": "ee1f09e0303586d192bb99954ffdc84db81bc1a127c5fd084631c5fb60d87843",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/short-desktop-1.png",
+      "sha256": "71cb5a86d13561e377df404a25f0586f3063f8d4cddddf62d14ebeb3af1bc039",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/short-desktop-30.png",
+      "sha256": "792ac0a5900ea7db91b67774f42f05624615901134fb391b28839a0f88ff2434",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/short-desktop-46.png",
+      "sha256": "e995150456f222c8546b85ee2ff1766aa90d06cafb2ef059b24a53848c449b4d",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/short-desktop-81.png",
+      "sha256": "14631a6b975caa74bd120c90e0598f5e47a09a47071aee5bc291ac235bc24afc",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/short-mobile.png",
+      "sha256": "9034ecc483444941f078b7390e71d0d9cc6b022ea62c7a10de1e16b3f9ec7b25",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/ui-tests/ui-test-synthetic-mainnet-failed.png",
+      "sha256": "1c5584d3ee702f31a52a615ff545962b79af165675a975e316c56ddce676e0ec",
+      "role": "synthetic-ui-test-only"
+    },
+    {
+      "file": "reviews/ui-tests/ui-test-synthetic-mainnet-incomplete.png",
+      "sha256": "ef23c6003170720b80695be72fdf3c0a3566057199349a6d9ea0f3feaa400fa4",
+      "role": "synthetic-ui-test-only"
+    },
+    {
+      "file": "reviews/screens/unavailable-lab-mobile.png",
+      "sha256": "afc1363c94b88da582ba17e44b22af9748f65f5e11d3bf7930aff5c108e42f44",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/walkthrough-desktop-1.png",
+      "sha256": "3bd7fe534beb22acf68ae29cda368a814a868c4ac8676a164d056aa41b94a840",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/walkthrough-desktop-102.png",
+      "sha256": "55bb2c74d9c49c72b324154c097986a964f6263189d6bbab42e34689f027994f",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/walkthrough-desktop-137.png",
+      "sha256": "5c245ef1f7f8f8680c962fa5bdc2a2c7bd01d347ca096b5133da4e4f4cd824a7",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/walkthrough-desktop-144.png",
+      "sha256": "98b4aefbef888e135b16939a7ebbcc3036686ceb5114f063d9439a57cf537cdd",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/walkthrough-desktop-217.png",
+      "sha256": "b325b052b8fa5209ada5268168271ad9ae16ef298285a89c6954d1d67784028c",
+      "role": "actual-final-page-or-video"
+    },
+    {
+      "file": "reviews/screens/walkthrough-mobile.png",
+      "sha256": "e6590792ca58e9524d33f722927ecfe75292b010197e758402b27da26106bdd4",
+      "role": "actual-final-page-or-video"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "source": "6a3860f4693df34284bf70164c9fa4df9b428fb0",
+  "command": "make test",
+  "result": "interrupted, not certified",
+  "reason": "Later presentation review confirmed mainnet_receipts_shown could claim omitted receipts for incomplete or failed mainnet records; superseded by correction before certification.",
+  "ci": "https://github.com/gryyny/bounded-mandate/actions/runs/43234005948",
+  "preservation": "Original partial build log retained; no acceptance result asserted."
+}

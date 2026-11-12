@@ -1,0 +1,239 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "COMPARE",
+  "case": "revocation-alternatives",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261112T141251978Z-dc337e7cb4de",
+  "source": {
+    "revision": "2d77c38b17da3f2611dbf9f4fb11f7952acb199c",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0"
+  },
+  "command": "target/debug/deps/compare_revocation-51507003f7a4857c",
+  "generated_at_unix": 1794493007,
+  "data": {
+    "verifier": "pinned near/intents 0.4.5 WASM (fixtures/verifier/defuse-0.4.5.wasm)",
+    "account_key": "TEST key standing in for the account's signer (MPC-derived in the mandate)",
+    "withheld_orders": "three per strategy, each selling 1 USDC for 0.3 wNEAR, TTL 120 s, all relayed unexpired by an unrelated account; O1 and O2 are recorded in the owner's ledger, O3 is not",
+    "strategies": [
+      {
+        "strategy": "wait for expiry",
+        "owner_action": "stop issuing new orders",
+        "account_key_signatures_for_the_action": 0,
+        "withheld_relays_after_action": [
+          {
+            "order": "O1 (recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          },
+          {
+            "order": "O2 (recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          },
+          {
+            "order": "O3 (not recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          }
+        ],
+        "executed_after_action": 3,
+        "executed_value_usdc_units": "3000000",
+        "unrecorded_order_stopped_before_its_deadline": false,
+        "resume": {
+          "requires": "nothing",
+          "protection_starts": "at each order's own deadline, recorded or not",
+          "unrecorded_order_after_its_deadline": {
+            "order": "O5 (not recorded, relayed after its deadline)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: deadline has expired\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3533677881950 }, transaction: ExecutionOutcome { transaction_hash: F4ncEp5WxkrzDobdxaXiCipun8NB7UusSd1gn2kiQtTj, block_hash: GReBMeZdrEwTvY5VRGaTkCEseXahKsLa8TAmmC8a6B8F, logs: [], receipt_ids: [GrWHTX8m3jf8LjpKbaTRnaoP7Dxbkcmuwf5emoKAKSFn], gas_burnt: NearGas { inner: 361274525940 }, tokens_burnt: NearToken { inner: 36127452594000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(GrWHTX8m3jf8LjpKbaTRnaoP7Dxbkcmuwf5emoKAKSFn) }, receipts: [ExecutionOutcome { transaction_hash: GrWHTX8m3jf8LjpKbaTRnaoP7Dxbkcmuwf5emoKAKSFn, block_hash: GtRfpRofWrc7z5xs4PzKRtzVHbNCXny6ozqyCwN7noD5, logs: [], receipt_ids: [EnxNBo6qt26VkDhhmmPSEw9PpnfuQUb4VA8ofpCGWLCE], gas_burnt: NearGas { inner: 3172403356010 }, tokens_burnt: NearToken { inner: 317240335601000000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: deadline has expired\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: deadline has expired\")) }) })",
+            "filler_nonce_used": false
+          }
+        }
+      },
+      {
+        "strategy": "cancel recorded nonces",
+        "owner_action": "sign and submit one empty intent per recorded nonce",
+        "account_key_signatures_for_the_action": 2,
+        "withheld_relays_after_action": [
+          {
+            "order": "O1 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3799342413722 }, transaction: ExecutionOutcome { transaction_hash: DSPU3T7fnGUnZus5N1oWsv4eroiKd7SoPLFyXjfy5J1W, block_hash: 5gVWCeWhBzyH7qMFzCMZRL2w9RnMDBq5LhgMoDbZPehT, logs: [], receipt_ids: [DXUBLEuxSyrSbkjeS3pFuH8CtetsuQDnLmdAuTCFViXH], gas_burnt: NearGas { inner: 361369893370 }, tokens_burnt: NearToken { inner: 36136989337000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(DXUBLEuxSyrSbkjeS3pFuH8CtetsuQDnLmdAuTCFViXH) }, receipts: [ExecutionOutcome { transaction_hash: DXUBLEuxSyrSbkjeS3pFuH8CtetsuQDnLmdAuTCFViXH, block_hash: 8iXTyDkaQYtXZrxh1rJ6S7emYJKHbGErksmrMbQYgD37, logs: [], receipt_ids: [7rAVM9VPavvczt2WeGXWn6MPyZZqYpiPVXPqAj4fNqmy], gas_burnt: NearGas { inner: 3437972520352 }, tokens_burnt: NearToken { inner: 343797252035200000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) })",
+            "filler_nonce_used": false
+          },
+          {
+            "order": "O2 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3799280621423 }, transaction: ExecutionOutcome { transaction_hash: 7osuYMKzSAdc2p2BzYw1VSxyS5ZFaMLoSyZAHdngHVp1, block_hash: F97YDxt9pZkgSsFHtt1rjyXfeokxLST5yJubFNsEWoiR, logs: [], receipt_ids: [HhCFH37jFEVy6ipK7tuRVBSYvGBNj5AbYFae7NemzrC6], gas_burnt: NearGas { inner: 361322209655 }, tokens_burnt: NearToken { inner: 36132220965500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(HhCFH37jFEVy6ipK7tuRVBSYvGBNj5AbYFae7NemzrC6) }, receipts: [ExecutionOutcome { transaction_hash: HhCFH37jFEVy6ipK7tuRVBSYvGBNj5AbYFae7NemzrC6, block_hash: CceytTom56i6J9TTWtUHyt8UhPfJeUxmt7kfRBBPeHMt, logs: [], receipt_ids: [D6KRwzBsK3JataeKDc1FFVvCyLWzCRQrG5Jw78b1Driz], gas_burnt: NearGas { inner: 3437958411768 }, tokens_burnt: NearToken { inner: 343795841176800000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) })",
+            "filler_nonce_used": false
+          },
+          {
+            "order": "O3 (not recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          }
+        ],
+        "executed_after_action": 1,
+        "executed_value_usdc_units": "1000000",
+        "unrecorded_order_stopped_before_its_deadline": false,
+        "resume": {
+          "requires": "the account's signer available for every cancellation; complete coverage requires a full list of outstanding nonces",
+          "same_key_new_order": {
+            "order": "O4 (after resume)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          }
+        }
+      },
+      {
+        "strategy": "cancel complete nonce list",
+        "owner_action": "sign and submit one empty intent per nonce, including O3 (supplied separately from the ledger)",
+        "account_key_signatures_for_the_action": 3,
+        "withheld_relays_after_action": [
+          {
+            "order": "O1 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3802190746637 }, transaction: ExecutionOutcome { transaction_hash: 7i4nq4BDo95Ein8Yq3eMsAaf3FjrNJeXrvzR7oeiXRDv, block_hash: B3esY8ce8zZrR4S2eribGxhWGQXdJhWBErAn2jDM1vdN, logs: [], receipt_ids: [5yESjwh6vWhcGbn4eT2nkXLEBhVkR1mSKRg94zhjho7F], gas_burnt: NearGas { inner: 361799046805 }, tokens_burnt: NearToken { inner: 36179904680500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(5yESjwh6vWhcGbn4eT2nkXLEBhVkR1mSKRg94zhjho7F) }, receipts: [ExecutionOutcome { transaction_hash: 5yESjwh6vWhcGbn4eT2nkXLEBhVkR1mSKRg94zhjho7F, block_hash: 3Y1YEXtHiJ25KGx9eUVukbvQKccs6Hp375w4C1DFeaD7, logs: [], receipt_ids: [2Pg7dRweJ8vG3RQEtnmibcTbFDYThKLcjKjd7oTowB8H], gas_burnt: NearGas { inner: 3440391699832 }, tokens_burnt: NearToken { inner: 344039169983200000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) })",
+            "filler_nonce_used": false
+          },
+          {
+            "order": "O2 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3802205556245 }, transaction: ExecutionOutcome { transaction_hash: GQpoWwmJftJVDBdxQ9KtyHx3FK3twpE2UZnfxN9PwGks, block_hash: CXtZo2vLAG2avjurnMVdxsZ1AdF8raD9apBYus97PqoJ, logs: [], receipt_ids: [6k4TAifvEjiZnsdGyn9vXQQg2opTYVKdAW7nZYaH9Fpz], gas_burnt: NearGas { inner: 361799046805 }, tokens_burnt: NearToken { inner: 36179904680500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(6k4TAifvEjiZnsdGyn9vXQQg2opTYVKdAW7nZYaH9Fpz) }, receipts: [ExecutionOutcome { transaction_hash: 6k4TAifvEjiZnsdGyn9vXQQg2opTYVKdAW7nZYaH9Fpz, block_hash: DaJoWGmWcYvWNRy9bs43qLnNoB9jaikKASxEjjDKDhtj, logs: [], receipt_ids: [6ndPsVHsdqtJge7fwxmGkdiM5XeoRrCzUWtJn3Gqg9YF], gas_burnt: NearGas { inner: 3440406509440 }, tokens_burnt: NearToken { inner: 344040650944000000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) })",
+            "filler_nonce_used": false
+          },
+          {
+            "order": "O3 (not recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3801897022745 }, transaction: ExecutionOutcome { transaction_hash: 6AErGUYqqT4dUxVnpXpr7ioZnRjsQ3yQu5vKnP9AMozF, block_hash: F1ZNjUTmD6hCSDdKysnwFkbvYttsKUkBF18r7LDfdMyi, logs: [], receipt_ids: [H89gegQ3uG3eUdDGroXANga7D1Jsqjuh9A4hfsWGABQA], gas_burnt: NearGas { inner: 361799046805 }, tokens_burnt: NearToken { inner: 36179904680500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(H89gegQ3uG3eUdDGroXANga7D1Jsqjuh9A4hfsWGABQA) }, receipts: [ExecutionOutcome { transaction_hash: H89gegQ3uG3eUdDGroXANga7D1Jsqjuh9A4hfsWGABQA, block_hash: BX3xyaSL9Qpah748iimaAtpGTVtwZ9zKo1aurQAsfqTF, logs: [], receipt_ids: [Cguq6fHcy4CREfexEQG311FHmg8WtFfLcM3sbZnJrfuQ], gas_burnt: NearGas { inner: 3440097975940 }, tokens_burnt: NearToken { inner: 344009797594000000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: nonce was already used\")) }) })",
+            "filler_nonce_used": false
+          }
+        ],
+        "executed_after_action": 0,
+        "executed_value_usdc_units": "0",
+        "unrecorded_order_stopped_before_its_deadline": true,
+        "resume": {
+          "requires": "the account's signer available for every cancellation; the full list of outstanding nonces",
+          "same_key_new_order": {
+            "order": "O4 (after resume)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          }
+        }
+      },
+      {
+        "strategy": "remove key, fresh key",
+        "owner_action": "remove_public_key on the verifier, a direct call by the account: no signature by the account key (in the mandate the owner signs revoke and the contract makes this call; covered by T1, not here)",
+        "account_key_signatures_for_the_action": 0,
+        "withheld_relays_after_action": [
+          {
+            "order": "O1 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3758089726160 }, transaction: ExecutionOutcome { transaction_hash: AAukR3Z3zWwzeGHHH7XekpUJfqfT6wMo7GM7VgXGsDcW, block_hash: Gz4U3MwyUu9EVa4xWvF91kGt4PrAECb7KMTETtgxjBEQ, logs: [], receipt_ids: [1LvgG1T7WtXDmT53nbP7Zgc3JSBeQzUXVd49EZ4GYVS], gas_burnt: NearGas { inner: 361608311945 }, tokens_burnt: NearToken { inner: 36160831194500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(1LvgG1T7WtXDmT53nbP7Zgc3JSBeQzUXVd49EZ4GYVS) }, receipts: [ExecutionOutcome { transaction_hash: 1LvgG1T7WtXDmT53nbP7Zgc3JSBeQzUXVd49EZ4GYVS, block_hash: BjpcyYQE5rA8BRL6q7H7YMeSv5NmEwyH2DTjGA5wmHUv, logs: [], receipt_ids: [8ciaLZiUQJQ1B1kxQY6Em2f9TUgxccTgnvUnrow32hAG], gas_burnt: NearGas { inner: 3396481414215 }, tokens_burnt: NearToken { inner: 339648141421500000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) })",
+            "filler_nonce_used": false
+          },
+          {
+            "order": "O2 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3758145673568 }, transaction: ExecutionOutcome { transaction_hash: 7Wbn9KUxBhP4t7w2xb5McrAmve6MMUugUTQCbsbJRL6b, block_hash: cQTNSLUnuYZGW4HdnmxdLmpaqq5UPhRtCVJyPfoExNU, logs: [], receipt_ids: [C36m4Ktpa14T5nQsfdyfQRusK17aEshnyiWQTBSzu14F], gas_burnt: NearGas { inner: 361608311945 }, tokens_burnt: NearToken { inner: 36160831194500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(C36m4Ktpa14T5nQsfdyfQRusK17aEshnyiWQTBSzu14F) }, receipts: [ExecutionOutcome { transaction_hash: C36m4Ktpa14T5nQsfdyfQRusK17aEshnyiWQTBSzu14F, block_hash: 5NKHnjvobJkBnwVnENPkgvinwDh4wTsqAW5QBJzUu2F2, logs: [], receipt_ids: [AVQeA2soPXWz6oENnqxZLzGHhLHKYZP4xK3FQn4k5AyL], gas_burnt: NearGas { inner: 3396537361623 }, tokens_burnt: NearToken { inner: 339653736162300000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) })",
+            "filler_nonce_used": false
+          },
+          {
+            "order": "O3 (not recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3758843456255 }, transaction: ExecutionOutcome { transaction_hash: AGCivxReVYCUon99sXfGpESTptunx6W7khc1JRMQUNzK, block_hash: C5dPuQCRu1Up3qyahvVB2uHkcKz9LQd1oL7QBPPraP1L, logs: [], receipt_ids: [GgcXoUQzKZL57BcHtoNz6koNkb3LsXEz17ZaJfCabPK4], gas_burnt: NearGas { inner: 361655995660 }, tokens_burnt: NearToken { inner: 36165599566000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(GgcXoUQzKZL57BcHtoNz6koNkb3LsXEz17ZaJfCabPK4) }, receipts: [ExecutionOutcome { transaction_hash: GgcXoUQzKZL57BcHtoNz6koNkb3LsXEz17ZaJfCabPK4, block_hash: qMFHFkfhkQekBDNCfrbxCFgYNHCT6pNCit79mb6Sk72, logs: [], receipt_ids: [2apiz2qEDzfzhEAVgioJawQdRToU33S3EaMZsQEyzMor], gas_burnt: NearGas { inner: 3397187460595 }, tokens_burnt: NearToken { inner: 339718746059500000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) })",
+            "filler_nonce_used": false
+          }
+        ],
+        "executed_after_action": 0,
+        "executed_value_usdc_units": "0",
+        "unrecorded_order_stopped_before_its_deadline": true,
+        "resume": {
+          "requires": "a new key (the mandate derives one on path mandate/v1/<epoch>)",
+          "fresh_key_new_order": {
+            "order": "O4 (fresh key)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          },
+          "old_order_after_fresh_key": {
+            "order": "O1 (recorded)",
+            "executed": false,
+            "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3757839522737 }, transaction: ExecutionOutcome { transaction_hash: J7r2iSKAifqwPf958gDCyHY7bTwKpfUKKz2WtDRghuBE, block_hash: 9MpBSawfFw32sp5CmEeN2aREu12tofo4a17SkYRLSKcr, logs: [], receipt_ids: [3WDD7fAvYUGzet6wnUNS7PhbMVjMij8TEkfHRZhS3YXi], gas_burnt: NearGas { inner: 361560628230 }, tokens_burnt: NearToken { inner: 36156062823000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(3WDD7fAvYUGzet6wnUNS7PhbMVjMij8TEkfHRZhS3YXi) }, receipts: [ExecutionOutcome { transaction_hash: 3WDD7fAvYUGzet6wnUNS7PhbMVjMij8TEkfHRZhS3YXi, block_hash: 8jiRdNiQ744CSz5aTREh1Rde8xPh7XTz3AhTAzSnqyrs, logs: [], receipt_ids: [CZJVfN6cMLTjmAxNrKNViHTZ4bE45pJvES25aQkZykac], gas_burnt: NearGas { inner: 3396278894507 }, tokens_burnt: NearToken { inner: 339627889450700000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:GhPkicNZUv5cNKVQrKD2zrDyMDcCWUF7YS2hp2Bmfu6k' doesn't exist for account 't-remove-fresh.test.near'\")) }) })",
+            "filler_nonce_used": false
+          }
+        }
+      },
+      {
+        "strategy": "remove key, same key re-added",
+        "owner_action": "remove_public_key, then add_public_key with the same key",
+        "account_key_signatures_for_the_action": 0,
+        "withheld_relays_after_action": [
+          {
+            "order": "O1 (recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          },
+          {
+            "order": "O2 (recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          },
+          {
+            "order": "O3 (not recorded)",
+            "executed": true,
+            "verifier_error": "",
+            "filler_nonce_used": true
+          }
+        ],
+        "executed_after_action": 3,
+        "executed_value_usdc_units": "3000000",
+        "unrecorded_order_stopped_before_its_deadline": false,
+        "resume": {
+          "while_removed": [
+            {
+              "order": "O1 (recorded)",
+              "executed": false,
+              "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3756850581161 }, transaction: ExecutionOutcome { transaction_hash: FKzXo1Bj83zPANGADkcQ9mRJuGcnrchrgvvPh8bk7hkm, block_hash: 9j63WF9HZvb4EwWcWTZssz4ENvQmMUtnBQWz5jX1CiNb, logs: [], receipt_ids: [ARNR76xvM7LhMCn8qPcaQtEe2zsiYkKm9uraDFNgZHAx], gas_burnt: NearGas { inner: 361560628230 }, tokens_burnt: NearToken { inner: 36156062823000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(ARNR76xvM7LhMCn8qPcaQtEe2zsiYkKm9uraDFNgZHAx) }, receipts: [ExecutionOutcome { transaction_hash: ARNR76xvM7LhMCn8qPcaQtEe2zsiYkKm9uraDFNgZHAx, block_hash: XSRTf7CCHDy2BjASbRnXvBV4p4zgrN7L127wnsK2QBT, logs: [], receipt_ids: [mQDYpYYxNEXLdBF12XRehmvPnuA8Kj9tMRbnScPDzAk], gas_burnt: NearGas { inner: 3395289952931 }, tokens_burnt: NearToken { inner: 339528995293100000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) }) })",
+              "filler_nonce_used": false
+            },
+            {
+              "order": "O2 (recorded)",
+              "executed": false,
+              "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3756454749926 }, transaction: ExecutionOutcome { transaction_hash: D29p678BxVez3iCp4hXqpZxsMkR3YobLL7xHZP7KpA3K, block_hash: 7yaZUjt7mg1CdXRaAPn2MQKLS9uHbQ1HgEyfXFQXJS5j, logs: [], receipt_ids: [8qcDZBmtXgQnw1TNb8BeqFyRPoEWKvp5FNGeQMyf2E2L], gas_burnt: NearGas { inner: 361512944515 }, tokens_burnt: NearToken { inner: 36151294451500000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(8qcDZBmtXgQnw1TNb8BeqFyRPoEWKvp5FNGeQMyf2E2L) }, receipts: [ExecutionOutcome { transaction_hash: 8qcDZBmtXgQnw1TNb8BeqFyRPoEWKvp5FNGeQMyf2E2L, block_hash: Fnz9xeZYQR8bQVnzKLHBfhNuDwoj5n4W3SQDZnTiQV7r, logs: [], receipt_ids: [6fgDE3XCauxsGaSqzevbDHTx72BFEv6STL7iAStC4Dtx], gas_burnt: NearGas { inner: 3394941805411 }, tokens_burnt: NearToken { inner: 339494180541100000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) }) })",
+              "filler_nonce_used": false
+            },
+            {
+              "order": "O3 (not recorded)",
+              "executed": false,
+              "verifier_error": "Err(Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) }) } }) | Some(ExecutionResult { total_gas_burnt: NearGas { inner: 3756907351325 }, transaction: ExecutionOutcome { transaction_hash: 4FoBceec4G4woCKRrbysxPYRkfXxLsiP5syv4ipUQNXf, block_hash: 3j1QuiM1nhSMtG7a2pvmV5mW7f2kwsUqkAFgPiiwafLk, logs: [], receipt_ids: [HLH4FPDfjedoivQB7X145U9mT1hcJzh5YapkjAvMAG9B], gas_burnt: NearGas { inner: 361560628230 }, tokens_burnt: NearToken { inner: 36156062823000000000 }, executor_id: AccountId(\"relayer.test.near\"), status: SuccessReceiptId(HLH4FPDfjedoivQB7X145U9mT1hcJzh5YapkjAvMAG9B) }, receipts: [ExecutionOutcome { transaction_hash: HLH4FPDfjedoivQB7X145U9mT1hcJzh5YapkjAvMAG9B, block_hash: GmXaM9tTqVciGwtbt44FY7cmJG3axDqBCzjvQ2TTV8U5, logs: [], receipt_ids: [Ek2eM18NLbF3QVgGHZsLzFjDLE7nyCDKfRofXxDMxvrK], gas_burnt: NearGas { inner: 3395346723095 }, tokens_burnt: NearToken { inner: 339534672309500000000 }, executor_id: AccountId(\"intents.test.near\"), status: Failure(ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) })) }], value: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:tBjcXCFJUvNJZsR8cpvCaPef86cM8FeoAuEbEN2BndG' doesn't exist for account 't-remove-same.test.near'\")) }) })",
+              "filler_nonce_used": false
+            }
+          ],
+          "unrecorded_order_stopped_while_removed": true,
+          "after_re_add": "every unexpired withheld order executes again"
+        }
+      }
+    ],
+    "not_measured_here": [
+      "time between confirmed removal and an order's deadline (only the mainnet run gives a meaningful value)",
+      "the mandate's own removal path: the owner's revoke, the contract's call to the verifier and its callback (T1)",
+      "the mandate's caps, reservations and recovery (T1-T4)",
+      "a race in which a relay lands before the owner's action is final"
+    ]
+  }
+}
