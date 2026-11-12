@@ -1,0 +1,12 @@
+**
+!hosting/
+!hosting/lab.Dockerfile
+!tools/
+!tools/package.json
+!tools/package-lock.json
+!tools/src/
+!tools/src/**
+!fixtures/
+!fixtures/**
+!SPEC.md
+!spec-source.json

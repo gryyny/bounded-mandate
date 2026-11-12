@@ -1,0 +1,5 @@
+{$LAB_DOMAIN} {
+	reverse_proxy lab:8791 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}

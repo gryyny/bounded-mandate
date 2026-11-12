@@ -1,0 +1,67 @@
+services:
+  lab:
+    platform: linux/amd64
+    image: bounded-mandate-lab:${LAB_SOURCE_REVISION:?set the reviewed source revision}
+    build:
+      context: ..
+      dockerfile: hosting/lab.Dockerfile
+      args:
+        LAB_SOURCE_REVISION: ${LAB_SOURCE_REVISION:?set the reviewed source revision}
+    environment:
+      LAB_SOURCE_REVISION: ${LAB_SOURCE_REVISION:?set the reviewed source revision}
+      LAB_PUBLIC_ORIGIN: https://${LAB_DOMAIN:?set the approved lab hostname}
+      LAB_ALLOWED_ORIGIN: ${LAB_ALLOWED_ORIGIN:?set the approved evidence-page origin}
+      LAB_TRUST_PROXY: "1"
+      LAB_MAX_SESSIONS: "6"
+      LAB_MAX_SESSIONS_PER_CLIENT: "1"
+      LAB_MAX_CONCURRENT_STARTS: "2"
+      LAB_SESSION_STARTS_PER_HOUR: "6"
+      LAB_REQUESTS_PER_MINUTE: "120"
+      LAB_SESSION_IDLE_SEC: "600"
+      LAB_SESSION_MAX_SEC: "1800"
+      LAB_MAX_ACTIONS: "120"
+      LAB_MAX_BODY_BYTES: "4096"
+      LAB_RECYCLE_AFTER_SESSIONS: "6"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=2147483648,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 3g
+    cpus: 2
+    pids_limit: 256
+    stop_grace_period: 30s
+    networks: [sandbox]
+    healthcheck:
+      test: [CMD, node, --input-type=module, -e, "const r=await fetch('http://127.0.0.1:8791/api/health');if(!r.ok)process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
+  proxy:
+    image: caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
+    restart: unless-stopped
+    environment:
+      LAB_DOMAIN: ${LAB_DOMAIN:?set the approved lab hostname}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./lab.Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [sandbox, public]
+    mem_limit: 128m
+    cpus: 0.25
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
+networks:
+  sandbox:
+    internal: true
+  public: {}
+volumes:
+  caddy_data: {}
+  caddy_config: {}
