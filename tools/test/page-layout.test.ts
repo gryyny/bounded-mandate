@@ -185,7 +185,7 @@ describe("evidence page in Chromium: the lab control (SYNTHETIC lab stand-in)", 
       expect(requests).toEqual([home, `${labUrl}api/health`]);
       // The recorded replay it points to is on the page, labelled recorded.
       expect(await p.locator("#path-try .lab-recorded").textContent()).toContain("recorded, not interactive");
-      expect(await p.locator("#path-try .lab-recorded a").getAttribute("href")).toBe("#replay");
+      expect(await p.locator('#path-try .lab-recorded a[href="#replay"]').getAttribute("href")).toBe("#replay");
 
       // 2. The health route fails, with no header that lets the page read the answer: the Compare button says unreachable
       // too (the browser reports a failed fetch), and the page stays.

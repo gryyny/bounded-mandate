@@ -25,6 +25,7 @@ import { agentApiBody } from "./related.js";
 import { challengeBody, challengeView, loadChallenge } from "./challenge.js";
 import { DISPLAY_NAME, LAB_URL_ENV, LEAD_LINE, POSITION, actionsBlock, certifiedDefinition, claimSizeLine, factsSection, fourPaths, labLink, labScript, linksLine, pageLayout, pathNav, provenance, realSection, runProvenance, stateStrip, type LabLink, type PageBlock } from "./landing.js";
 import { STYLES } from "./styles.js";
+import { daoBody } from "./dao.js";
 import { clientScript, scriptHash, verifyData, verifySection } from "./verify.js";
 
 export { escapeHtml } from "./html.js";
@@ -716,6 +717,7 @@ ${realSection(ev, live, labels, modesKey(ev, live))}</section>`,
     benchmark: section("§B", "sandbox", "benchmark", "Legitimate trades and hostile requests", benchmarkBody(results)),
     attacks: attackLogSection(ev, acc, binding),
     alternatives: section("§A2", "sandbox", "revocation-alternatives", "What happens to orders after the owner acts?", revocationAlternativesBody(results)),
+    dao: section("§D", "sandbox", "dao", "DAO treasury preset: approvals govern the owner", daoBody(results.dao)),
     mainnet: section("§M", "mainnet", "mainnet", "Mainnet receipts", `${provenance(live.kind === "mainnet" ? "NEAR mainnet transactions, each with a transaction hash" : "No mainnet transaction on this page")}${mainnetBody(live)}`),
     verify: section("§V", "verify", "verify", "Verify it yourself: read-only, opt-in", `${provenance("Read-only queries to a public mainnet RPC, only after you press the button")}${verifySection(ev, verifyData(ev, live))}`),
     regrant: casesSection(acc, binding, extras.reports ?? []),

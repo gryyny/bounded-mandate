@@ -49,9 +49,9 @@ export const claimSizeLine = (mode: string, ttlSec: number | null): string => `<
  */
 export type PageBlock =
   | "replay" | "story" | "paths" | "benchmark" | "attacks" | "alternatives" | "mainnet" | "verify" | "regrant" | "demo"
-  | "gates" | "baseline" | "agent-api" | "limits" | "policy" | "provenance" | "legacy" | "challenge";
+  | "gates" | "baseline" | "agent-api" | "limits" | "policy" | "provenance" | "legacy" | "challenge" | "dao";
 
-const SANDBOX_LAYOUT: readonly PageBlock[] = ["replay", "story", "paths", "benchmark", "attacks", "alternatives", "mainnet", "verify", "regrant", "demo", "gates", "baseline", "agent-api", "limits", "policy", "provenance", "legacy"];
+const SANDBOX_LAYOUT: readonly PageBlock[] = ["replay", "story", "paths", "benchmark", "attacks", "alternatives", "dao", "mainnet", "verify", "regrant", "demo", "gates", "baseline", "agent-api", "limits", "policy", "provenance", "legacy"];
 const MAINNET_LAYOUT: readonly PageBlock[] = ["mainnet", "verify", ...SANDBOX_LAYOUT.filter((b) => b !== "mainnet" && b !== "verify")];
 
 export const PAGE_LAYOUT = { sandbox: SANDBOX_LAYOUT, mainnet: MAINNET_LAYOUT } as const;
@@ -226,7 +226,7 @@ export function fourPaths(ev: Evidence, live: LiveView, lab: LabLink | null, com
 <ol class="four">
 ${item("try", SANDBOX_CHIPS, `<p>Operate a sandbox treasury in the lab: set limits and grant, make a permitted trade, attempt an unsafe trade, make a poor but permitted trade, withhold a signed order, revoke, retry the withheld order, and recover. Each result is executed by the contracts on a sandbox chain; nothing is sent to a public network.</p>
 ${labAccess("try", lab, "Open the sandbox lab", null)}
-<p class="lab-recorded">${RECORDED_CHIP} Or step through <a href="#replay">the recorded replay</a> of one ${escapeHtml(ev.mode)} run on this page: recorded results, not a run you operate.</p>`)}
+<p class="lab-recorded">${RECORDED_CHIP} Or step through <a href="#replay">the recorded replay</a> of one ${escapeHtml(ev.mode)} run on this page: recorded results, not a run you operate.</p><p class="dao-link">For shared treasury decisions, inspect the <a href="#dao">recorded DAO treasury preset</a>: proposal, approval threshold, revoke, recovery and withdrawal.</p>`)}
 ${item("compare", SANDBOX_CHIPS, `<p>Reproduce what each of the owner's alternatives does to signed orders that are still outstanding, from equal starting conditions: wait for expiry, cancel a complete nonce list, cancel an incomplete list, cancel with the signer unavailable, remove the key and resume with a fresh key, and re-add the same key.</p>
 ${labAccess("compare", lab, "Open the lab to compare", "Compare")}
 <p class="lab-recorded">${RECORDED_CHIP} Acceptance gate ${compareGate}. Its results, when a certified run backs this page, are under <a href="#revocation-alternatives">What happens to orders after the owner acts?</a>; the write-up is <code>docs/comparison.md</code> in a clone.</p>`)}

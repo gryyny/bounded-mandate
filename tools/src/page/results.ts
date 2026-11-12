@@ -6,6 +6,7 @@ import { enforcementLayer } from "../evidence/journey.js";
 import { GateReportV2, type Acceptance } from "../evidence/schema.js";
 import type { ReportFile } from "./casefiles.js";
 import { escapeHtml } from "./html.js";
+import { DaoData } from "./dao.js";
 
 const count = z.number().int().nonnegative();
 const Legitimate = z.object({
@@ -99,6 +100,7 @@ export function sandboxResults(acc: Acceptance | null, binding: DemoBinding, fil
     openOrders: from("T4.open-order-limit", OpenOrderData),
     regrant: from("T1.withheld-regrant", RegrantData),
     contract: from("BOUNDARY.contract", z.unknown()),
+    dao: from("DAO.sputnik-owner", DaoData),
   };
 }
 
