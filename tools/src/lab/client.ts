@@ -398,7 +398,11 @@ export function install(doc: Doc, fetchFn: LabFetch, store: Store | null): void 
   });
   el("session-end").addEventListener("click", () => {
     void run("Ending the session", async () => {
-      await call("DELETE", `/api/sessions/${sessionId ?? ""}`);
+      const r = await call("DELETE", `/api/sessions/${sessionId ?? ""}`);
+      if (r.status !== 200) {
+        refused(r);
+        return;
+      }
       remember(null);
       state = null;
       renderState();
@@ -501,11 +505,11 @@ export function install(doc: Doc, fetchFn: LabFetch, store: Store | null): void 
   const saved = recall();
   if (saved !== null && /^[0-9a-f]{32}$/.test(saved)) {
     const id = saved;
+    remember(id);
     void run("Reconnecting to your session", async () => {
       const r = await call("GET", `/api/sessions/${id}`);
       if (r.status !== 200) {
-        remember(null);
-        setStatus("Your earlier session has ended. Start a new one.", "info");
+        refused(r);
         return;
       }
       adopt(r.body.session as SessionView);

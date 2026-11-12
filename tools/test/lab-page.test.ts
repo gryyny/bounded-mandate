@@ -187,6 +187,21 @@ describe("the lab page", () => {
 
     await page.click("#tab-operate");
     const id = await sessionId();
+    const sessionRoute = `**/api/sessions/${id}`;
+    await page.route(sessionRoute, async (route) => {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ...lab.lab.labels, error: "sandbox_unavailable", message: "try again later" }) });
+    });
+    const reconnectErrors = errors.length;
+    await page.reload();
+    await status("The lab refused this request (503 sandbox_unavailable): try again later");
+    expect(await sessionId()).toBe(id);
+    expect(lab.lab.stats().sessions).toBe(1);
+    expect(await page.locator("#session-refresh").isDisabled()).toBe(false);
+    expect(errors.splice(reconnectErrors)).toEqual(["Failed to load resource: the server responded with a status of 503 (Service Unavailable)"]);
+    await page.unroute(sessionRoute);
+    await page.click("#session-refresh");
+    await status("State read from the sandbox chain.");
+    expect(await stateText()).toContain("revoked · epoch 1");
     await page.reload();
     await status("Reconnected to your session.");
     expect(await sessionId()).toBe(id);
@@ -198,6 +213,21 @@ describe("the lab page", () => {
     expect(await page.locator("#log article.rec").count()).toBe(0);
     expect(await stateText()).toContain("none yet");
     expect(await stateText()).toContain("1,000 USDC · 300 wNEAR");
+    // A transport-level refusal is synthetic; the real session must remain usable until the DELETE succeeds.
+    const endRoute = `**/api/sessions/${id}`;
+    await page.route(endRoute, async (route) => {
+      if (route.request().method() !== "DELETE") return route.continue();
+      await route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ ...lab.lab.labels, error: "client_request_limit", message: "try again later" }) });
+    });
+    const endErrors = errors.length;
+    await page.click("#session-end");
+    await status("The lab refused this request (429 client_request_limit): try again later");
+    expect(await sessionId()).toBe(id);
+    expect(lab.lab.stats().sessions).toBe(1);
+    expect(await page.locator("#act-grant").isDisabled()).toBe(false);
+    expect(await stateText()).toContain("1,000 USDC · 300 wNEAR");
+    expect(errors.splice(endErrors)).toEqual(["Failed to load resource: the server responded with a status of 429 (Too Many Requests)"]);
+    await page.unroute(endRoute);
     await page.click("#session-end");
     await status("Session ended; its sandbox world is gone.");
     expect(lab.lab.stats().sessions).toBe(0);
