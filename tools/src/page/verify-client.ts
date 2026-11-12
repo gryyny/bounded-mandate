@@ -10,6 +10,11 @@
 // time, not that it was ever registered or that the order was executable before. The browser cannot re-read
 // historical balances, so it checks the receipts, not balance deltas. A recorded transaction outcome is compared
 // with the chain's outcome computed as the runner records it (toEvidenceReceipt in src/near/client.ts).
+//
+// The historical replay (SPEC.md "Historical replay of the withheld order") closes that gap from archival state:
+// historicalReplay applies the same rules as historicalReplay in verify.mjs, and test/replay-rules.test.ts runs both
+// on the same cases and requires the same result. Requests are paced, because public archival endpoints answer
+// bursts with HTTP 429.
 
 export interface ExpectedTx {
   label: string;
@@ -31,6 +36,25 @@ export interface ExpectedRelay {
   bundle_sha256: string | null;
 }
 
+export interface TxRef {
+  tx_hash: string;
+  sender: string;
+}
+
+/** What the run's evidence gives the historical replay. The bundle and both snapshots are read from the chain. */
+export interface ExpectedReplay {
+  mandate: string;
+  verifier: string;
+  relay: TxRef;
+  /** Recorded revoke transactions; the one whose remove_public_key receipt names the order's signing key is used. */
+  revokes: TxRef[];
+  /** Recorded proposal transactions, searched for the mandate's signed-order event. */
+  proposals: TxRef[];
+  /** NEAR code hashes the run's evidence records; null when it records none (the mandate's must be the deployment candidate's). */
+  mandate_code_hash: string | null;
+  verifier_code_hash: string | null;
+}
+
 export interface VerifyData {
   rpc: string;
   chain_id: string;
@@ -44,11 +68,17 @@ export interface VerifyData {
   relay: ExpectedRelay | null;
   /** Why the relay cannot be checked although mainnet receipts exist; null otherwise. */
   relay_problem: string | null;
+  /** The historical replay's inputs; null when the evidence names no relay transaction to replay. */
+  replay: ExpectedReplay | null;
+  replay_problem: string | null;
   current: { mandate: string; grant_key: string | null } | null;
   timeout_ms: number;
+  /** Least time between two requests. */
+  pace_ms: number;
 }
 
-export type RpcResult = { ok: true; result: unknown } | { ok: false; error: string };
+/** A failed call carries the HTTP status, or the JSON-RPC error's cause name and full text, when there is one. */
+export type RpcResult = { ok: true; result: unknown } | { ok: false; error: string; http?: number; cause?: string; detail?: string };
 
 export interface FetchResponse {
   ok: boolean;
@@ -115,10 +145,13 @@ export async function rpcCall(fetchFn: FetchFn, url: string, method: string, par
         referrerPolicy: "no-referrer",
         cache: "no-store",
       });
-      if (!res.ok) return { ok: false, error: `HTTP ${String(res.status)}` };
+      if (!res.ok) return { ok: false, error: `HTTP ${String(res.status)}`, http: res.status };
       const body = asObject(await res.json());
       if (body === null) return { ok: false, error: "response is not a JSON-RPC object" };
-      if (body.error !== undefined && body.error !== null) return { ok: false, error: rpcErrorText(body.error) };
+      if (body.error !== undefined && body.error !== null) {
+        const cause = asString(asObject(asObject(body.error)?.cause)?.name);
+        return { ok: false, error: rpcErrorText(body.error), detail: JSON.stringify(body.error), ...(cause === null ? {} : { cause }) };
+      }
       if (!("result" in body) || body.result === undefined || body.result === null) return { ok: false, error: "response has no result" };
       return { ok: true, result: body.result };
     } catch (e) {
@@ -130,6 +163,25 @@ export async function rpcCall(fetchFn: FetchFn, url: string, method: string, par
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Calls of one run, at least `paceMs` apart. A rate-limited request (HTTP 429) is sent again three times with a
+ * growing pause; after that the read counts as unavailable.
+ */
+export function pacedCall(fetchFn: FetchFn, url: string, timeoutMs: number, paceMs: number): Call {
+  let next = 0;
+  return async (method, params) => {
+    const attempts = 4;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const wait = Math.max(next - Date.now(), attempt === 0 ? 0 : paceMs * 2 ** attempt);
+      if (wait > 0) await new Promise<void>((resolve) => setTimeout(resolve, wait));
+      next = Date.now() + paceMs;
+      const r = await rpcCall(fetchFn, url, method, params, timeoutMs);
+      if (r.ok || r.http !== 429) return r;
+    }
+    return { ok: false, error: `HTTP 429 on each of ${String(attempts)} attempts (rate limited)` };
+  };
 }
 
 export async function checkChain(call: Call, data: VerifyData): Promise<Item> {
@@ -335,7 +387,7 @@ export async function verifyRelay(call: Call, e: ExpectedRelay): Promise<Item> {
     ["Rejection receipt", c.failure === null ? "none" : `${c.failure.id} in block ${c.failure.block_hash}`],
     ["Block time", blockTime === null ? "unknown" : `${new Date(Number(BigInt(blockTime) / 1000000n)).toISOString()} (${blockTime} ns)`],
     ["Rejection reason", c.failure?.error ?? "none"],
-    ["Not shown by this check", `that this key was ever registered, or that the order was executable before revocation. The recorded transactions above are checked separately; the pre-revocation simulation is recorded evidence only.`],
+    ["Not shown by this check", "that this key was ever registered, or that the order was executable before revocation. The historical replay below reads both from archival state; the recorded transactions above are checked separately."],
   ];
   if (c.classification === "rejected_revoked_key") {
     return { status: "verified", title: `${title}: rejected before its deadline because the signing key recorded for the withheld order was not registered on ${e.verifier}`, facts: observed, reasons: [] };
@@ -348,8 +400,339 @@ export async function verifyRelay(call: Call, e: ExpectedRelay): Promise<Item> {
   };
 }
 
+export type ReplayStatus = "verified" | "failed" | "inconclusive";
+export type ReplayItemId = "bundle" | "preceding" | "removal" | "deadlines" | "relay" | "code";
+
+export interface ReplayResult {
+  status: ReplayStatus;
+  /** One entry per rule of the spec, in its order. */
+  items: { id: ReplayItemId; status: ReplayStatus; reasons: string[] }[];
+  facts: [string, string][];
+}
+
+export type HeaderRead = { ok: true; hash: string; height: number; prev: string; time: bigint } | { ok: false; error: string };
+/** A value, a refusal by the contract (evidence about that state), or state the RPC did not serve. */
+export type ViewRead = { kind: "value"; value: unknown } | { kind: "refused"; error: string } | { kind: "unavailable"; error: string };
+
+/** The deadline of one signed intent in nanoseconds, or null when it carries none this check can read. */
+export function deadlineNs(entry: unknown): bigint | null {
+  const payload = asObject(entry)?.payload;
+  const text = asString(payload) ?? asString(asObject(payload)?.message);
+  let deadline: string | null;
+  try {
+    deadline = text === null ? null : asString(asObject(JSON.parse(text) as unknown)?.deadline);
+  } catch {
+    return null;
+  }
+  if (deadline === null || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(deadline)) return null;
+  // Digits below a millisecond are dropped, which can only make the deadline earlier.
+  const ms = Date.parse(deadline.replace(/(\.\d{3})\d+Z$/, "$1Z"));
+  return Number.isFinite(ms) ? BigInt(ms) * 1000000n : null;
+}
+
+/** The hash of the block in which the mandate logged `order` as signed (order_signed) in this transaction, or null. */
+export function signedOrderBlock(tx: Record<string, unknown>, mandate: string, order: Record<string, unknown>): string | null {
+  const same = (a: Record<string, unknown>, b: Record<string, unknown>): boolean => {
+    const [p, q] = [asObject(a.payload), asObject(b.payload)];
+    return p !== null && q !== null && a.standard === b.standard && a.public_key === b.public_key && a.signature === b.signature && p.message === q.message && p.nonce === q.nonce && p.recipient === q.recipient;
+  };
+  for (const raw of Array.isArray(tx.receipts_outcome) ? (tx.receipts_outcome as unknown[]) : []) {
+    const o = asObject(raw);
+    const outcome = asObject(o?.outcome);
+    if (o === null || outcome?.executor_id !== mandate || statusKind(outcome.status) !== "success") continue;
+    for (const log of Array.isArray(outcome.logs) ? (outcome.logs as unknown[]) : []) {
+      if (typeof log !== "string" || !log.startsWith("EVENT_JSON:")) continue;
+      try {
+        const event = asObject(JSON.parse(log.slice("EVENT_JSON:".length)) as unknown);
+        if (event?.standard !== "bounded_mandate" || event.event !== "order_signed") continue;
+        const logged = asObject(event.data)?.multi_payload;
+        const mp = asObject(typeof logged === "string" ? (JSON.parse(logged) as unknown) : logged);
+        if (mp !== null && same(mp, order) && typeof o.block_hash === "string") return o.block_hash;
+      } catch {
+        // Not an event of the mandate: nothing is read from it.
+      }
+    }
+  }
+  return null;
+}
+
+/** Whether a receipt of EXPERIMENTAL_tx_status is the mandate's remove_public_key call on the verifier for `key`. */
+export function removesKey(receipt: unknown, mandate: string, verifier: string, key: string): boolean {
+  const r = asObject(receipt);
+  if (r === null || r.predecessor_id !== mandate || r.receiver_id !== verifier) return false;
+  const actions = asObject(asObject(r.receipt)?.Action)?.actions;
+  const call = (Array.isArray(actions) ? (actions as unknown[]) : []).map((a) => asObject(asObject(a)?.FunctionCall)).find((c) => c?.method_name === "remove_public_key");
+  try {
+    const bytes = Uint8Array.from(atob(asString(call?.args) ?? ""), (c) => c.charCodeAt(0));
+    return asObject(JSON.parse(new TextDecoder().decode(bytes)) as unknown)?.public_key === key;
+  } catch {
+    return false;
+  }
+}
+
+/** A block by hash: its height, the hash before it and its time. Anything else is state the RPC did not serve. */
+export async function replayHeader(call: Call, hash: string): Promise<HeaderRead> {
+  const r = await call("block", { block_id: hash });
+  if (!r.ok) return { ok: false, error: `block ${hash}: ${r.error}` };
+  const h = asObject(asObject(r.result)?.header);
+  const [prev, time] = [asString(h?.prev_hash), asString(h?.timestamp_nanosec)];
+  if (h === null || h.hash !== hash || typeof h.height !== "number" || !Number.isInteger(h.height) || prev === null || time === null || !/^[0-9]+$/.test(time))
+    return { ok: false, error: `block ${hash}: the RPC returned no header of that block with a height, a previous hash and a time` };
+  return { ok: true, hash, height: h.height, prev, time: BigInt(time) };
+}
+
+/** One contract view at a block hash. A node reports a panic inside the result (`error`) or as a CONTRACT_EXECUTION_ERROR. */
+export async function replayView(call: Call, account: string, method: string, argsBase64: string, hash: string): Promise<ViewRead> {
+  const r = await call("query", { request_type: "call_function", account_id: account, method_name: method, args_base64: argsBase64, block_id: hash });
+  if (!r.ok) return r.cause === "CONTRACT_EXECUTION_ERROR" ? { kind: "refused", error: r.detail ?? r.error } : { kind: "unavailable", error: r.error };
+  const res = asObject(r.result);
+  if (res === null || res.block_hash !== hash) return { kind: "unavailable", error: `the RPC did not answer for block ${hash}` };
+  if (typeof res.error === "string") return { kind: "refused", error: res.error };
+  try {
+    return { kind: "value", value: decodeView(res) };
+  } catch {
+    return { kind: "unavailable", error: `${method} returned no JSON result` };
+  }
+}
+
+export async function replayCodeHash(call: Call, account: string, hash: string): Promise<ViewRead> {
+  const r = await call("query", { request_type: "view_account", account_id: account, block_id: hash });
+  if (!r.ok) return { kind: "unavailable", error: r.error };
+  const res = asObject(r.result);
+  const code = asString(res?.code_hash);
+  if (res === null || res.block_hash !== hash || code === null) return { kind: "unavailable", error: `the RPC returned no account with a code hash for block ${hash}` };
+  return { kind: "value", value: code };
+}
+
+/** Why a simulate_intents result is not an acceptance of the whole bundle; null when it is. */
+export function simulationProblem(value: unknown, bundle: readonly unknown[]): string | null {
+  const v = asObject(value);
+  if (v === null) return "simulate_intents returned no simulation output at the preceding snapshot";
+  if (v.invariant_violated !== undefined && v.invariant_violated !== null) return `simulate_intents reports an invariant violation at the preceding snapshot: ${JSON.stringify(v.invariant_violated).slice(0, 300)}`;
+  const executed = Array.isArray(v.intents_executed) ? (v.intents_executed as unknown[]) : [];
+  if (executed.length !== bundle.length) return `simulate_intents executed ${String(executed.length)} of the bundle's ${String(bundle.length)} signed intents at the preceding snapshot`;
+  const differs = bundle.some((x, i) => {
+    const nonce = asObject(asObject(x)?.payload)?.nonce;
+    return typeof nonce === "string" && asObject(executed[i])?.nonce !== nonce;
+  });
+  return differs ? "simulate_intents reported other intents than the relayed bundle's at the preceding snapshot" : null;
+}
+
+/**
+ * The historical replay of the withheld order, read-only. Everything but the accounts, the transaction hashes and the
+ * recorded code hashes is read from the chain: the bundle from the relay transaction, the removal snapshot from the
+ * block in which the mandate's successful remove_public_key receipt for the order's signing key executed, the
+ * preceding snapshot from that block's prev_hash. An item is "failed" when what was read contradicts it and
+ * "inconclusive" when the RPC did not serve what it needs; the status is "failed" if any item failed, else
+ * "inconclusive" if any is inconclusive, else "verified".
+ */
+export async function historicalReplay(call: Call, e: ExpectedReplay): Promise<ReplayResult> {
+  const ids: ReplayItemId[] = ["bundle", "preceding", "removal", "deadlines", "relay", "code"];
+  const state = (): { problems: string[]; missing: string[]; done: boolean } => ({ problems: [], missing: [], done: false });
+  const items: Record<ReplayItemId, ReturnType<typeof state>> = { bundle: state(), preceding: state(), removal: state(), deadlines: state(), relay: state(), code: state() };
+  const facts: [string, string][] = [];
+  const fail = (id: ReplayItemId, text: string): void => {
+    items[id].problems.push(text);
+  };
+  const miss = (id: ReplayItemId, text: string): void => {
+    items[id].missing.push(text);
+  };
+  // Ends the replay. `text` is why the items not judged so far cannot be: unserved state or a contradiction.
+  const finish = (unserved: boolean, text: string | null): ReplayResult => {
+    const out = ids.map((id) => {
+      const it = items[id];
+      if (!it.done && text !== null) (unserved ? it.missing : it.problems).push(text);
+      const status: ReplayStatus = it.problems.length > 0 ? "failed" : it.missing.length > 0 || !it.done ? "inconclusive" : "verified";
+      return { id, status, reasons: [...it.problems, ...it.missing] };
+    });
+    const status: ReplayStatus = out.some((x) => x.status === "failed") ? "failed" : out.some((x) => x.status === "inconclusive") ? "inconclusive" : "verified";
+    return { status, items: out, facts };
+  };
+  const txParams = (x: TxRef): Record<string, string> => ({ tx_hash: x.tx_hash, sender_account_id: x.sender, wait_until: "FINAL" });
+  const finalTx = (result: unknown, x: TxRef): Record<string, unknown> | null => {
+    const tx = asObject(result);
+    return tx !== null && tx.final_execution_status === "FINAL" && asObject(tx.transaction)?.hash === x.tx_hash ? tx : null;
+  };
+  const ns = (n: bigint): string => `${n.toString()} ns`;
+
+  // The bundle, from the relay transaction on chain.
+  const relay = await call("tx", txParams(e.relay));
+  if (!relay.ok) return finish(true, `the relay transaction ${e.relay.tx_hash} could not be read: ${relay.error}`);
+  const tx = finalTx(relay.result, e.relay);
+  const t = asObject(tx?.transaction);
+  if (tx === null || t === null) return finish(true, `the RPC returned no final transaction ${e.relay.tx_hash}`);
+  if (t.signer_id !== e.relay.sender || t.receiver_id !== e.verifier) return finish(false, `the relay transaction was sent by ${String(t.signer_id)} to ${String(t.receiver_id)}, not by ${e.relay.sender} to ${e.verifier}`);
+  const fc = (Array.isArray(t.actions) ? (t.actions as unknown[]) : []).map((a) => asObject(asObject(a)?.FunctionCall)).find((c) => c?.method_name === "execute_intents");
+  const args = asString(fc?.args) ?? "";
+  let bundle: unknown[] = [];
+  try {
+    const bytes = Uint8Array.from(atob(args), (c) => c.charCodeAt(0));
+    const signed = asObject(JSON.parse(new TextDecoder().decode(bytes)) as unknown)?.signed;
+    if (Array.isArray(signed)) bundle = signed as unknown[];
+  } catch {
+    // No readable arguments: no bundle.
+  }
+  if (bundle.length === 0) return finish(false, "the relay transaction carries no signed intents, so there is no bundle to replay");
+  const signerOf = (x: unknown): unknown => {
+    try {
+      return asObject(JSON.parse(asString(asObject(asObject(x)?.payload)?.message) ?? "") as unknown)?.signer_id;
+    } catch {
+      return undefined;
+    }
+  };
+  const mine = bundle.filter((x) => signerOf(x) === e.mandate);
+  const order = asObject(mine[0]);
+  if (mine.length !== 1 || order === null) return finish(false, `the relayed bundle of ${String(bundle.length)} signed intents carries ${String(mine.length)} signed for ${e.mandate}, expected exactly one`);
+  const key = asString(order.public_key);
+  if (key === null || order.standard !== "nep413" || asObject(order.payload)?.recipient !== e.verifier) return finish(false, `the bundle's payload for ${e.mandate} is not a NEP-413 order for ${e.verifier} with a signing key`);
+  const refusal = `public key '${key}' doesn't exist for account '${e.mandate}'`;
+  const deadlines = bundle.map((x) => deadlineNs(x));
+  const orderDeadline = deadlineNs(order);
+  deadlines.forEach((d, i) => {
+    if (d === null) fail("deadlines", `signed intent ${String(i + 1)} of the bundle carries no deadline this check can read`);
+  });
+  facts.push(["Relayed bundle", `${String(bundle.length)} signed intents read from the relay transaction ${e.relay.tx_hash}; the order of ${e.mandate} is signed with ${key}`]);
+
+  // The relay itself: failed on the verifier for that key, before the order's deadline.
+  const outcomes = receiptViews(tx);
+  let relayBlock: { height: number } | null = null;
+  if (statusKind(tx.status) === "success") fail("relay", "the relay transaction succeeded: the withheld order executed");
+  else {
+    const failure = outcomes.find((x) => x.executor === e.verifier && x.kind === "failure");
+    if (statusKind(tx.status) !== "failure") fail("relay", "the relay transaction has no final failure status");
+    if (failure === undefined) fail("relay", `no receipt of the relay failed on ${e.verifier}`);
+    else {
+      if (failure.error?.includes(refusal) !== true) fail("relay", `the verifier's error for the relay is not the missing-key refusal (${refusal})`);
+      const b = await replayHeader(call, failure.block_hash);
+      if (!b.ok) miss("relay", `the block in which the relay failed could not be read: ${b.error}`);
+      else {
+        relayBlock = b;
+        if (orderDeadline !== null && b.time >= orderDeadline) fail("relay", `the relay failed at block time ${ns(b.time)}, not before the order's deadline ${ns(orderDeadline)}: an expired order fails whatever the key state`);
+      }
+    }
+    if (outcomes.some((x) => x.kind === "failure" && x.executor !== e.verifier)) fail("relay", "a receipt of the relay failed outside the verifier");
+    if (outcomes.some((x) => x.kind === "unknown")) fail("relay", "a receipt of the relay has no final status");
+  }
+  items.relay.done = true;
+
+  // The order is one the mandate logged as signed.
+  let signedIn: string | null = null;
+  const unread: string[] = [];
+  for (const p of e.proposals) {
+    const got = await call("tx", txParams(p));
+    const proposal = got.ok ? finalTx(got.result, p) : null;
+    if (!got.ok) unread.push(`${p.tx_hash}: ${got.error}`);
+    else if (proposal === null) unread.push(`${p.tx_hash}: the RPC returned no final transaction with that hash`);
+    else signedIn = signedOrderBlock(proposal, e.mandate, order);
+    if (signedIn !== null) break;
+  }
+  if (signedIn === null) {
+    if (unread.length > 0) miss("bundle", `a recorded proposal transaction could not be read, so the order's signed-order event was not found: ${unread.join("; ")}`);
+    else fail("bundle", `the bundle's order for ${e.mandate} is not one the mandate logged as signed (order_signed) in the ${String(e.proposals.length)} recorded proposal transactions`);
+  }
+
+  // The removal snapshot: the block in which the mandate's successful remove_public_key receipt for that key executed.
+  let removal: { tx: string; id: string; kind: string; block: string | null } | null = null;
+  const unreadRevokes: string[] = [];
+  for (const v of e.revokes) {
+    const got = await call("EXPERIMENTAL_tx_status", txParams(v));
+    const full = got.ok ? finalTx(got.result, v) : null;
+    if (!got.ok) unreadRevokes.push(`${v.tx_hash}: ${got.error}`);
+    else if (full === null) unreadRevokes.push(`${v.tx_hash}: the RPC returned no final transaction with that hash`);
+    else {
+      const receipt = asObject((Array.isArray(full.receipts) ? (full.receipts as unknown[]) : []).find((x) => removesKey(x, e.mandate, e.verifier, key)));
+      const outcome = receipt === null ? null : asObject((Array.isArray(full.receipts_outcome) ? (full.receipts_outcome as unknown[]) : []).find((o) => asObject(o)?.id === receipt.receipt_id));
+      if (receipt !== null) removal = { tx: v.tx_hash, id: String(receipt.receipt_id), kind: statusKind(asObject(outcome?.outcome)?.status), block: asString(outcome?.block_hash) };
+    }
+    if (removal !== null) break;
+  }
+  if (removal === null && unreadRevokes.length > 0) return finish(true, `a recorded revoke transaction could not be read, so the removal snapshot is unknown: ${unreadRevokes.join("; ")}`);
+  if (removal === null) return finish(false, `none of the ${String(e.revokes.length)} recorded revoke transactions has a receipt ${e.mandate} -> ${e.verifier}.remove_public_key for the order's signing key ${key}, so there is no removal snapshot`);
+  if (removal.kind !== "success" || removal.block === null) return finish(false, `the remove_public_key receipt ${removal.id} of the revoke ${removal.tx} did not succeed, so there is no removal snapshot`);
+  const after = await replayHeader(call, removal.block);
+  if (!after.ok) return finish(true, `the removal snapshot could not be read: ${after.error}`);
+  const before = await replayHeader(call, after.prev);
+  if (!before.ok) return finish(true, `the preceding snapshot could not be read: ${before.error}`);
+  if (before.height >= after.height) return finish(true, `the RPC returned block ${String(before.height)} as the block before block ${String(after.height)}`);
+  const snapshots: ["preceding" | "removal", typeof after][] = [["preceding", before], ["removal", after]];
+  facts.push(["Removal snapshot", `block ${String(after.height)} (${after.hash}), time ${ns(after.time)}: the block in which the remove_public_key receipt ${removal.id} of the revoke ${removal.tx} executed`]);
+  facts.push(["Preceding snapshot", `block ${String(before.height)} (${before.hash}), time ${ns(before.time)}: that block's prev_hash`]);
+
+  if (signedIn !== null) {
+    const s = await replayHeader(call, signedIn);
+    if (!s.ok) miss("bundle", `the block of the order's signed-order event could not be read: ${s.error}`);
+    else if (s.height >= after.height) fail("bundle", `the mandate logged the order as signed in block ${String(s.height)}, not in a block before the removal snapshot (block ${String(after.height)})`);
+    else facts.push(["Signed-order event", `the mandate logged the bundle's order as signed in block ${String(s.height)}`]);
+  }
+  items.bundle.done = true;
+  if (relayBlock !== null && relayBlock.height < after.height) fail("relay", `the relay failed in block ${String(relayBlock.height)}, before the removal snapshot (block ${String(after.height)})`);
+
+  for (const [name, s] of snapshots) {
+    deadlines.forEach((d, i) => {
+      if (d !== null && s.time >= d) fail("deadlines", `the ${name} snapshot's block time ${ns(s.time)} is not before the deadline ${ns(d)} of signed intent ${String(i + 1)}`);
+    });
+  }
+  items.deadlines.done = true;
+
+  const recorded: [string, string | null][] = [[e.mandate, e.mandate_code_hash], [e.verifier, e.verifier_code_hash]];
+  for (const [account, want] of recorded) if (want === null) fail("code", `the run's evidence records no code hash for ${account}`);
+  const keyArgs = btoa(JSON.stringify({ account_id: e.mandate, public_key: key }));
+  for (const [name, s] of snapshots) {
+    const registered = name === "preceding";
+    const has = await replayView(call, e.verifier, "has_public_key", keyArgs, s.hash);
+    if (has.kind === "unavailable") miss(name, `has_public_key at the ${name} snapshot: ${has.error}`);
+    else if (has.kind === "refused" || has.value !== registered) fail(name, `the signing key ${key} is ${registered ? "not registered" : "still registered"} for ${e.mandate} on ${e.verifier} at the ${name} snapshot`);
+    // The exact argument bytes of the relay transaction, so the simulated bundle is the relayed one.
+    const sim = await replayView(call, e.verifier, "simulate_intents", args, s.hash);
+    if (sim.kind === "unavailable") miss(name, `simulate_intents at the ${name} snapshot: ${sim.error}`);
+    else if (registered) {
+      const problem = sim.kind === "refused" ? `simulate_intents refused the relayed bundle at the preceding snapshot: ${sim.error.slice(0, 300)}` : simulationProblem(sim.value, bundle);
+      if (problem !== null) fail(name, problem);
+    } else if (sim.kind === "value") fail(name, "simulate_intents did not refuse the relayed bundle at the removal snapshot");
+    else if (!sim.error.includes(refusal)) fail(name, `simulate_intents refused the relayed bundle at the removal snapshot for another reason than the missing key (${refusal}): ${sim.error.slice(0, 300)}`);
+    items[name].done = true;
+    for (const [account, want] of recorded) {
+      if (want === null) continue;
+      const got = await replayCodeHash(call, account, s.hash);
+      if (got.kind !== "value") miss("code", `code hash of ${account} at the ${name} snapshot: ${got.error}`);
+      else if (got.value !== want) fail("code", `${account} has code hash ${String(got.value)} at the ${name} snapshot, the run's evidence records ${want}`);
+    }
+  }
+  items.code.done = true;
+  return finish(false, null);
+}
+
+/** The historical replay as one item of the panel. */
+export async function verifyReplay(call: Call, e: ExpectedReplay): Promise<Item> {
+  const r = await historicalReplay(call, e);
+  const names: Record<ReplayItemId, string> = {
+    bundle: "1. Bundle read from the relay transaction, its order logged as signed by the mandate in an earlier block",
+    preceding: "2. Preceding snapshot: signing key registered, simulate_intents accepts the bundle",
+    removal: "3. Removal snapshot: signing key absent, simulate_intents refuses the bundle for that key",
+    deadlines: "4. Both snapshots before every deadline in the bundle",
+    relay: "5. Relay failed on the verifier for that key, before the order's deadline",
+    code: "6. Mandate and verifier have the recorded code hashes at both snapshots",
+  };
+  const facts: [string, string][] = [
+    ["Mandate", e.mandate],
+    ["Relay transaction", e.relay.tx_hash],
+    ["Recorded code hashes", `${e.mandate}: ${e.mandate_code_hash ?? "not recorded"}; ${e.verifier}: ${e.verifier_code_hash ?? "not recorded"}`],
+    ...r.facts,
+    ...r.items.map((i): [string, string] => [names[i.id], i.status]),
+    ["What this shows", "A historical replay of chain state: the relayed bundle was executable at the preceding snapshot. It does not show when the counterparty created its signature."],
+  ];
+  const title = "Historical replay of the withheld order";
+  // A reason that keeps several rules from being judged is listed once, with the rules it applies to.
+  const texts = [...new Set(r.items.flatMap((i) => i.reasons))];
+  const reasons = texts.map((text) => `Rule ${r.items.flatMap((i, n) => (i.reasons.includes(text) ? [String(n + 1)] : [])).join(", ")}: ${text}`);
+  if (r.status === "verified") {
+    return { status: "verified", title: `${title}: simulate_intents accepted the relayed bundle at the preceding snapshot and refused the identical bundle at the removal snapshot because its signing key did not exist for ${e.mandate}`, facts, reasons };
+  }
+  return { status: r.status, title: `${title}: ${r.status === "failed" ? "failed, the chain contradicts the record" : "inconclusive, the RPC did not serve the archival state it needs"}`, facts, reasons };
+}
+
 export async function verifyHistorical(call: Call, data: VerifyData): Promise<{ verdict: Item; items: Item[] }> {
-  if (data.receipts.length === 0 && data.unverifiable.length === 0 && data.relay === null && data.relay_problem === null) {
+  if (data.receipts.length === 0 && data.unverifiable.length === 0 && data.relay === null && data.relay_problem === null && data.replay === null) {
     return { verdict: { status: "none", title: "No mainnet receipts yet: the approved mainnet run has not happened, so there is nothing historical to verify", facts: [], reasons: [] }, items: [] };
   }
   const items: Item[] = [];
@@ -357,12 +740,15 @@ export async function verifyHistorical(call: Call, data: VerifyData): Promise<{ 
   for (const u of data.unverifiable) items.push({ status: "inconclusive", title: `${u.label}: inconclusive, not checkable`, facts: [], reasons: [u.reason] });
   if (data.relay !== null) items.push(await verifyRelay(call, data.relay));
   else items.push({ status: "inconclusive", title: "Withheld-order relay: cannot be checked", facts: [], reasons: [data.relay_problem ?? "the evidence records no relay of the withheld order"] });
+  const transactions = items.length;
+  if (data.replay !== null) items.push(await verifyReplay(call, data.replay));
+  else items.push({ status: "inconclusive", title: "Historical replay of the withheld order: cannot be checked", facts: [], reasons: [data.replay_problem ?? "the evidence records no relay of the withheld order"] });
   const bad = items.filter((i) => i.status !== "verified");
   const verdict: Item =
     bad.length === 0
       ? {
           status: "verified",
-          title: `All ${String(items.length)} recorded mainnet transactions match the chain, and the withheld order's relay was rejected before its deadline because its recorded signing key was not registered on ${data.relay?.verifier ?? "the verifier"}`,
+          title: `All ${String(transactions)} recorded mainnet transactions match the chain, the withheld order's relay was rejected before its deadline because its recorded signing key was not registered on ${data.relay?.verifier ?? "the verifier"}, and the historical replay of chain state shows the relayed bundle accepted at the preceding snapshot and refused at the removal snapshot`,
           facts: [],
           reasons: [],
         }
@@ -426,7 +812,7 @@ export async function verifyCurrent(call: Call, data: VerifyData): Promise<Item[
 
 /** Runs every check against `url`. Nothing is read from the chain unless the network check holds. */
 export async function runVerification(fetchFn: FetchFn, url: string, data: VerifyData): Promise<Report> {
-  const call: Call = (method, params) => rpcCall(fetchFn, url, method, params, data.timeout_ms);
+  const call = pacedCall(fetchFn, url, data.timeout_ms, data.pace_ms);
   const chain = await checkChain(call, data);
   if (chain.status !== "verified") {
     const skipped: Item = { status: "error", title: "Not checked: the network check did not hold", facts: [], reasons: [] };
@@ -540,6 +926,7 @@ export const CLIENT_FUNCTIONS: readonly ((...args: never[]) => unknown)[] = [
   asString,
   rpcErrorText,
   rpcCall,
+  pacedCall,
   checkChain,
   statusKind,
   receiptViews,
@@ -551,6 +938,15 @@ export const CLIENT_FUNCTIONS: readonly ((...args: never[]) => unknown)[] = [
   classifyRelayTx,
   verifyTx,
   verifyRelay,
+  deadlineNs,
+  signedOrderBlock,
+  removesKey,
+  replayHeader,
+  replayView,
+  replayCodeHash,
+  simulationProblem,
+  historicalReplay,
+  verifyReplay,
   verifyHistorical,
   decodeView,
   viewCall,

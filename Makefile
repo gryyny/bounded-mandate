@@ -1,12 +1,13 @@
-# Public targets: test, demo, quick, page, live, challenge, verify. Everything else is an implementation detail.
+# Public targets: test, demo, quick, lab, example, page, live, challenge, verify. Everything else is an implementation detail.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := test
-.PHONY: test demo quick page live challenge verify
+.PHONY: test demo quick lab example page live challenge verify
 
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
 TSX := cd tools && npx --no-install tsx
+EXAMPLE_CI := cd examples/strategy-client && npm ci --no-audit --no-fund --ignore-scripts
 # Browser tests need a pinned headless Chromium; install is idempotent and needs no credentials.
 BROWSER := cd tools && npx --no-install playwright install chromium >/dev/null
 
@@ -24,6 +25,7 @@ RUN_ID = MANDATE_RUN_ID="$$(cat $(CURDIR)/out/run/run_id)"
 
 test:
 	$(NPM_CI)
+	$(EXAMPLE_CI)
 	$(BROWSER)
 	$(TSX) src/checks/run.ts start
 	$(TSX) src/checks/integrity.ts
@@ -55,6 +57,19 @@ quick:
 	$(NPM_CI)
 	$(BROWSER)
 	$(TSX) src/quick/main.ts
+
+# The sandbox lab: a local service a visitor operates in a browser (127.0.0.1:8791; LAB_* in tools/src/lab/config.ts).
+# Deployment candidate + hash-pinned prebuilt test doubles; no Rust; sandbox only.
+lab:
+	$(NPM_CI)
+	$(TSX) src/lab/main.ts
+
+# The integration example: the independent strategy client (examples/strategy-client) against a local sandbox, no Rust.
+# Sandbox with prebuilt test doubles, uncertified; writes only out/example/.
+example:
+	$(NPM_CI)
+	$(EXAMPLE_CI)
+	$(TSX) src/example/main.ts
 
 # Checks the committed evidence bundle without a toolchain (Node 20+, no install); it does not rerun the tests.
 verify:

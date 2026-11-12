@@ -110,6 +110,8 @@ jobs:
           ! command -v cargo && ! command -v rustc
       - name: make quick
         run: make quick
+      - name: make example
+        run: make example
 
   # The evidence check on the oldest supported Node, with no install. On an evidence-only push the bundle is that of the
   # checked-out source, so the full checkout-bound check runs; on a source commit the newest bundle predates the

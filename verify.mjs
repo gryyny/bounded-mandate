@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Checks a committed evidence bundle without a toolchain: Node 20 or later, built-ins only, no install.
 // It checks recorded evidence; it does not run the tests. Offline by default; --mainnet adds read-only public RPC
-// reads of the run's recorded transactions. Usage: node verify.mjs --help
+// reads of the run's recorded transactions and a historical replay of the withheld order. Usage: node verify.mjs --help
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -26,6 +26,9 @@ export const REQUIRED_CASES = {
   CONSOLE: ["browser-sandbox", "access-controls", "wallet-sandbox"],
   COMPARE: ["revocation-alternatives"],
   SIGNER: ["conformance"],
+  REPLAY: ["historical-rules"],
+  LAB: ["workflow", "isolation", "reset", "limits-change-outcomes", "refusals", "export-replay", "flood-limits", "page", "owner-alternatives"],
+  EXAMPLE: ["strategy-client"],
 };
 export const SEPARATE_CASES = { RESCUE: ["owner-key"] };
 
@@ -429,13 +432,33 @@ function checkCheckout(r, root, ev, skip) {
 
 // ---------------------------------------------------------------------------------------------- mainnet checks
 
-class Rpc {
-  constructor(url, timeoutMs) {
+/** How often a rate-limited request (HTTP 429) is sent again before the read counts as unavailable. */
+const RPC_RETRIES = 3;
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+export class Rpc {
+  /** `paceMs`: the least time between two requests; public archival endpoints answer bursts with HTTP 429. */
+  constructor(url, timeoutMs, paceMs = 0) {
     this.url = url;
     this.timeoutMs = timeoutMs;
+    this.paceMs = paceMs;
+    this.next = 0;
   }
-  /** Returns { ok, result } or { ok: false, error }; never throws. */
+  /**
+   * Returns { ok, result } or { ok: false, error }; never throws. A rate-limited request is retried RPC_RETRIES times
+   * with a growing pause. A JSON-RPC error also carries its cause name and its full text (`cause`, `detail`).
+   */
   async call(method, params) {
+    for (let attempt = 0; attempt <= RPC_RETRIES; attempt += 1) {
+      const wait = Math.max(this.next - Date.now(), attempt === 0 ? 0 : this.paceMs * 2 ** attempt);
+      if (wait > 0) await sleep(wait);
+      this.next = Date.now() + this.paceMs;
+      const r = await this.once(method, params);
+      if (r.ok || r.http !== 429) return r;
+    }
+    return { ok: false, error: `HTTP 429 on each of ${RPC_RETRIES + 1} attempts (rate limited)` };
+  }
+  async once(method, params) {
     try {
       const res = await fetch(this.url, {
         method: "POST",
@@ -443,10 +466,10 @@ class Rpc {
         body: JSON.stringify({ jsonrpc: "2.0", id: "verify", method, params }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, http: res.status };
       const body = await res.json();
       if (!isObject(body)) return { ok: false, error: "response is not a JSON-RPC object" };
-      if (body.error !== undefined && body.error !== null) return { ok: false, error: JSON.stringify(body.error).slice(0, 300) };
+      if (body.error !== undefined && body.error !== null) return { ok: false, error: JSON.stringify(body.error).slice(0, 300), cause: body.error?.cause?.name, detail: JSON.stringify(body.error) };
       if (body.result === undefined || body.result === null) return { ok: false, error: "response has no result" };
       return { ok: true, result: body.result };
     } catch (e) {
@@ -561,6 +584,263 @@ export function fillBinding(fillTx, proposalTxs, mandate, verifier, tokenIds) {
     else trade = { nonce: entry.payload.nonce, publicKey: entry.public_key, diff: Object.fromEntries(deltas.map(([token, d]) => [token, BigInt(d)])) };
   }
   return { problems: p, trade: p.length === 0 ? trade : null };
+}
+
+// ---------------------------------------------------------------------------------------------- historical replay
+// SPEC.md "Historical replay of the withheld order". tools/src/page/verify-client.ts applies the same rules in the
+// browser; tools/test/replay-rules.test.ts runs both on the same cases and requires the same result.
+
+/** The deadline of one signed intent in nanoseconds, or null when it carries none this check can read. */
+function deadlineNs(entry) {
+  let deadline;
+  try {
+    deadline = JSON.parse(typeof entry?.payload === "string" ? entry.payload : entry?.payload?.message)?.deadline;
+  } catch {
+    return null;
+  }
+  if (typeof deadline !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(deadline)) return null;
+  // Digits below a millisecond are dropped, which can only make the deadline earlier.
+  const ms = Date.parse(deadline.replace(/(\.\d{3})\d+Z$/, "$1Z"));
+  return Number.isFinite(ms) ? BigInt(ms) * 1000000n : null;
+}
+
+/** The hash of the block in which the mandate logged `order` as signed (order_signed) in this transaction, or null. */
+function signedOrderBlock(tx, mandate, order) {
+  for (const o of (Array.isArray(tx.receipts_outcome) ? tx.receipts_outcome : []).filter(isObject)) {
+    if (o.outcome?.executor_id !== mandate || statusKind(o.outcome?.status) !== "success") continue;
+    for (const log of Array.isArray(o.outcome.logs) ? o.outcome.logs : []) {
+      if (typeof log !== "string" || !log.startsWith("EVENT_JSON:")) continue;
+      try {
+        const e = JSON.parse(log.slice("EVENT_JSON:".length));
+        if (e?.standard !== "bounded_mandate" || e?.event !== "order_signed") continue;
+        const mp = typeof e.data?.multi_payload === "string" ? JSON.parse(e.data.multi_payload) : e.data?.multi_payload;
+        if (isObject(mp) && isObject(mp.payload) && sameSigned(mp, order) && typeof o.block_hash === "string") return o.block_hash;
+      } catch {
+        // Not an event of the mandate: nothing is read from it.
+      }
+    }
+  }
+  return null;
+}
+
+/** Whether a receipt of EXPERIMENTAL_tx_status is the mandate's remove_public_key call on the verifier for `key`. */
+function removesKey(receipt, mandate, verifier, key) {
+  if (!isObject(receipt) || receipt.predecessor_id !== mandate || receipt.receiver_id !== verifier) return false;
+  const actions = receipt.receipt?.Action?.actions;
+  const call = (Array.isArray(actions) ? actions : []).map((a) => a?.FunctionCall).find((c) => isObject(c) && c.method_name === "remove_public_key");
+  try {
+    return JSON.parse(Buffer.from(String(call?.args), "base64").toString("utf8")).public_key === key;
+  } catch {
+    return false;
+  }
+}
+
+/** A block by hash: its height, the hash before it and its time. Anything else is state the RPC did not serve. */
+async function replayHeader(call, hash) {
+  const r = await call("block", { block_id: hash });
+  if (!r.ok) return { ok: false, error: `block ${hash}: ${r.error}` };
+  const h = r.result?.header;
+  if (!isObject(h) || h.hash !== hash || !Number.isInteger(h.height) || typeof h.prev_hash !== "string" || typeof h.timestamp_nanosec !== "string" || !/^[0-9]+$/.test(h.timestamp_nanosec))
+    return { ok: false, error: `block ${hash}: the RPC returned no header of that block with a height, a previous hash and a time` };
+  return { ok: true, hash, height: h.height, prev: h.prev_hash, time: BigInt(h.timestamp_nanosec) };
+}
+
+/**
+ * One contract view at a block hash: a value, a refusal by the contract (evidence about that state), or state the RPC
+ * did not serve. A node reports a panic inside the result (`error`) or as a CONTRACT_EXECUTION_ERROR.
+ */
+async function replayView(call, account, method, argsBase64, hash) {
+  const r = await call("query", { request_type: "call_function", account_id: account, method_name: method, args_base64: argsBase64, block_id: hash });
+  if (!r.ok) return r.cause === "CONTRACT_EXECUTION_ERROR" ? { kind: "refused", error: r.detail ?? r.error } : { kind: "unavailable", error: r.error };
+  if (!isObject(r.result) || r.result.block_hash !== hash) return { kind: "unavailable", error: `the RPC did not answer for block ${hash}` };
+  if (typeof r.result.error === "string") return { kind: "refused", error: r.result.error };
+  try {
+    return { kind: "value", value: JSON.parse(Buffer.from(r.result.result).toString("utf8")) };
+  } catch {
+    return { kind: "unavailable", error: `${method} returned no JSON result` };
+  }
+}
+
+async function replayCodeHash(call, account, hash) {
+  const r = await call("query", { request_type: "view_account", account_id: account, block_id: hash });
+  if (!r.ok) return { kind: "unavailable", error: r.error };
+  if (!isObject(r.result) || r.result.block_hash !== hash || typeof r.result.code_hash !== "string") return { kind: "unavailable", error: `the RPC returned no account with a code hash for block ${hash}` };
+  return { kind: "value", value: r.result.code_hash };
+}
+
+/** Why a simulate_intents result is not an acceptance of the whole bundle; null when it is. */
+function simulationProblem(value, bundle) {
+  if (!isObject(value)) return "simulate_intents returned no simulation output at the preceding snapshot";
+  if (value.invariant_violated !== undefined && value.invariant_violated !== null) return `simulate_intents reports an invariant violation at the preceding snapshot: ${JSON.stringify(value.invariant_violated).slice(0, 300)}`;
+  const executed = Array.isArray(value.intents_executed) ? value.intents_executed : [];
+  if (executed.length !== bundle.length) return `simulate_intents executed ${executed.length} of the bundle's ${bundle.length} signed intents at the preceding snapshot`;
+  if (bundle.some((x, i) => typeof x?.payload?.nonce === "string" && executed[i]?.nonce !== x.payload.nonce)) return "simulate_intents reported other intents than the relayed bundle's at the preceding snapshot";
+  return null;
+}
+
+/**
+ * The historical replay of the withheld order, read-only, through `call(method, params)` (Rpc.call). `e` names the
+ * mandate, the verifier, the relay transaction, the recorded revoke and proposal transactions ({ tx_hash, sender }) and
+ * the code hashes the run's evidence records. Everything else is read from the chain: the bundle from the relay
+ * transaction, the removal snapshot from the block in which the mandate's successful remove_public_key receipt for the
+ * order's signing key executed, the preceding snapshot from that block's prev_hash.
+ *
+ * Returns { status, items, facts }: one item per rule of the spec, each "verified", "failed" (what was read contradicts
+ * it) or "inconclusive" (the RPC did not serve what it needs). The status is "failed" if any item failed, else
+ * "inconclusive" if any is inconclusive, else "verified".
+ */
+export async function historicalReplay(call, e) {
+  const ids = ["bundle", "preceding", "removal", "deadlines", "relay", "code"];
+  const items = Object.fromEntries(ids.map((id) => [id, { problems: [], missing: [], done: false }]));
+  const facts = [];
+  const fail = (id, text) => items[id].problems.push(text);
+  const miss = (id, text) => items[id].missing.push(text);
+  // Ends the replay. `text` is why the items not judged so far cannot be: unserved state or a contradiction.
+  const finish = (unserved, text) => {
+    const out = ids.map((id) => {
+      const it = items[id];
+      if (!it.done && text !== null) (unserved ? it.missing : it.problems).push(text);
+      return { id, status: it.problems.length > 0 ? "failed" : it.missing.length > 0 || !it.done ? "inconclusive" : "verified", reasons: [...it.problems, ...it.missing] };
+    });
+    const status = out.some((x) => x.status === "failed") ? "failed" : out.some((x) => x.status === "inconclusive") ? "inconclusive" : "verified";
+    return { status, items: out, facts };
+  };
+  const txParams = (x) => ({ tx_hash: x.tx_hash, sender_account_id: x.sender, wait_until: "FINAL" });
+  const isFinal = (tx, x) => isObject(tx) && tx.final_execution_status === "FINAL" && isObject(tx.transaction) && tx.transaction.hash === x.tx_hash;
+
+  // The bundle, from the relay transaction on chain.
+  const relay = await call("tx", txParams(e.relay));
+  if (!relay.ok) return finish(true, `the relay transaction ${e.relay.tx_hash} could not be read: ${relay.error}`);
+  const tx = relay.result;
+  if (!isFinal(tx, e.relay)) return finish(true, `the RPC returned no final transaction ${e.relay.tx_hash}`);
+  const t = tx.transaction;
+  if (t.signer_id !== e.relay.sender || t.receiver_id !== e.verifier) return finish(false, `the relay transaction was sent by ${t.signer_id} to ${t.receiver_id}, not by ${e.relay.sender} to ${e.verifier}`);
+  const fc = (Array.isArray(t.actions) ? t.actions : []).map((a) => a?.FunctionCall).find((c) => isObject(c) && c.method_name === "execute_intents");
+  let bundle = null;
+  try {
+    bundle = JSON.parse(Buffer.from(String(fc?.args), "base64").toString("utf8")).signed;
+  } catch {
+    // No readable arguments: no bundle.
+  }
+  if (!Array.isArray(bundle) || bundle.length === 0) return finish(false, "the relay transaction carries no signed intents, so there is no bundle to replay");
+  const mine = bundle.filter((x) => isObject(x) && isObject(x.payload) && messageOf(x)?.signer_id === e.mandate);
+  if (mine.length !== 1) return finish(false, `the relayed bundle of ${bundle.length} signed intents carries ${mine.length} signed for ${e.mandate}, expected exactly one`);
+  const [order] = mine;
+  const key = order.public_key;
+  if (typeof key !== "string" || order.standard !== "nep413" || order.payload.recipient !== e.verifier) return finish(false, `the bundle's payload for ${e.mandate} is not a NEP-413 order for ${e.verifier} with a signing key`);
+  const refusal = `public key '${key}' doesn't exist for account '${e.mandate}'`;
+  const deadlines = bundle.map((x) => deadlineNs(x));
+  const orderDeadline = deadlineNs(order);
+  deadlines.forEach((d, i) => {
+    if (d === null) fail("deadlines", `signed intent ${i + 1} of the bundle carries no deadline this check can read`);
+  });
+  facts.push(["Relayed bundle", `${bundle.length} signed intents read from the relay transaction ${e.relay.tx_hash}; the order of ${e.mandate} is signed with ${key}`]);
+
+  // The relay itself: failed on the verifier for that key, before the order's deadline.
+  const outcomes = chainView(tx).receipts;
+  let relayBlock = null;
+  if (statusKind(tx.status) === "success") fail("relay", "the relay transaction succeeded: the withheld order executed");
+  else {
+    const failure = outcomes.find((x) => x.executor_id === e.verifier && x.kind === "failure");
+    if (statusKind(tx.status) !== "failure") fail("relay", "the relay transaction has no final failure status");
+    if (failure === undefined) fail("relay", `no receipt of the relay failed on ${e.verifier}`);
+    else {
+      if (!failure.error.includes(refusal)) fail("relay", `the verifier's error for the relay is not the missing-key refusal (${refusal})`);
+      const b = await replayHeader(call, failure.block_hash);
+      if (!b.ok) miss("relay", `the block in which the relay failed could not be read: ${b.error}`);
+      else {
+        relayBlock = b;
+        if (orderDeadline !== null && b.time >= orderDeadline) fail("relay", `the relay failed at block time ${b.time} ns, not before the order's deadline ${orderDeadline} ns: an expired order fails whatever the key state`);
+      }
+    }
+    if (outcomes.some((x) => x.kind === "failure" && x.executor_id !== e.verifier)) fail("relay", "a receipt of the relay failed outside the verifier");
+    if (outcomes.some((x) => x.kind === "unknown")) fail("relay", "a receipt of the relay has no final status");
+  }
+  items.relay.done = true;
+
+  // The order is one the mandate logged as signed.
+  let signedIn = null;
+  const unread = [];
+  for (const p of e.proposals) {
+    const got = await call("tx", txParams(p));
+    if (!got.ok) unread.push(`${p.tx_hash}: ${got.error}`);
+    else if (!isFinal(got.result, p)) unread.push(`${p.tx_hash}: the RPC returned no final transaction with that hash`);
+    else signedIn = signedOrderBlock(got.result, e.mandate, order);
+    if (signedIn !== null) break;
+  }
+  if (signedIn === null) {
+    if (unread.length > 0) miss("bundle", `a recorded proposal transaction could not be read, so the order's signed-order event was not found: ${unread.join("; ")}`);
+    else fail("bundle", `the bundle's order for ${e.mandate} is not one the mandate logged as signed (order_signed) in the ${e.proposals.length} recorded proposal transactions`);
+  }
+
+  // The removal snapshot: the block in which the mandate's successful remove_public_key receipt for that key executed.
+  let removal = null;
+  const unreadRevokes = [];
+  for (const v of e.revokes) {
+    const got = await call("EXPERIMENTAL_tx_status", txParams(v));
+    if (!got.ok) unreadRevokes.push(`${v.tx_hash}: ${got.error}`);
+    else if (!isFinal(got.result, v)) unreadRevokes.push(`${v.tx_hash}: the RPC returned no final transaction with that hash`);
+    else {
+      const receipt = (Array.isArray(got.result.receipts) ? got.result.receipts : []).find((x) => removesKey(x, e.mandate, e.verifier, key));
+      const outcome = receipt === undefined ? undefined : (Array.isArray(got.result.receipts_outcome) ? got.result.receipts_outcome : []).find((o) => isObject(o) && o.id === receipt.receipt_id);
+      if (receipt !== undefined) removal = { tx: v.tx_hash, id: receipt.receipt_id, kind: statusKind(outcome?.outcome?.status), block: outcome?.block_hash };
+    }
+    if (removal !== null) break;
+  }
+  if (removal === null && unreadRevokes.length > 0) return finish(true, `a recorded revoke transaction could not be read, so the removal snapshot is unknown: ${unreadRevokes.join("; ")}`);
+  if (removal === null) return finish(false, `none of the ${e.revokes.length} recorded revoke transactions has a receipt ${e.mandate} -> ${e.verifier}.remove_public_key for the order's signing key ${key}, so there is no removal snapshot`);
+  if (removal.kind !== "success" || typeof removal.block !== "string") return finish(false, `the remove_public_key receipt ${removal.id} of the revoke ${removal.tx} did not succeed, so there is no removal snapshot`);
+  const after = await replayHeader(call, removal.block);
+  if (!after.ok) return finish(true, `the removal snapshot could not be read: ${after.error}`);
+  const before = await replayHeader(call, after.prev);
+  if (!before.ok) return finish(true, `the preceding snapshot could not be read: ${before.error}`);
+  if (before.height >= after.height) return finish(true, `the RPC returned block ${before.height} as the block before block ${after.height}`);
+  const snapshots = [["preceding", before], ["removal", after]];
+  facts.push(["Removal snapshot", `block ${after.height} (${after.hash}), time ${after.time} ns: the block in which the remove_public_key receipt ${removal.id} of the revoke ${removal.tx} executed`]);
+  facts.push(["Preceding snapshot", `block ${before.height} (${before.hash}), time ${before.time} ns: that block's prev_hash`]);
+
+  if (signedIn !== null) {
+    const s = await replayHeader(call, signedIn);
+    if (!s.ok) miss("bundle", `the block of the order's signed-order event could not be read: ${s.error}`);
+    else if (s.height >= after.height) fail("bundle", `the mandate logged the order as signed in block ${s.height}, not in a block before the removal snapshot (block ${after.height})`);
+    else facts.push(["Signed-order event", `the mandate logged the bundle's order as signed in block ${s.height}`]);
+  }
+  items.bundle.done = true;
+  if (relayBlock !== null && relayBlock.height < after.height) fail("relay", `the relay failed in block ${relayBlock.height}, before the removal snapshot (block ${after.height})`);
+
+  for (const [name, s] of snapshots) {
+    deadlines.forEach((d, i) => {
+      if (d !== null && s.time >= d) fail("deadlines", `the ${name} snapshot's block time ${s.time} ns is not before the deadline ${d} ns of signed intent ${i + 1}`);
+    });
+  }
+  items.deadlines.done = true;
+
+  const recorded = [[e.mandate, e.mandate_code_hash], [e.verifier, e.verifier_code_hash]];
+  for (const [account, want] of recorded) if (typeof want !== "string") fail("code", `the run's evidence records no code hash for ${account}`);
+  const keyArgs = Buffer.from(JSON.stringify({ account_id: e.mandate, public_key: key })).toString("base64");
+  for (const [name, s] of snapshots) {
+    const registered = name === "preceding";
+    const has = await replayView(call, e.verifier, "has_public_key", keyArgs, s.hash);
+    if (has.kind === "unavailable") miss(name, `has_public_key at the ${name} snapshot: ${has.error}`);
+    else if (has.kind === "refused" || has.value !== registered) fail(name, `the signing key ${key} is ${registered ? "not registered" : "still registered"} for ${e.mandate} on ${e.verifier} at the ${name} snapshot`);
+    // The exact argument bytes of the relay transaction, so the simulated bundle is the relayed one.
+    const sim = await replayView(call, e.verifier, "simulate_intents", fc.args, s.hash);
+    if (sim.kind === "unavailable") miss(name, `simulate_intents at the ${name} snapshot: ${sim.error}`);
+    else if (registered) {
+      const problem = sim.kind === "refused" ? `simulate_intents refused the relayed bundle at the preceding snapshot: ${sim.error.slice(0, 300)}` : simulationProblem(sim.value, bundle);
+      if (problem !== null) fail(name, problem);
+    } else if (sim.kind === "value") fail(name, "simulate_intents did not refuse the relayed bundle at the removal snapshot");
+    else if (!sim.error.includes(refusal)) fail(name, `simulate_intents refused the relayed bundle at the removal snapshot for another reason than the missing key (${refusal}): ${sim.error.slice(0, 300)}`);
+    items[name].done = true;
+    for (const [account, want] of recorded) {
+      if (typeof want !== "string") continue;
+      const got = await replayCodeHash(call, account, s.hash);
+      if (got.kind !== "value") miss("code", `code hash of ${account} at the ${name} snapshot: ${got.error}`);
+      else if (got.value !== want) fail("code", `${account} has code hash ${got.value} at the ${name} snapshot, the run's evidence records ${want}`);
+    }
+  }
+  items.code.done = true;
+  return finish(false, null);
 }
 
 const stepOf = (id) => {
@@ -772,6 +1052,13 @@ function checkRecordedRun(r, bundleDir, bundle, livePath, ev, candidate, mainnet
   return { usable, complete: complete && bound, receipts, assertions, ids, exp };
 }
 
+/** The verifier's code hash as the run's preflight recorded it (assertion preflight-code_hash.verifier), or null. */
+function recordedVerifierCode(assertions, verifier) {
+  const a = assertions.find((x) => x.id === "preflight-code_hash.verifier");
+  const o = a?.observed;
+  return a?.passed === true && isObject(o) && o.account === verifier && typeof o.chain === "string" && o.chain === o.manifest ? o.chain : null;
+}
+
 async function checkMainnet(r, rec, rpc, candidate) {
   const { receipts, assertions, ids, exp } = rec;
   const verifier = MAINNET_ACCOUNTS.verifier;
@@ -910,7 +1197,10 @@ async function checkMainnet(r, rec, rpc, candidate) {
   }
 
   // Grant keys: registered before a successful revoke that removed them on the verifier, gone by the run's final block,
-  // absent now. `revoked` collects the keys the chain shows through that whole lifecycle, with the revoke's block.
+  // absent now. The boundary is the block in which the removal receipt executed and that block's prev_hash, never the
+  // block that included the revoke transaction. `revoked` collects the keys the chain shows through that whole
+  // lifecycle, with the block of their removal.
+  const call = (method, params) => rpc.call(method, params);
   const revoked = new Map();
   const grants = fetched.filter((x) => x.v.method === "grant" && x.v.outcome === "success").sort((a, b) => a.height - b.height);
   const revokes = fetched.filter((x) => x.v.method === "revoke").sort((a, b) => a.height - b.height);
@@ -929,11 +1219,10 @@ async function checkMainnet(r, rec, rpc, candidate) {
       continue;
     }
     const at = async (block) => rpc.view(verifier, "has_public_key", { account_id: ids.mandate, public_key: key }, block);
-    const before = await at(revoke.height);
     const after = await at(finalBlock);
     const now = await at("final");
     const full = await rpc.call("EXPERIMENTAL_tx_status", { tx_hash: revoke.rc.tx_hash, sender_account_id: revoke.v.t.signer_id, wait_until: "FINAL" });
-    const errors = [before, after, now, full].filter((x) => !x.ok).map((x) => x.error);
+    const errors = [after, now, full].filter((x) => !x.ok).map((x) => x.error);
     if (errors.length > 0) {
       r.line("NOT VERIFIED", gate, "key registration or the revoke transaction's receipts could not be read", errors);
       continue;
@@ -941,21 +1230,27 @@ async function checkMainnet(r, rec, rpc, candidate) {
     const p = [];
     if (revoke.v.outcome !== "success") p.push(`the revoke transaction ${revoke.rc.tx_hash} did not succeed on chain (${revoke.v.outcome})`);
     // The removal itself: a receipt from the mandate to the pinned verifier calling remove_public_key for this key.
-    const removal = (Array.isArray(full.result.receipts) ? full.result.receipts : []).find((x) => {
-      const call = (x?.receipt?.Action?.actions ?? []).map((a) => a?.FunctionCall).find(isObject);
-      if (x?.predecessor_id !== ids.mandate || x?.receiver_id !== verifier || call?.method_name !== "remove_public_key") return false;
-      try {
-        return JSON.parse(Buffer.from(String(call.args), "base64").toString("utf8")).public_key === key;
-      } catch {
-        return false;
-      }
-    });
+    const removal = (Array.isArray(full.result.receipts) ? full.result.receipts : []).find((x) => removesKey(x, ids.mandate, verifier, key));
+    const executed = removal === undefined ? undefined : revoke.v.receipts.find((x) => x.id === removal.receipt_id);
+    let span = null;
     if (removal === undefined) p.push(`the revoke transaction has no receipt ${ids.mandate} -> ${verifier}.remove_public_key for this key`);
-    else if (revoke.v.receipts.find((x) => x.id === removal.receipt_id)?.kind !== "success") p.push(`the ${verifier}.remove_public_key receipt ${removal.receipt_id} did not succeed`);
-    if (before.value !== true) p.push(`not registered on ${verifier} at block ${revoke.height} (revoke transaction included)`);
+    else if (executed?.kind !== "success") p.push(`the ${verifier}.remove_public_key receipt ${removal.receipt_id} did not succeed`);
+    else {
+      const removed = await replayHeader(call, executed.block_hash);
+      const before = removed.ok ? await replayHeader(call, removed.prev) : removed;
+      const was = before.ok ? await at(before.hash) : before;
+      const gone = removed.ok ? await at(removed.hash) : removed;
+      if (!was.ok || !gone.ok) {
+        r.line("NOT VERIFIED", gate, "the key's registration around the block in which its removal executed could not be read", [was, gone].filter((x) => !x.ok).map((x) => x.error));
+        continue;
+      }
+      if (was.value !== true) p.push(`not registered on ${verifier} at block ${before.height}, the block before the one in which the removal executed`);
+      if (gone.value !== false) p.push(`still registered at block ${removed.height}, in which the removal executed`);
+      span = { before: before.height, removed: removed.height };
+    }
     if (after.value !== false) p.push(`still registered at the run's final block ${finalBlock}`);
     if (now.value !== false) p.push("registered now");
-    if (r.check(gate, p, `registered on ${verifier} for ${ids.mandate} at block ${revoke.height}, removed by ${verifier}.remove_public_key in the successful revoke ${revoke.rc.tx_hash}, gone by block ${finalBlock}, absent now`)) revoked.set(key, revoke.height);
+    if (r.check(gate, p, `registered on ${verifier} for ${ids.mandate} at block ${span?.before}, removed by ${verifier}.remove_public_key of the successful revoke ${revoke.rc.tx_hash} in block ${span?.removed}, gone by block ${finalBlock}, absent now`)) revoked.set(key, span.removed);
   }
 
   // The withheld order's relay failed on the verifier because a key of that lifecycle did not exist. The key is read
@@ -973,11 +1268,41 @@ async function checkMainnet(r, rec, rpc, candidate) {
     else {
       const key = m[1];
       if (!revoked.has(key)) p.push(`the rejected key ${key} is not a grant key the chain shows registered before its revoke and absent after`);
-      else if (x.height <= revoked.get(key)) p.push(`relayed in block ${x.height}, not after the revoke in block ${revoked.get(key)}`);
+      else if (x.height <= revoked.get(key)) p.push(`relayed in block ${x.height}, not after the key's removal in block ${revoked.get(key)}`);
       for (const a of relayAssertions) if (a.observed?.revoked_key !== undefined && a.observed.revoked_key !== key) p.push(`evidence ${a.id} names revoked key ${a.observed.revoked_key}, the chain rejected ${key}`);
     }
     if (x.v.receipts.some((y) => y.kind === "failure" && y.executor_id !== verifier)) p.push("a receipt outside the verifier failed");
     if (r.check(`mainnet.relay ${x.rc.label}`, p, `${x.rc.tx_hash} rejected by ${verifier} after the revoke: removed grant key ${m?.[1]}`)) rejectedRelays += 1;
+  }
+
+  // The historical replay of each relayed bundle against archival state (SPEC.md "Historical replay of the withheld
+  // order"): accepted by simulate_intents at the block before the key's removal executed, refused for that key at the
+  // block of the removal. The mandate's expected code is this checkout's deployment candidate; the verifier's is the
+  // hash the run's preflight recorded.
+  for (const x of relays) {
+    const gate = `mainnet.replay ${x.rc.label}`;
+    if (candidate === null) {
+      r.line("NOT VERIFIED", gate, "the historical replay was not run: it compares the mandate's code with the deployment candidate, and this checkout's candidate was not read (--no-checkout or a failed checkout check)");
+      continue;
+    }
+    const ref = (f) => ({ tx_hash: f.rc.tx_hash, sender: f.v.t.signer_id });
+    const replay = await historicalReplay(call, {
+      mandate: ids.mandate,
+      verifier,
+      relay: ref(x),
+      revokes: revokes.map(ref),
+      proposals: fetched.filter((f) => f.kind === "propose").map(ref),
+      mandate_code_hash: candidate.codeHash,
+      verifier_code_hash: recordedVerifierCode(assertions, verifier),
+    });
+    // A reason that keeps several rules from being judged is listed once, with the rules it applies to.
+    const texts = [...new Set(replay.items.flatMap((it) => it.reasons))];
+    const reasons = texts.map((text) => `${replay.items.filter((it) => it.reasons.includes(text)).map((it) => it.id).join(", ")}: ${text}`);
+    const shown = replay.facts.map(([k, v]) => `${k}: ${v}`).join(". ");
+    if (replay.status === "verified")
+      r.line("PASS", gate, `historical replay of chain state: simulate_intents accepted the bundle relayed in ${x.rc.tx_hash} at the preceding snapshot, where its signing key was registered, and refused the identical bundle at the removal snapshot because that key did not exist for ${ids.mandate}; both snapshots are before every deadline in the bundle, and ${ids.mandate} and ${verifier} have the recorded code hashes at both. ${shown}. This shows the bundle was executable at the preceding snapshot; it does not show when the counterparty created its signature`);
+    else if (replay.status === "failed") r.line("FAIL", gate, `the historical replay of the bundle relayed in ${x.rc.tx_hash} contradicts the record${shown === "" ? "" : `. ${shown}`}`, reasons);
+    else r.line("NOT VERIFIED", gate, `the historical replay of the bundle relayed in ${x.rc.tx_hash} is inconclusive: the RPC did not serve the archival state it needs${shown === "" ? "" : `. ${shown}`}`, reasons);
   }
 
   // A fill counts as a trade only if it executed the mandate's proposed order and moved tokens: the bundle on chain is
@@ -1085,7 +1410,7 @@ async function checkMainnet(r, rec, rpc, candidate) {
 // ---------------------------------------------------------------------------------------------- main
 
 const USAGE = `Usage: node verify.mjs [--bundle evidence/<rev>] [--root <dir>] [--no-checkout] [--rules current|bundle]
-       node verify.mjs --mainnet [--rpc <url>] [--live <file>] [--timeout-ms <n>]
+       node verify.mjs --mainnet [--rpc <url>] [--live <file>] [--timeout-ms <n>] [--pace-ms <n>]
        node verify.mjs --write-manifest evidence/<rev>
        node verify.mjs --print-required
 
@@ -1096,8 +1421,13 @@ evidence; it does not run the tests. Offline unless --mainnet.
   --rules current        judge the cases against this checkout's required list (default)
   --rules bundle         judge them against the list the bundle records it was certified under, stated as such
   --mainnet              also read every recorded mainnet transaction from a public archival RPC (read-only); the
-                         verifier (${MAINNET_ACCOUNTS.verifier}), signer (${MAINNET_ACCOUNTS.signer}) and token contracts are pinned in this script
+                         verifier (${MAINNET_ACCOUNTS.verifier}), signer (${MAINNET_ACCOUNTS.signer}) and token contracts are pinned in this script.
+                         Also replays the withheld bundle against archival state at the block before the key's
+                         removal executed and at the block of the removal: a historical replay of chain state,
+                         which does not show when the counterparty created its signature
   --rpc <url>            RPC URL (default $MANDATE_VERIFY_RPC or ${DEFAULT_RPC})
+  --pace-ms <n>          least time between two RPC requests (default 500); a rate-limited request is retried
+                         ${RPC_RETRIES} times, then its check is NOT VERIFIED
   --live <file>          mainnet evidence file (default <bundle>/${LIVE_FILE}); any other file is outside the hashed
                          bundle, so the result is NOT VERIFIED whatever its checks say
   --write-manifest <dir> write <dir>/${MANIFEST} for a curated bundle and exit
@@ -1105,7 +1435,7 @@ Exit status: 0 every check passed; 1 a check failed or could not be verified; 2 
 ${NOT_PROVED}`;
 
 function parseArgs(argv) {
-  const opts = { root: dirname(fileURLToPath(import.meta.url)), bundle: null, checkout: true, rules: "current", mainnet: false, rpc: process.env.MANDATE_VERIFY_RPC || DEFAULT_RPC, live: null, timeoutMs: 20_000, writeManifest: null, printRequired: false, help: false };
+  const opts = { root: dirname(fileURLToPath(import.meta.url)), bundle: null, checkout: true, rules: "current", mainnet: false, rpc: process.env.MANDATE_VERIFY_RPC || DEFAULT_RPC, live: null, timeoutMs: 20_000, paceMs: 500, writeManifest: null, printRequired: false, help: false };
   const value = (i, flag) => {
     const v = argv[i + 1];
     if (v === undefined || v.startsWith("--")) throw new Error(`${flag} needs a value`);
@@ -1123,11 +1453,13 @@ function parseArgs(argv) {
     else if (a === "--rpc") opts.rpc = value(i++, a);
     else if (a === "--live") opts.live = resolve(value(i++, a));
     else if (a === "--timeout-ms") opts.timeoutMs = Number(value(i++, a));
+    else if (a === "--pace-ms") opts.paceMs = Number(value(i++, a));
     else if (a === "--write-manifest") opts.writeManifest = value(i++, a);
     else throw new Error(`unknown argument ${a}`);
   }
   if (opts.rules !== "current" && opts.rules !== "bundle") throw new Error("--rules must be current or bundle");
   if (!Number.isInteger(opts.timeoutMs) || opts.timeoutMs <= 0) throw new Error("--timeout-ms must be a positive integer");
+  if (!Number.isInteger(opts.paceMs) || opts.paceMs < 0) throw new Error("--pace-ms must be a non-negative integer");
   if (!/^https?:\/\/\S+$/.test(opts.rpc)) throw new Error("--rpc must be an http(s) URL");
   return opts;
 }
@@ -1189,7 +1521,7 @@ export async function main(argv, out = console.log) {
       else r.line("SKIP", "mainnet", "this bundle records no mainnet run (sandbox evidence only); nothing on mainnet is claimed or checked");
     } else if (opts.mainnet) {
       mainnetNote = ` Mainnet transactions and state were read from ${opts.rpc}${opts.rpc === DEFAULT_RPC ? "" : " (not this script's default RPC; the result is only as good as that endpoint)"}.`;
-      if (rec.usable) await checkMainnet(r, rec, new Rpc(opts.rpc, opts.timeoutMs), candidate);
+      if (rec.usable) await checkMainnet(r, rec, new Rpc(opts.rpc, opts.timeoutMs, opts.paceMs), candidate);
     } else {
       // Offline, a recorded run is judged by its own record only. A complete record is a SKIP, not NOT VERIFIED: the
       // offline run claims nothing about mainnet and says so in its summary, and the build's offline gate must not

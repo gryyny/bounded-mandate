@@ -35,6 +35,12 @@ export const REQUIRED_CASES = {
   COMPARE: ["revocation-alternatives"],
   /** The contract's MPC decoder and key check against a recorded mainnet v1.signer EdDSA response (unit VM, read-only fixture). */
   SIGNER: ["conformance"],
+  /** The historical replay of the withheld order: verify.mjs and the page's verification panel on shared SYNTHETIC cases against a local archival RPC stub (no chain). */
+  REPLAY: ["historical-rules"],
+  /** The sandbox lab and its comparison view on the exact deployment candidate with hash-pinned prebuilt test doubles. */
+  LAB: ["workflow", "isolation", "reset", "limits-change-outcomes", "refusals", "export-replay", "flood-limits", "page", "owner-alternatives"],
+  /** The independent strategy client (examples/strategy-client) against a local sandbox with prebuilt test doubles: accepted, refused, revoked. */
+  EXAMPLE: ["strategy-client"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Reported and shown separately; never counts toward any gate (the owner-key rescue is not ordinary recovery). */

@@ -3,12 +3,25 @@ import { rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CANDIDATE_CODE_HASH, FINAL_BLOCK, GRANT_KEY, STRANGER_KEY, SYNTHETIC_BUNDLE, runVerify, startChain, stopChain, syntheticLiveEvidence, syntheticRepo, tempDir, type ChainOptions } from "./fixtures/verify/synthetic.js";
+import { REPLAY_CASES, expectedStatus } from "./fixtures/replay/cases.js";
+import { PRECEDING_AT, REMOVAL_AT, VERIFIER_CODE_HASH, startReplayChain, verifierPreflight, type ReplayOptions } from "./fixtures/replay/chain.js";
+import { CANDIDATE_CODE_HASH, FINAL_BLOCK, GRANT_KEY, STRANGER_KEY, SYNTHETIC_BUNDLE, runVerify as runVerifyProcess, syntheticLiveEvidence as syntheticRun, syntheticRepo, tempDir, type Result, type RunOptions } from "./fixtures/verify/synthetic.js";
+
+type ChainOptions = ReplayOptions;
 
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0)) await c();
 });
+
+/** The synthetic run with the verifier's code hash as the live runner's preflight records it. */
+function syntheticLiveEvidence(o: RunOptions = {}): Record<string, unknown> {
+  const ev = syntheticRun(o);
+  return { ...ev, assertions: [verifierPreflight(), ...(ev.assertions as unknown[])] };
+}
+
+/** The local stub answers at once, so the tests do not pace their requests; pacing has its own test (replay-rules). */
+const runVerify = (args: string[], env: Record<string, string> = {}): Promise<Result> => runVerifyProcess(args.includes("--mainnet") ? [...args, "--pace-ms", "0"] : args, env);
 
 const lineOf = (out: string, gate: string): string => out.split("\n").find((l) => l.slice(13).startsWith(`${gate}  `)) ?? `(no line for ${gate})`;
 const tradeLine = (out: string): string => out.split("\n").find((l) => l.slice(13).startsWith("mainnet.trade ")) ?? "(no mainnet.trade line)";
@@ -27,8 +40,8 @@ async function repo(evidence: Record<string, unknown> | null = syntheticLiveEvid
 }
 
 async function chain(o: ChainOptions = {}): Promise<{ url: string; requests: string[]; codeReads: (number | "final")[] }> {
-  const c = await startChain(o);
-  cleanups.push(() => stopChain(c.server));
+  const c = await startReplayChain(o);
+  cleanups.push(() => c.stop());
   return c;
 }
 
@@ -47,8 +60,11 @@ describe("verify.mjs --mainnet (SYNTHETIC chain and receipts)", () => {
     expect(lines(r.out, "PASS         mainnet.tx ")).toHaveLength(receiptsOf(syntheticLiveEvidence()).length);
     for (const gate of ["mainnet.pinned", "mainnet.source", "mainnet.candidate", "mainnet.code", "mainnet.manifest", "mainnet.outcomes", "mainnet.complete", "mainnet.recovered"]) expect(lineOf(r.out, gate)).toMatch(/^PASS /);
     expect(r.out).toMatch(new RegExp(`^VERIFIED: .* Mainnet transactions and state were read from ${url} \\(not this script's default RPC; the result is only as good as that endpoint\\)\\.$`, "m"));
-    expect(lineOf(r.out, `mainnet.grant-key ${GRANT_KEY}`)).toMatch(/^PASS .*at block 130, removed by intents\.near\.remove_public_key in the successful revoke .*gone by block 162, absent now/);
+    // The boundary is the block in which the removal receipt executed (132) and the one before it, not the block that
+    // included the revoke transaction (130).
+    expect(lineOf(r.out, `mainnet.grant-key ${GRANT_KEY}`)).toMatch(/^PASS .*at block 131, removed by intents\.near\.remove_public_key of the successful revoke \S+ in block 132, gone by block 162, absent now/);
     expect(lineOf(r.out, "mainnet.relay step 5 relay_withheld")).toMatch(/^PASS /);
+    expect(lineOf(r.out, "mainnet.replay step 5 relay_withheld")).toMatch(/^PASS /);
     expect(lineOf(r.out, "mainnet.balances")).toMatch(new RegExp(`^PASS .*at block ${String(FINAL_BLOCK)}`));
     expect(r.code).toBe(0);
   });
@@ -540,12 +556,13 @@ describe("verify.mjs --mainnet does not verify a failed, incomplete or different
   });
 
   // gate: LIVE
-  it("reads the mandate's code at the block of each receipt it executed and the block before, once per block", async () => {
+  it("reads the mandate's code at the block of each receipt it executed and the block before, once per block, and at both snapshots of the replay", async () => {
     const ev = syntheticLiveEvidence();
     // On the synthetic chain receipt i of a transaction executes i blocks after its inclusion block.
     const executed = receiptsOf(ev).flatMap((rc) => (rc.detail.receipts as { executor_id: string }[]).flatMap((x, i) => (x.executor_id === "mandate.synthetic.near" ? [rc.block_height + i] : [])));
     expect(executed.length).toBeGreaterThan(0);
-    const expected = [...new Set([...executed.flatMap((h) => [h - 1, h]), FINAL_BLOCK])].sort((a, b) => a - b);
+    // The historical replay reads the account again at its two snapshots, by block hash.
+    const expected = [...new Set([...executed.flatMap((h) => [h - 1, h]), FINAL_BLOCK]), PRECEDING_AT, REMOVAL_AT].sort((a, b) => a - b);
     const r = await mainnet(ev);
     expect(r.codeReads.filter((b) => b !== "final").sort((a, b) => a - b)).toEqual(expected);
     expect(r.codeReads.filter((b) => b === "final")).toHaveLength(1);
@@ -699,6 +716,121 @@ describe("verify.mjs --mainnet does not verify a failed, incomplete or different
     // The assets did arrive, so only the outcome rule refuses this record.
     expect(lineOf(r.out, "mainnet.complete")).toMatch(/^PASS /);
     expect(lineOf(r.out, "mainnet.recovered")).toMatch(/^PASS /);
+    expect(r.code).toBe(1);
+  });
+});
+
+// The historical replay of the withheld order (SPEC.md) as a line of verify.mjs --mainnet. The rules themselves are
+// tested on the shared cases in replay-rules.test.ts; here the same cases go through the command.
+describe("verify.mjs --mainnet replays the withheld order against archival state (SYNTHETIC)", () => {
+  const REPLAY = "mainnet.replay step 5 relay_withheld";
+  const mainnet = async (o: ChainOptions = {}, ev: Record<string, unknown> = syntheticLiveEvidence(o), extra: string[] = []) => {
+    const dir = await repo(ev);
+    const c = await startReplayChain(o);
+    cleanups.push(() => c.stop());
+    return { ...(await runVerify(["--root", dir, "--mainnet", "--rpc", c.url, ...extra])), log: c.log };
+  };
+  const option = (id: string): ChainOptions => {
+    const c = REPLAY_CASES.find((x) => x.id === id);
+    if (c === undefined) throw new Error(`no replay case ${id}`);
+    return c.options;
+  };
+
+  // gate: REPLAY
+  it("verified: names both snapshots, the recorded code hashes and what the replay does not show", async () => {
+    const r = await mainnet();
+    const line = lineOf(r.out, REPLAY);
+    expect(line).toMatch(/^PASS .*historical replay of chain state: simulate_intents accepted the bundle relayed in \S+ at the preceding snapshot/);
+    expect(line).toContain(`Removal snapshot: block ${String(REMOVAL_AT)} (block-${String(REMOVAL_AT)})`);
+    expect(line).toContain(`Preceding snapshot: block ${String(PRECEDING_AT)} (block-${String(PRECEDING_AT)})`);
+    expect(line).toContain("it does not show when the counterparty created its signature");
+    expect(r.out).toMatch(/^VERIFIED: /m);
+    expect(r.code).toBe(0);
+    // The code hashes compared at the snapshots: the checkout's candidate and the one the run's preflight recorded.
+    const accounts = r.log.filter((x) => x.method === "query" && x.params.request_type === "view_account" && typeof x.params.block_id === "string").map((x) => `${String(x.params.account_id)}@${String(x.params.block_id)}`);
+    expect(accounts.sort()).toEqual([`intents.near@block-${String(PRECEDING_AT)}`, `intents.near@block-${String(REMOVAL_AT)}`, `mandate.synthetic.near@block-${String(PRECEDING_AT)}`, `mandate.synthetic.near@block-${String(REMOVAL_AT)}`]);
+    expect(VERIFIER_CODE_HASH).not.toBe(CANDIDATE_CODE_HASH);
+  });
+
+  // gate: REPLAY
+  // The block that included the revoke transaction (130) is the boundary the key lifecycle used to read; on this chain
+  // the key's registration ends there, so only the removal receipt's block and its prev_hash show the contradiction.
+  it("failed: a key that is gone before the block in which its removal executed", async () => {
+    const r = await mainnet(option("inclusion-block"));
+    expect(lineOf(r.out, REPLAY)).toMatch(/^FAIL /);
+    expect(r.out).toContain(`preceding: the signing key ${GRANT_KEY} is not registered for mandate.synthetic.near on intents.near at the preceding snapshot`);
+    expect(lineOf(r.out, `mainnet.grant-key ${GRANT_KEY}`)).toMatch(/^FAIL /);
+    expect(r.out).toContain(`not registered on intents.near at block ${String(PRECEDING_AT)}, the block before the one in which the removal executed`);
+    expect(r.out).toMatch(/^NOT VERIFIED: /m);
+    expect(r.code).toBe(1);
+  });
+
+  // gate: REPLAY
+  it("failed: a key still registered in the block in which its removal executed", async () => {
+    const r = await mainnet(option("one-block-late"));
+    expect(lineOf(r.out, REPLAY)).toMatch(/^FAIL /);
+    expect(r.out).toContain("removal: simulate_intents did not refuse the relayed bundle at the removal snapshot");
+    expect(lineOf(r.out, `mainnet.grant-key ${GRANT_KEY}`)).toMatch(/^FAIL /);
+    expect(r.out).toContain(`still registered at block ${String(REMOVAL_AT)}, in which the removal executed`);
+    expect(r.code).toBe(1);
+  });
+
+  // gate: REPLAY
+  it("inconclusive: a rate limit after the bounded retries is NOT VERIFIED, never a pass and not a failure", async () => {
+    const r = await mainnet(option("rate-limited"));
+    expect(lineOf(r.out, REPLAY)).toMatch(/^NOT VERIFIED .*inconclusive: the RPC did not serve the archival state it needs/);
+    expect(r.out).toContain("HTTP 429 on each of 4 attempts (rate limited)");
+    expect(lines(r.out, "FAIL")).toEqual([]);
+    expect(r.out).toMatch(/^NOT VERIFIED: /m);
+    expect(r.code).toBe(1);
+  });
+
+  it("takes the pace between requests as a non-negative number of milliseconds", async () => {
+    const dir = await repo();
+    for (const bad of ["-1", "0.5", "soon"]) {
+      const r = await runVerifyProcess(["--root", dir, "--mainnet", "--pace-ms", bad]);
+      expect(r.out).toContain("--pace-ms must be a non-negative integer");
+      expect(r.code).toBe(2);
+    }
+    expect((await runVerifyProcess(["--help"])).out).toMatch(/--pace-ms <n> +least time between two RPC requests \(default 500\)/);
+  });
+
+  // gate: REPLAY
+  it("failed without the verifier code hash the run's preflight records", async () => {
+    const r = await mainnet({}, syntheticRun());
+    expect(lineOf(r.out, REPLAY)).toMatch(/^FAIL /);
+    expect(r.out).toContain("code: the run's evidence records no code hash for intents.near");
+    expect(r.code).toBe(1);
+  });
+
+  // gate: REPLAY
+  it("is not run without the checkout's deployment candidate", async () => {
+    const r = await mainnet({}, syntheticLiveEvidence(), ["--no-checkout"]);
+    expect(lineOf(r.out, REPLAY)).toMatch(/^NOT VERIFIED .*this checkout's candidate was not read/);
+    expect(r.log.some((x) => x.params.method_name === "simulate_intents")).toBe(false);
+    expect(r.code).toBe(1);
+  });
+
+  // gate: REPLAY
+  // Every shared case through the command. The command takes the mandate's code hash from the checkout's candidate and
+  // the proposals from the run's propose steps, so a case that changes only those inputs is not one of its cases.
+  it.each(REPLAY_CASES.filter((c) => c.input?.mandate_code_hash === undefined).map((c) => [c.id, c] as const))("%s: the command's replay line follows the rules", async (_id, c) => {
+    const ev = c.input?.verifier_code_hash === null ? syntheticRun(c.options) : syntheticLiveEvidence(c.options);
+    const r = await mainnet(c.options, ev);
+    const line = lineOf(r.out, REPLAY);
+    const expected = expectedStatus(c);
+    if (expected === "verified") {
+      expect(line).toMatch(/^PASS /);
+      expect(r.out).toMatch(/^VERIFIED: /m);
+      expect(r.code).toBe(0);
+      return;
+    }
+    // A read the command needs before the replay may be the unserved one: then there is no replay line at all.
+    const reached = !line.startsWith("(no line");
+    if (reached) expect(line).toMatch(expected === "failed" ? /^FAIL / : /^NOT VERIFIED /);
+    else expect(c.unserved).toBe(true);
+    expect(lines(r.out, "PASS").filter((l) => l.includes("mainnet.replay"))).toEqual([]);
+    expect(r.out).toMatch(/^NOT VERIFIED: /m);
     expect(r.code).toBe(1);
   });
 });
