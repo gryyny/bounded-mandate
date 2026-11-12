@@ -315,8 +315,9 @@
     {
       "file": "release/secret-scan.md",
       "original_sha256": "e5dd0cf2c7df5d78d891b1220d3707a6728276e25032dc2d1abbd263b8c84309",
-      "archived_sha256": "e5dd0cf2c7df5d78d891b1220d3707a6728276e25032dc2d1abbd263b8c84309",
-      "path_redaction": false
+      "archived_sha256": "20bd9054cc11e9aeaeafb652aab59d07fe017e9d4d6d691b9eb4eaeea48fa90f",
+      "path_redaction": false,
+      "formatting": "Only extra blank lines at EOF removed after path redaction; all scan outcomes unchanged. Original report retained in ignored out/release/."
     },
     {
       "file": "release/site-check.json",
@@ -537,5 +538,6 @@
       "compression": null
     }
   ],
-  "media_note": "The exact privacy-cleaned demo-video.log is the video input; its original command-log hash and the only redaction are recorded in video-log-provenance.json. Every video source hash was checked against the source clone. Compressed logs preserve the original result text with only stated path redactions. Acceptance/run/gate JSON is copied unedited."
+  "media_note": "The exact privacy-cleaned demo-video.log is the video input; its original command-log hash and the only redaction are recorded in video-log-provenance.json. Every video source hash was checked against the source clone. Compressed logs preserve the original result text with only stated path redactions. Acceptance/run/gate JSON is copied unedited.",
+  "artifact_bytes": "The two generated HTML files retain their exact rendered/browser-inspected bytes and CSP script hashes. Bundle-local Git attributes classify only those HTML outputs as binary (upstream embedded library whitespace is data); all evidence files disable checkout line-ending conversion. Source whitespace checks and every product verification assertion are unchanged."
 }

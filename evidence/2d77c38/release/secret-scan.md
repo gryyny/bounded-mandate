@@ -8,4 +8,3 @@ Scope: all blobs reachable from every ref (git rev-list --objects --all), every 
 | near-hackathon | 3cd0c6bf3418 | 8 | 81 | 191 (0) | 4742174 | 17 | 0 |
 
 Findings: 0; untriaged: 0.
-
