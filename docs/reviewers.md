@@ -1,6 +1,6 @@
 # Reviewer guide
 
-Detail for checking the claims in the [README](../README.md): the owner journey, how it works, the evidence verifier and the quick demo, commands and timings, platform needs, ways to evaluate, the demo stages, status, gates, the attack log, the mechanism, known limits, review history and the repository layout. Comparisons are in [comparison.md](comparison.md); the opt-in live runner is in [live-runner.md](live-runner.md).
+Detail for checking the claims in the [README](../README.md): the owner journey, how it works, the evidence verifier, the quick demo, the sandbox lab and the integration example, commands and timings, platform needs, ways to evaluate, the demo stages, status, gates, the attack log, the mechanism, known limits, review history and the repository layout. Comparisons are in [comparison.md](comparison.md); the opt-in live runner is in [live-runner.md](live-runner.md).
 
 ## What the owner does
 
@@ -57,7 +57,7 @@ The product is the complete control system, not any one of its parts:
 
 **Replay without setup.** Open the [committed evidence page](../evidence/b480057/page/index.html) in a browser. Open each step to inspect the recorded balances, grant key and receipts. The page runs offline and shows the certified comparison alongside the replay.
 
-**Check the committed evidence (`make verify`, no toolchain)** and **run the story without Rust (`make quick`)**: see the two sections below.
+**Check the committed evidence (`make verify`, no toolchain)**, **run the story without Rust (`make quick`)**, **operate a sandbox treasury (`make lab`)** and **run the client example (`make example`)**: see the four sections below. The lab and the example are newer than the certified b480057 bundle and are not part of it.
 
 **Run the full demo (`make demo`, needs Rust).** See a valid trade fill, hostile requests refused, the same unexpired signed order refused after revocation, and the owner recover and withdraw both assets.
 
@@ -96,11 +96,41 @@ What it does not establish:
 - Expected last line: `setup … ms | story … ms | 60/60 assertions passed | browser start … ms (not in setup or story)`. The 60 are the 59 demo story checks and the prebuilt pin check.
 - Measured at b480057: on a clean GitHub Actions ubuntu-24.04 runner with no Rust toolchain, 87 s from job start (`npm ci`, Chromium with its system libraries, then `make quick` in 43 s: setup 15.2 s, story 20.5 s); 39 s warm on macOS arm64.
 
+### Sandbox lab (`make lab`)
+
+`make lab` starts a local service that a visitor operates in a browser. It needs Node 24 and network access on the first run (npm and the NEAR sandbox binary), and no Rust or Chromium. It prints the sandbox label and then `lab: http://127.0.0.1:8791/ (revision …; up to 6 sessions)`; open that address, and stop the lab with Ctrl-C. No hosted lab exists yet: hosting needs the owner's separate approval.
+
+- **What runs.** A local sandbox chain with the exact deployment candidate, the pinned verifier and the hash-pinned prebuilt test doubles of `make quick` ([fixtures/prebuilt](../fixtures/prebuilt/provenance.json)). The lab refuses to start if any WASM differs from its pin. It holds only disposable keys created for that sandbox and contacts no public network; it has no setting that names one.
+- **What you can do.** Operate tab: set limits and grant, propose a permitted trade, an unsafe trade (too large, or at too poor a price), a poor but permitted trade, withhold a signed order, revoke, relay the withheld order, recover, and switch the session's own oracle and signer doubles off. Every answer is read from the sandbox's receipts and views. Orders live 120 s here instead of the demo's 60 s so a person has time to act; the lab never fast-forwards the chain.
+- **Compare tab.** Runs the owner's alternatives from equal starting conditions: wait for expiry, cancel a complete nonce list, cancel an incomplete list, cancel with the signer unavailable, remove the key and resume with a fresh key, remove and re-add the same key. The certified comparison is gate COMPARE ([write-up](comparison.md#compared-with-simpler-alternatives-compare)); the tab's runs are not.
+- **Only listed actions.** The service offers its page, read-only views and the listed actions. It has no route to the sandbox RPC, and it refuses a JSON-RPC shaped request on any path.
+- **Isolated sessions.** Each session gets its own mandate, verifier, oracle and signer doubles, tokens and accounts; nothing is shared between two sessions, and there is no shared time control. Reset builds a clean world. Defaults: 6 sessions at once, 2 per client, 120 actions per session, ended after 10 minutes idle or 30 minutes in total (`LAB_*` in [tools/src/lab/config.ts](../tools/src/lab/config.ts)).
+- **Export and replay.** Export scenario gives a JSON file naming the source revision, the WASM hashes, the test doubles and every action with its outcome. Replay it on a fresh local sandbox:
+
+```sh
+cd tools && npx tsx src/lab/replay.ts <scenario.json>   # --fast runs the actions back to back
+```
+
+It prints `same` or `DIFFERENT` per action and ends `replay matches: … actions with the same outcomes` (exit 0) or `replay DOES NOT match …` (exit 1). The scenario must name exactly the binaries the checkout pins. Actions are spaced as recorded, so outcomes that depend on a deadline repeat.
+
+Every surface is labelled sandbox with test doubles. The lab is uncertified as evidence of anything on mainnet, and it is not part of the b480057 bundle; its own cases are gate LAB ([Required gates](#required-gates)).
+
+### Integration example (`make example`)
+
+`make example` runs a small strategy client, [examples/strategy-client/client.js](../examples/strategy-client/client.js), against a local sandbox. It needs Node 24 and network access on the first run, and no Rust, funds or model key. The client is a separate package that imports nothing from `tools/` and depends only on `near-api-js`. It is an example, not an SDK.
+
+- The client receives an RPC URL, the mandate and agent account names and the agent's key file. It uses only the agent's function-call key, `propose_order` and the views `get_config`, `get_grant` and `get_order`.
+- It prints one JSON line per observation: `accepted` (an allowed proposal was signed), `refused` (a proposal of twice the per-order cap was refused, with the contract's reason) and `revoked` (the grant shows revoked, and a further proposal was refused).
+- The harness ([tools/src/example/main.ts](../tools/src/example/main.ts)) plays the owner and the filler on the prebuilt set, and compares each observation with chain state it reads itself.
+- Expected output ends with `all three observations match the chain; out/example/result.json`, followed by one line stating the label `SANDBOX WITH TEST DOUBLES (PREBUILT, UNCERTIFIED)`. It writes only `out/example/`.
+
+It is not a mainnet result and is not bound to an acceptance run; its acceptance case is EXAMPLE.strategy-client. To point the client at another deployment, see the usage note at the top of `client.js`.
+
 ## Commands and timings
 
 | Command | Expected last line | Measured at b480057 | What it proves |
 | --- | --- | --- | --- |
-| `make test` | A line starting `CERTIFIED: run`, followed by the run id and `out/evidence/acceptance.json`. A tree with uncommitted changes ends `COMPLETE BUT UNCERTIFIED (dirty tree)` instead. | macOS arm64 fresh clone (Node 24.22.1; no meta checkout, funds or model key): 1507 s with a cold build; run `20261110T231805526Z-2ca01ad9786c` certified 37/37, with 198 Rust and 823 TypeScript tests passed. GitHub Actions ubuntu-24.04, [run 42922155040](https://github.com/gryyny/bounded-mandate/actions/runs/42922155040) (the link opens once the repository is public): 2137 s; run `20261110T232259961Z-b7537f7d5618` certified. | All 37 required cases of the 17 gates passed in one run of a clean tree, bound to the revision and the spec, fixture and WASM hashes ([Required gates](#required-gates)). |
+| `make test` | A line starting `CERTIFIED: run`, followed by the run id and `out/evidence/acceptance.json`. A tree with uncommitted changes ends `COMPLETE BUT UNCERTIFIED (dirty tree)` instead. | macOS arm64 fresh clone (Node 24.22.1; no meta checkout, funds or model key): 1507 s with a cold build; run `20261110T231805526Z-2ca01ad9786c` certified 37/37, with 198 Rust and 823 TypeScript tests passed. GitHub Actions ubuntu-24.04, [run 42922155040](https://github.com/gryyny/bounded-mandate/actions/runs/42922155040) (the link opens once the repository is public): 2137 s; run `20261110T232259961Z-b7537f7d5618` certified. | Every required case of every gate passed in one run of a clean tree, bound to the revision and the spec, fixture and WASM hashes: 37 cases of 17 gates at b480057, 48 cases of 20 gates in the current list ([Required gates](#required-gates)). |
 | `make demo` | `setup … ms \| story … ms \| 59/59 assertions passed \| browser start … ms (not in setup or story)` | macOS arm64: 60 s warm, run after `make test` (setup 15.6 s, demonstration 20.0 s, browser start 0.4 s; the rest is `npm ci` and the cached WASM build); a cold `make demo` was not measured separately. Linux CI: 63 s (setup 12.8 s, demonstration 19.9 s). | The nine-stage revocation story on a local sandbox ([What the demo runs](#what-the-demo-runs)). The 59 assertions are story checks, not acceptance results. |
 | `make page` | A line starting `rendered` with the path to `out/page/index.html`. | Reads the saved `out/evidence/demo.json` and the latest local acceptance files. In the b480057 fresh clone it reproduced the page byte for byte. | Refreshes the evidence page after acceptance without running the sandbox again. The page explains any certification mismatch. |
 | Open `out/page/index.html` and `out/console/index.html` | Both open from disk. The page makes no network request before you press its verification button; the console makes none before a button press, except to resume an action already pending in that browser. | Not timed. | The evidence page binds the demo to the acceptance run and shows gates as certified only after `make test` passed on the same clean revision, otherwise "not certified for this demo". The console is the static owner console with no backend: a read-only view, and exact previews of the owner's revoke, recover and withdrawal, signed outside the page. |
@@ -124,8 +154,10 @@ What it does not establish:
 | Path | Do | See |
 | --- | --- | --- |
 | Video | Watch the short cut (85.9 s, six scenes: the problem, the agent trades, hostile requests refused and one order held back, owner revocation with the held order rejected, funds returned, where to verify); hosted once the site is published at [bounded-mandate-short.mp4](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4). A longer technical walkthrough (217.1 s) covers the same run, numbered by the same steps, plus the attack log, valid-trade results, matched alternatives, gates and provenance; hosted once the site is published at [bounded-mandate-demo.mp4](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-demo.mp4). Both cuts were rendered from the b480057 fresh-clone demo ("Certified for this demo") ([video.json](../evidence/b480057/video.json); sha256 `e3de020d21336e1e51f781f4b007ac88bee653381b5e460bc7b6e5137b1366f6` short, `f0e35985501ef7bec78083cf89225046fd622211673ca25445f526ca47b1ae19` walkthrough). Both MP4s are in the bundle under [evidence/b480057/video/](../evidence/b480057/video); [tools/src/video/make.ts](../tools/src/video/make.ts) rebuilds them locally. | The revocation story from one sandbox run: balances, trading limits, a recorded model proposal traded, a signed order withheld, confirmed revocation, the withheld order rejected, balances recovered. |
-| Evidence page | Open [evidence/b480057/page/index.html](../evidence/b480057/page/index.html) in a browser (self-contained, no network). Hosted copy, live once the site is published: <https://gryyny.github.io/bounded-mandate/> | The outcome against the agent's 50/50 objective, the withheld order's identity and its rejection, the regrant and disclosed-signature sandbox cases, acceptance gates, matched baseline, claims and non-claims, policy and provenance. An opt-in panel (§V) runs read-only checks against a mainnet RPC from the browser; nothing is requested before you press its button. `make demo` regenerates the page at `out/page/index.html`. |
+| Evidence page | Open [evidence/b480057/page/index.html](../evidence/b480057/page/index.html) in a browser (self-contained, no network). Hosted copy, live once the site is published: <https://gryyny.github.io/bounded-mandate/> | The outcome against the agent's 50/50 objective, the withheld order's identity and its rejection, the regrant and disclosed-signature sandbox cases, acceptance gates, matched baseline, claims and non-claims, policy and provenance. An opt-in panel (§V) runs read-only checks against a mainnet RPC from the browser; nothing is requested before you press its button. After a mainnet run it also runs the [historical replay](#historical-replay-of-the-withheld-order). A page generated at the current revision also presents the four paths (try, compare, verify, integrate). `make demo` regenerates the page at `out/page/index.html`. |
 | Owner console (sandbox; certified at b480057, see [evidence/b480057](../evidence/b480057)) | After `make demo`, open `out/console/index.html`. Hosted copy, live once the site is published: <https://gryyny.github.io/bounded-mandate/console/> | A static console with no backend. Visitors get a read-only view of policy, grant status, key presence, orders, balances and evidence provenance. The owner's revoke, recover and withdrawal actions are previewed exactly and signed outside the page; the page holds no key or model credential and never resubmits on its own. External wallets connect through NEAR Connect (pinned library, in-page wallet list, adapters pinned by commit). Its browser flow is tested in headless Chromium against the sandbox only, through the labelled local test signer and the labelled sandbox test wallet; no real wallet provider has signed through it yet. |
+| Sandbox lab (sandbox with test doubles; uncertified; not in the b480057 bundle) | `make lab`, then open <http://127.0.0.1:8791/>. No hosted lab exists yet. | Your own sandbox treasury: limits, trades, a withheld order, revocation, the retry and recovery, and the owner's alternatives on the Compare tab ([Sandbox lab](#sandbox-lab-make-lab)). |
+| Integration example (sandbox with test doubles; uncertified; not in the b480057 bundle) | `make example` | An independent client reaches an accepted proposal, a refusal and the revocation, each checked against the chain ([Integration example](#integration-example-make-example)). |
 | Mainnet receipts | Run the read-only commands in [Verify on mainnet](#verify-on-mainnet-read-only) with `curl` and `jq`; no wallet, key or funds | The pinned verifier WASM matches the code at `intents.near`. Live relay and recovery receipts are pending an approved run. |
 | Attack log | Read the [attack log](#attack-log) | Each malicious request, the layer that stopped it, the enforcing source line and the certified result. |
 
@@ -163,6 +195,24 @@ curl -sS "$RPC" -H 'Content-Type: application/json' \
 ```
 
 The two views above show current state only. The historical proof is the relay transaction's receipts: the verifier receipt fails with the removed-key error in a block before the order's deadline. `has_public_key` cannot say when a key was removed, and `is_nonce_used` can read `false` for a used nonce after the verifier's garbage collector cleans up expired nonces. The evidence page's opt-in panel checks the receipts this way.
+
+### Historical replay of the withheld order
+
+**It can run only after a mainnet run, which has not happened.** After one, `node verify.mjs --mainnet` and the evidence page's opt-in panel also replay the withheld bundle read-only against archival state. Both apply the same rules. `verify.mjs` prints one `mainnet.replay …` line per relayed bundle.
+
+The removal snapshot is the block in which the successful `remove_public_key` receipt of the revoke executed, not the block that included the revoke transaction. The preceding snapshot is that block's `prev_hash`. The line is `PASS` only when all six hold:
+
+1. The bundle is read from the relay transaction on chain, and its mandate order is one the mandate logged as signed in an earlier block.
+2. At the preceding snapshot the order's signing key is registered for the mandate, and `simulate_intents` accepts the exact relayed bundle: every intent executed, no invariant violation.
+3. At the removal snapshot the key is absent, and `simulate_intents` refuses the identical bundle because that key does not exist for the mandate.
+4. Both snapshots' block times are before every deadline in the bundle.
+5. The relay transaction itself failed on the verifier for the same removed key, in a block before the order's deadline.
+6. The mandate and the verifier have, at both snapshots, the code hashes the run recorded; the mandate's is this checkout's deployment candidate.
+
+- **Inconclusive is not verified.** If the RPC does not serve the archival state a rule needs, the line is `NOT VERIFIED` (inconclusive). Evidence that contradicts a rule gives `FAIL`. With `--no-checkout` the candidate is not read, so the replay is not run and the line is `NOT VERIFIED`.
+- **`--pace-ms <n>`** sets the least time between two RPC requests (default 500), because public archival endpoints answer bursts with HTTP 429. A rate-limited request is retried 3 times; after that its check is `NOT VERIFIED`.
+- **What it shows.** A historical replay of chain state: the bundle was executable at the preceding snapshot and refused at the removal snapshot. It does not show when the counterparty created its signature.
+- **How it is tested today.** Gate REPLAY runs `verify.mjs` and the panel on shared synthetic cases against a local archival RPC stub and requires the same result from both. Nothing has been replayed against mainnet.
 
 ## What the demo runs
 
@@ -203,7 +253,7 @@ Release checks at b480057, in the bundle's [release/](../evidence/b480057/releas
 
 ## Required gates
 
-A gate passes only when every one of its required cases ([tools/src/evidence/required.ts](../tools/src/evidence/required.ts)) passed in one run of a clean revision. T1 to DEPLOY were first certified at f60f999; DAO to CONSOLE were added, and all required cases were first certified together at f01b496 (33 then). CONSOLE.wallet-sandbox was added at 4fec11b, where all 34 passed; COMPARE was added at 958d411, where all 35 passed; 72bf8c7 passed the same 35 with stricter T1 and COMPARE assertions. SIGNER.conformance and LIVE.open-challenge were added after 51d2532, so 37 cases of 17 gates are now required; the 51d2532 bundle predates them. All 37 were first certified together at b480057.
+A gate passes only when every one of its required cases ([tools/src/evidence/required.ts](../tools/src/evidence/required.ts)) passed in one run of a clean revision. T1 to DEPLOY were first certified at f60f999; DAO to CONSOLE were added, and all required cases were first certified together at f01b496 (33 then). CONSOLE.wallet-sandbox was added at 4fec11b, where all 34 passed; COMPARE was added at 958d411, where all 35 passed; 72bf8c7 passed the same 35 with stricter T1 and COMPARE assertions. SIGNER.conformance and LIVE.open-challenge were added after 51d2532, so 37 cases of 17 gates were required then; the 51d2532 bundle predates them. All 37 were first certified together at b480057. REPLAY, LAB and EXAMPLE (11 cases) were added after b480057, so 48 cases of 20 gates are now required; the b480057 bundle predates them, and no bundle with all 48 is archived yet.
 
 - **T1**: a withheld signed order relayed after revocation, after regrant, during pending signing and activation, and after failed removal and retry.
 - **T2**: seeded randomized interleavings, in unit tests and in sandbox, with no cap violation and no double release.
@@ -222,6 +272,9 @@ A gate passes only when every one of its required cases ([tools/src/evidence/req
 - **CONSOLE**: the owner console in headless Chromium against sandbox through the labelled local test signer and, through NEAR Connect, the labelled sandbox test wallet; neither is a real wallet provider.
 - **COMPARE**: the matched comparison of the owner's alternatives on the pinned verifier: wait for expiry, cancel recorded nonces, remove the key and resume with a fresh key, remove and re-add the same key.
 - **SIGNER**: the contract's MPC response decoder and key check against a recorded mainnet `v1.signer` EdDSA response (read-only fixture; not our own signing on mainnet). The contract's `ext::verified_signature` is private, so the test composes the same public adapter calls (`mpc::parse_signature`, then the host `ed25519_verify` against `mpc::parse_public_key`); a check added only inside `verified_signature` would not be covered.
+- **REPLAY**: the rules of the historical replay of the withheld order (REPLAY.historical-rules), run by `verify.mjs` and by the page's verification panel on shared synthetic cases against a local archival RPC stub; no chain is read.
+- **LAB**: the sandbox lab and its comparison view on the exact deployment candidate with hash-pinned prebuilt test doubles: `workflow`, `isolation`, `reset`, `limits-change-outcomes`, `refusals`, `export-replay`, `flood-limits`, `page` and `owner-alternatives`.
+- **EXAMPLE**: the independent strategy client against a local sandbox with prebuilt test doubles reaches its three observations: accepted, refused, revoked (EXAMPLE.strategy-client).
 
 The owner-key rescue (RESCUE.owner-key) is reported separately and never counts toward a gate.
 
@@ -312,7 +365,8 @@ The competitive review at 51d2532 required both signed legs to simulate before r
 | `contract/` | Rust mandate contract; `contract/tests/` holds the sandbox and adversarial gate suites. |
 | `stubs/` | Labelled test doubles for the MPC signer, oracle and tokens. |
 | `baseline/` | Our re-implementation of the Claw Guard design, adapted for the matched comparison. |
-| `tools/` | TypeScript model adapter, filler, attack suite, demo, live runner, evidence page, owner console and release checks (`tools/src/release/`: secret scan, site routing and CSP, licenses). |
+| `examples/strategy-client/` | The independent strategy client that `make example` runs; a separate package. |
+| `tools/` | TypeScript model adapter, filler, attack suite, demo, sandbox lab (`tools/src/lab/`), example harness, live runner, evidence page, owner console and release checks (`tools/src/release/`: secret scan, site routing and CSP, licenses). |
 | `fixtures/` | Pinned external inputs and recorded model interactions, with provenance in `fixtures/manifest.json`. |
 | `evidence/` | Curated gate and demo evidence, bound to a source revision. |
 | [hosting/](../hosting/) | Prepared GitHub Pages workflow and routing notes. The workflow is saved disabled and is enabled only at publication. |

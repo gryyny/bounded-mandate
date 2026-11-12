@@ -26,6 +26,7 @@ The agent names a side, an amount and a price concession up to your maximum; a c
 | --- | --- | --- |
 | `make verify` | Node 20+; offline | Last line starts `VERIFIED: evidence/b480057` |
 | `make quick` | Node 24, network; no Rust | `60/60 assertions passed`, labelled uncertified |
+| `make example` | Node 24, network; no Rust | `all three observations match the chain`, labelled uncertified |
 | `make test && make demo` | Rust, `cargo-near`, Node 24 | `CERTIFIED: run …`, then `59/59 assertions passed` |
 
 `make verify` checks committed evidence and reruns nothing. `SHA256SUMS` is unsigned: it detects accidental or partial change, not a self-consistent rewrite, so trust rests on the commit history and on rerunning `make test`. [Setup, timings, outputs](docs/reviewers.md#running-the-demo-and-the-gates); [evidence page](evidence/b480057/page/index.html).
@@ -40,6 +41,8 @@ Each is also on the evidence page. The lab and the client example are newer than
 | **Compare** | Reproduce the owner's alternatives from equal starting conditions: wait for expiry, cancel a complete or an incomplete nonce list, cancel with the signer unavailable, remove the key, re-add the same key. | `make lab`, Compare tab. Certified comparison: gate COMPARE ([report](evidence/b480057/tests/COMPARE.revocation-alternatives.json), [write-up](docs/comparison.md#compared-with-simpler-alternatives-compare)) |
 | **Verify** | Inspect the mainnet trade, key removal, rejection and recovery, with the historical replay of the withheld order. **No mainnet run yet**: today this checks the committed evidence and the verifier's code hash. | `make verify`; [read-only checks](docs/reviewers.md#verify-on-mainnet-read-only) |
 | **Integrate** | Run a small strategy client, separate from the demo, that uses the agent's function-call key, `propose_order` and the contract's views. An example, not an SDK. | `make example` |
+
+`make lab` serves the lab at <http://127.0.0.1:8791/> until you stop it; it needs Node 24 and network access on the first run, and no Rust. It runs the exact deployment candidate, the pinned verifier and hash-pinned prebuilt test doubles on a local sandbox, and holds only disposable sandbox keys. Its results are sandbox execution, uncertified, and evidence of nothing on mainnet. No hosted lab exists yet. The client is [examples/strategy-client/client.js](examples/strategy-client/client.js). Details: [lab](docs/reviewers.md#sandbox-lab-make-lab), [example](docs/reviewers.md#integration-example-make-example), [historical replay](docs/reviewers.md#historical-replay-of-the-withheld-order).
 
 ## Three checkable facts
 
@@ -158,7 +161,7 @@ npx tsx src/agent/rehearse.ts --state ../out/rehearsal-state.json --manifest <ap
 - [fixtures/vectors/oracle.json](fixtures/vectors/oracle.json): public read-only responses of `aggregate-oracle.near`.
 - [fixtures/signer/v1-signer-eddsa-sign.json](fixtures/signer/v1-signer-eddsa-sign.json): read-only records of a third party's mainnet `v1.signer` sign request, its response and the derived public key (public chain data), used by the SIGNER gate. Provenance is in [its provenance file](fixtures/signer/v1-signer-eddsa-sign.provenance.json).
 - [fixtures/wallets/near-connect.json](fixtures/wallets/near-connect.json): wallet entries from the NEAR Connect wallet manifest ([hot-dao/near-selector@9cee11c](https://github.com/hot-dao/near-selector/tree/9cee11c04cfd42f5a420688f808d4aca612b5fde); MIT per npm metadata), with each adapter URL pinned by commit and sha256. The adapters themselves are not in this repository; the console fetches a chosen wallet's pinned adapter at run time.
-- [fixtures/prebuilt/](fixtures/prebuilt/provenance.json): our own `stubs/` compiled for `make quick`; each WASM contains third-party crates compiled unmodified, listed with their licenses in [NOTICE](NOTICE) (including BSD-3-Clause `curve25519-dalek` 4.1.3, `ed25519-dalek` 2.2.0 and `subtle` 2.6.1, and MPL-2.0 `wee_alloc`).
+- [fixtures/prebuilt/](fixtures/prebuilt/provenance.json): our own `stubs/` compiled for `make quick`, `make lab` and `make example`; each WASM contains third-party crates compiled unmodified, listed with their licenses in [NOTICE](NOTICE) (including BSD-3-Clause `curve25519-dalek` 4.1.3, `ed25519-dalek` 2.2.0 and `subtle` 2.6.1, and MPL-2.0 `wee_alloc`).
 - `stubs/`: our own labelled test doubles, written against the documented interfaces of `v1.signer`, `aggregate-oracle.near` and NEP-141.
 
 **Tooling, not distributed:**

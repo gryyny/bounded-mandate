@@ -34,6 +34,8 @@ When an owner stops trusting an agent, signed orders may still be outstanding. T
 | **Remove the key, resume with a fresh key (the mechanism the mandate uses, measured here on the test account)** | **0 by the account key; the owner still signs `revoke`** | **0 of 3** | **yes** | **a new key; the mandate derives one per grant** |
 | Remove the key, re-add the same key | 0 by the account key | 0 of 3 while removed, 3 of 3 after the re-add | yes while removed, no after the re-add | same key, which revives every unexpired order |
 
+To run these alternatives yourself, plus cancellation with the signer unavailable, use the Compare tab of the sandbox lab (`make lab`; [reviewer guide](reviewers.md#sandbox-lab-make-lab)). Those runs are sandbox execution and uncertified; the table above is the certified result.
+
 What this shows, and what it does not:
 
 - **Cancelling every order needs the account's signer and a complete list.** With both, cancellation stops every listed order. The verifier batches the signed empty intents in one transaction. In the mandate the signer is the MPC network, which is the dependency an owner may most want to stop trusting. Removing the key needs neither the nonce list nor a signature from the grant's MPC key. The owner authorizes `revoke` and the contract removes the key and confirms removal in a callback, which T1 tests.
