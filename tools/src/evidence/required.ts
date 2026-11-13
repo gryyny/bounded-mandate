@@ -20,7 +20,7 @@ export const REQUIRED_CASES = {
   HANDOFF: ["import-verified", "import-refusals", "lost-response-resume", "unrecorded-owner-tx"],
   /** The owner's ft_withdraw of both assets after recovery, outside recovery claims. */
   WITHDRAW: ["both-assets", "unregistered-owner", "failed-receipt-retry"],
-  /** The primary live-agent template's full sequence in live-sandbox on the exact deployment binary (synthetic provider). */
+  /** The optional live-agent template's full sequence in live-sandbox on the exact deployment binary (synthetic provider). */
   /** And the optional open challenge: open and close templates after a completed run, adversary holding the agent key (sandbox). */
   LIVE: ["agent-template", "open-challenge"],
   /**

@@ -448,7 +448,7 @@ describe("live-agent manifest template", () => {
     expect(r.message).toMatch(/invalid manifest/);
   });
 
-  it("is the primary template: the fixed template's grant, trade and withheld order, then owner actions signed outside the runner and both withdrawals", () => {
+  it("is the optional live-agent template: the fixed template's grant, trade and withheld order, then owner actions signed outside the runner and both withdrawals", () => {
     const steps = LiveManifest.shape.steps.parse(agent.steps);
     expect(steps.map((x) => x.kind)).toEqual([
       "check",
@@ -480,7 +480,7 @@ describe("live-agent manifest template", () => {
     expect(trade?.kind === "propose" && trade.source).toMatchObject({ from: "model", provider: "near-ai", timeout_ms: 90_000, max_tokens: 4_096 });
     // The withheld order stays a fixed manifest proposal, so the revocation test runs whatever the agent decides.
     expect(withheld?.kind === "propose" && withheld.source).toEqual({ from: "manifest", proposal: { sell: "usdc", sell_amount: "500000", max_concession_bps: 30 } });
-    // Identities, policy and the inventory and sale caps are shared with the fallback; only the fee, deposit and
+    // Identities, policy and the inventory and sale caps are shared with the fixed-proposal template; only the fee, deposit and
     // transaction caps grow for the owner withdrawals.
     const shared = (m: typeof agent) => {
       const b = m.budget as Record<string, unknown>;
@@ -496,7 +496,8 @@ describe("live-agent manifest template", () => {
       ["keys.owner_external", "full_access"],
     ]);
     expect(listed(fixed)).toEqual([["keys.owner", "full_access"]]);
-    expect(String((fixed.notes as string[])[0])).toMatch(/^FALLBACK TEMPLATE.*unapproved until the owner authorizes it/);
+    expect(String((fixed.notes as string[])[0])).toMatch(/^REQUIRED PROOF TEMPLATE for the first mainnet run \(scripted fixed proposal.*unapproved until the owner authorizes it; manifest\.live-agent\.example\.json is the optional live-agent template, which needs its own approval and budget\./);
+    expect(String((agent.notes as string[])[0])).toMatch(/^OPTIONAL LIVE-AGENT TEMPLATE.*not the required proof; it needs its own approval and budget\./);
   });
 
   it("validates once filled: transactions, worst-case fees and deposits fit its caps with one withdrawal retry per asset", () => {

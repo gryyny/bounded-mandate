@@ -30,7 +30,7 @@ const ROWS: readonly [route: string, receives: string, reach: string][] = [
   [
     `Hosted actions: ${code("POST /v1/agents/{agent_id}/swap")}, ${code("limit-orders")}, ${code("transfer")}, ${code("withdraw")}, ${code("shield")}, ${code("unshield")}`,
     "A status. The API and the agent's wallet execute the action; no signed order is returned to the caller.",
-    `Revoking the grant stops an action that has not reached its dispatch commitment; after it, the docs say nothing can recall it, except a resting limit order. Limit orders are priced within a policy bound (${code("limit_order.max_deviation_bps")}, 0 to 300, default 100); cancelling needs only a grant, works while the agent is frozen and refunds the unfilled part; a freeze makes the API cancel resting orders (best effort). Not described as handing out a signature.`,
+    `Revoking the grant stops an action that has not reached its dispatch commitment; after it, the docs say nothing can recall it, except that a resting limit order can still be cancelled (what revoking a grant does to one is not documented). Limit orders are priced within a policy bound (${code("limit_order.max_deviation_bps")}, 0 to 300 basis points, default 100); cancelling needs only a grant, works while the agent is frozen and refunds the unfilled part; a freeze makes the API cancel resting orders (best effort). Not described as handing out a signature.`,
   ],
   [
     `Native ${code("evm/sign-intent")} and ${code("solana/sign-intent")}, off until the owner sets ${code("evm.sign_intent")} or ${code("solana.sign_intent")}`,

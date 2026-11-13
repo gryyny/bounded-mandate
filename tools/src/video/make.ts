@@ -908,7 +908,7 @@ function slideHtml(s: Scene, caption: string, binding: DemoBinding): string {
   const labels = s.provenance === undefined ? [...new Set([...(s.labels ?? []), ...KIND_LABEL[s.kind]])] : [s.provenance];
   const chips = labels.map((l) => `<span class="chip${s.mainnet !== undefined ? " mainnet" : /^(Recorded|Scripted|Ordinary|Owner action|Owner controls|Owner console|Read-only)|·/.test(l) ? " model" : ""}">${esc(l)}</span>`).join("");
   const status = certification(binding);
-  // The demo's certification says nothing about the mainnet run, which was made from its own revision.
+  // The demo's certification says nothing about a mainnet run, which would be made from its own revision.
   const corner = s.mainnet === undefined ? `<span class="chip acc${binding.certified ? " ok" : ""}">${esc(status.chip)}</span>` : `<span class="chip acc run">Mainnet run at revision ${esc(s.mainnet.revision.slice(0, 7))}</span>`;
   const reason = binding.certified || s.mainnet !== undefined ? "" : `<div class="reason">Not certified for this demo: ${esc(binding.reasons.join("; "))}</div>`;
   const strip = s.strip === undefined ? "" : stripHtml(s.strip, s.stage ?? s.title);

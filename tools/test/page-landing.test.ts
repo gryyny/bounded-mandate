@@ -143,7 +143,7 @@ describe("landing: the first screen", () => {
     // The README presents the same four paths, in the page's order.
     const paths = readme.slice(readme.indexOf("\n## Four paths"), readme.indexOf("\n## Three checkable facts"));
     expect([...paths.matchAll(/^\| \*\*([A-Za-z]+)\*\* \|/gm)].map((m) => (m[1] ?? "").toLowerCase())).toEqual([...PATH_KEYS]);
-    for (const command of ["`make lab`", "`make example`", "`make verify`", "gate COMPARE", "**No mainnet run yet**"]) expect(paths).toContain(command);
+    for (const command of ["`make lab`", "`make example`", "`make verify`", "gate COMPARE", "After an approved mainnet run: inspect its trade, key removal, rejection and recovery", "**No mainnet run yet**"]) expect(paths).toContain(command);
   });
 
   it("never calls the agent keyless: it holds a function-call key, and no signing key", () => {
@@ -519,6 +519,8 @@ describe("landing: four paths (try, compare, verify, integrate)", () => {
   it("Verify says that no mainnet run is recorded, and shows the run's own verdict words once one is", () => {
     const none = path(plain(), "verify");
     expect(none).toContain("<strong>No mainnet run is recorded: no mainnet transaction has been executed.</strong> There is no mainnet trade, removal, rejection or recovery to inspect yet, and nothing on this page is a mainnet result.");
+    expect(none).toContain("<p>After an approved mainnet run: inspect its trade, the confirmed key removal,");
+    expect(none).not.toContain("Inspect the real mainnet trade");
     expect(none).toContain('<a href="#mainnet">Mainnet status</a> · <a href="#verify">the read-only verification panel</a>');
     expect(none).toContain('<span class="mode pending">no mainnet run</span>');
     expect(none).toContain('<code class="cmd">make verify</code>');
@@ -528,6 +530,8 @@ describe("landing: four paths (try, compare, verify, integrate)", () => {
     expect(rejectedFile).not.toContain('class="mode mainnet"');
     const held = path(render(live("rejected_revoked_key")), "verify");
     expect(held).toContain('<span class="mode mainnet" title="execution mode">mainnet</span> <span class="status success">2 transactions · revocation test passed</span>');
+    expect(held).toContain("<p>Inspect the real mainnet trade, the confirmed key removal,");
+    expect(held).not.toContain("After an approved mainnet run");
     expect(held).toContain('<a href="#mainnet">The run\'s transactions and step verifications</a>');
     // A run whose relay was not rejected, or that does not hold as a whole, is never worded as a pass here either.
     for (const ev of [live("executed"), live("inconclusive"), live(null), live("rejected_revoked_key", { failedStep: true })]) {

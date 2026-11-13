@@ -1019,8 +1019,8 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
     // The hosted pages carry their own read date, and the Agent API's own price bound and cancellation are stated.
     expect(part).toContain(`${escapeHtml(AGENT_API_DOCS.limitOrders)}</code>`);
     expect(part).toContain(`read ${AGENT_API_DOCS.read}.`);
-    expect(part).toContain("<code>limit_order.max_deviation_bps</code>, 0 to 300, default 100");
-    expect(part).toContain("except a resting limit order");
+    expect(part).toContain("<code>limit_order.max_deviation_bps</code>, 0 to 300 basis points, default 100");
+    expect(part).toContain("except that a resting limit order can still be cancelled (what revoking a grant does to one is not documented)");
     expect(part).toContain("including limit orders with a policy price bound and cancellation");
     for (const route of ["evm/sign-intent", "solana/sign-intent", "POST /v1/agents/{agent_id}/swap"]) expect(part).toContain(`<code>${escapeHtml(route)}</code>`);
     expect(part).toContain(escapeHtml(AGENT_API_QUOTE));

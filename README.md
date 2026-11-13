@@ -4,7 +4,7 @@ Give an AI agent trading authority without unrestricted control of your treasury
 
 The agent names a side, an amount and a price concession up to your maximum; a contract prices the order from the oracle, then builds and signs it for NEAR Intents inside your size and turnover limits. One owner call removes the signing key, so signed orders that have not executed fail once removal is confirmed, and recovery returns the remaining assets without the agent.
 
-**The problem.** Pausing an agent stops new orders, but orders it already signed stay valid until they expire or are cancelled one by one. Here `revoke` removes the grant's signing key at the verifier; once removal is confirmed, every outstanding order fails. The gain over waiting is at most the order lifetime: 60 s in the demo, 120 s proposed for mainnet (not approved or run).
+**The problem.** Pausing an agent stops new orders, but NEAR Intents orders it already signed stay valid until they expire or each one's nonce is cancelled; how cancelling works depends on the venue. Here `revoke` removes the grant's signing key at the verifier; once removal is confirmed, every outstanding order fails. The gain over waiting is at most the order lifetime: 60 s in the demo, 120 s proposed for mainnet (not approved or run).
 
 **What NEAR provides.**
 - **Chain Signatures.** The contract gets each signature from `v1.signer` after checking the limits; no single person or server holds that key. In the sandbox evidence the signer is a single labelled test double, and our own mainnet signing is unexercised.
@@ -39,7 +39,7 @@ Each is on the evidence page. The lab, alternatives view, historical proof reade
 | --- | --- | --- |
 | **Try** | Operate a sandbox treasury in the lab: set limits and grant, trade, attempt an unsafe trade, withhold a signed order, revoke, retry it, recover. Sandbox execution with labelled test doubles. | `make lab` |
 | **Compare** | Reproduce the owner's alternatives from equal starting conditions: wait for expiry, cancel a complete or an incomplete nonce list, cancel with the signer unavailable, remove the key, re-add the same key. | `make lab`, Compare tab. Certified comparison: gate COMPARE ([report](evidence/2d77c38/tests/COMPARE.revocation-alternatives.json), [write-up](docs/comparison.md#compared-with-simpler-alternatives-compare)) |
-| **Verify** | Inspect the mainnet trade, key removal, rejection and recovery, with the historical replay of the withheld order. **No mainnet run yet**: today this checks the committed evidence and the verifier's code hash. | `make verify`; [read-only checks](docs/reviewers.md#verify-on-mainnet-read-only) |
+| **Verify** | After an approved mainnet run: inspect its trade, key removal, rejection and recovery, with the historical replay of the withheld order. **No mainnet run yet**: today this checks the committed evidence and the verifier's code hash. | `make verify`; [read-only checks](docs/reviewers.md#verify-on-mainnet-read-only) |
 | **Integrate** | Run a small strategy client, separate from the demo, that uses the agent's function-call key, `propose_order` and the contract's views. An example, not an SDK. | `make example` |
 
 `make lab` serves the lab at <http://127.0.0.1:8791/> until you stop it; it needs Node 24 and network access on the first run, and no Rust. It runs the exact deployment candidate, the pinned verifier and hash-pinned prebuilt test doubles on a local sandbox, and holds only disposable sandbox keys. Its results are sandbox execution, uncertified, and evidence of nothing on mainnet. No hosted lab exists yet. The client is [examples/strategy-client/client.js](examples/strategy-client/client.js). Details: [lab](docs/reviewers.md#sandbox-lab-make-lab), [example](docs/reviewers.md#integration-example-make-example), [historical replay](docs/reviewers.md#historical-replay-of-the-withheld-order).
@@ -64,7 +64,7 @@ Three withheld 1 USDC orders per strategy on the pinned verifier, relayed unexpi
 | Cancel nonces (an empty intent signed per order) | Needs the account's signer for each one. With the ledger's two nonces, 1 of 3 still executed; with a complete list, 0 of 3 | No list and no signature by the grant's key; the owner signs `revoke` |
 | Pause the agent | In our re-implementation of the Claw Guard design (not their deployed product), a withheld order executed after pause and agent removal; a regrant revived a second one that removing the key had blocked | Rejected after confirmed removal and after regrant (T1) |
 
-The advantage over waiting is bounded by the order lifetime: 120 s in this experiment, 60 s in the demo and 120 s proposed for mainnet. The 120 s is a proposed deviation from the spec's 60 s oracle maximum age, pending the owner's decision; it is not approved and has not run. Cancellation is venue-specific, other products can also remove and rotate keys, and the mainnet window is not yet measured. Details and limits: [comparison](docs/comparison.md).
+The advantage over waiting is bounded by the order lifetime: 120 s in this experiment, 60 s in the demo and 120 s proposed for mainnet. The 120 s is a proposed deviation from the spec's 60 s oracle maximum age, pending the owner's decision; it is not approved and has not run. Cancellation is venue-specific, other products can also remove and rotate keys, and the mainnet window is not yet measured. The official NEAR Intents Agent API already offers a limit-order price bound and order cancellation as a hosted service ([comparison with related NEAR projects](docs/comparison.md#comparison-with-related-near-projects)). Details and limits: [comparison](docs/comparison.md).
 
 ## Where to check each criterion
 
@@ -79,7 +79,7 @@ The advantage over waiting is bounded by the order lifetime: 120 s in this exper
 ## Who needs this and what is next
 
 - **DAO treasuries** that want an agent to rebalance within limits the DAO votes on, and to revoke and recover by proposal (Sputnik DAO as owner is certified in sandbox).
-- **Funds running agents** that need trading limits and revocation they can check on chain rather than take on trust.
+- **Funds running agents** that need trading limits and revocation enforced by a contract and checkable with a view call, rather than by a hosted service.
 - **Agent builders** who want to offer their users a mandate with a verifiable off switch.
 
 These are the users we are building for; there are no customers, revenue or adoption today. Next, in order: an independent security review → one treasury pilot → integrations validated against real callers (for example the Agent API, see [Complementary architecture](docs/comparison.md#complementary-architecture)).
@@ -108,7 +108,7 @@ More: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
 
 ## Mainnet runner (opt-in, not run)
 
-The mainnet signer `v1.signer` was upgraded on 2026-11-09 to near/mpc 3.18.0. The b480057 runner pins the earlier signer and refuses the upgraded one by design, so the mainnet run uses the newer certified revision that pins 3.18.0: the certified revision named in evidence/index.json ([details](docs/live-runner.md)). The contract and the deployment candidate are unchanged. The original b480057 [37-case bundle](evidence/b480057/acceptance.json) is preserved unchanged; use the [later-reader compatibility procedure](docs/reviewers.md#later-proof-reader-original-funded-runner) to check its original inputs without assigning it the expanded certification. The spec snapshot records requirements at its pinned source date; current execution status is in [evidence/index.json](evidence/index.json).
+The mainnet signer `v1.signer` was upgraded on 2026-11-09 to near/mpc 3.18.0. The b480057 and 2d77c38 runners pin the earlier signer (3.17.0) and are refused by the runner's own check, so the mainnet run uses a revision that pins 3.18.0 (the pin moved in b6b1815). No run may start until a revision containing that pin is certified and listed in [evidence/index.json](evidence/index.json) with that pin ([details](docs/live-runner.md)). The contract and the deployment candidate are unchanged. The original b480057 [37-case bundle](evidence/b480057/acceptance.json) is preserved unchanged; use the [later-reader compatibility procedure](docs/reviewers.md#later-proof-reader-original-funded-run-candidate) to check its original inputs without assigning it the expanded certification. The spec snapshot records requirements at its pinned source date; current execution status is in [evidence/index.json](evidence/index.json).
 
 `MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live` runs an approved manifest; the flag is not spending approval, and both mainnet templates are unapproved ([live runner](docs/live-runner.md)). Before the first grant, the provider path is rehearsed without any transaction; a real provider call is paid inference and needs the owner's explicit approval:
 

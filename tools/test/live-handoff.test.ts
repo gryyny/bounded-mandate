@@ -1,4 +1,4 @@
-// gate: HANDOFF, WITHDRAW, LIVE — the live runner's external owner actions, owner withdrawals and the primary template,
+// gate: HANDOFF, WITHDRAW, LIVE — the live runner's external owner actions, owner withdrawals and the optional live-agent template,
 // against a local sandbox only (never a public network). Mandates are the exact deployment binary from fixtures/deploy.
 // Owner transactions "signed outside the runner" are signed here by a SANDBOX LOCAL SIGNING ADAPTER (a test double
 // with TEST keys standing in for the console's wallet); this establishes nothing about any external wallet. Forged
@@ -1078,7 +1078,7 @@ describe("owner withdrawals signed outside the runner (withdraw_external)", () =
 /** Prepaid gas (TGas) too low for the pinned verifier's ft_withdraw in sandbox (fails at <= 35, succeeds at >= 40 when measured); 50 with the slack. */
 const LOW_WITHDRAW_TGAS = 30;
 
-describe("primary template (live agent, console-signed owner actions, withdrawals) on the exact deployment binary", () => {
+describe("optional live-agent template (console-signed owner actions, withdrawals) on the exact deployment binary", () => {
   // gate: LIVE
   it("runs the whole sequence: refused and agent proposals, trade, withheld order rejected while unexpired after confirmed removal, recovery and withdrawals", async () => {
     const tpl = JSON.parse(readFileSync(join(import.meta.dirname, "../src/live/manifest.live-agent.example.json"), "utf8")) as { budget: LiveManifest["budget"]; gas_tgas: LiveManifest["gas_tgas"]; steps: unknown[] };
@@ -1111,7 +1111,7 @@ describe("primary template (live agent, console-signed owner actions, withdrawal
       const ids = (r.evidence?.assertions ?? []).filter((a) => a.id.startsWith("step-"));
       expect(ids.map((a) => a.id)).toEqual(steps.map((s, i) => `step-${i + 1}-${s.kind}`));
       expect(ids.every((a) => a.passed)).toBe(true);
-      // The verifier's own manifest check accepts the runner's report of the primary template.
+      // The verifier's own manifest check accepts the runner's report of the live-agent template.
       expect(r.evidence?.environment.manifest_steps).toBe(steps.map((s) => s.kind).join(","));
       expect(await coverageProblems(r.evidence)).toEqual([]);
       expect(await coverageProblems({ ...r.evidence, receipts: r.evidence?.receipts.filter((x) => (x.detail as { method?: string }).method !== "revoke") })).toEqual([expect.stringMatching(/^step \d+ revoke_external: 1 of 1 without a transaction among the receipts$/)]);

@@ -174,7 +174,7 @@ describe("R1: the post-setup state against the approved setup record", () => {
     expect(specDeviations(input({ timing: 60 }), live)).toEqual([]);
   });
 
-  it("refuses a distinct external key for the fallback template, which has no external steps", () => {
+  it("refuses a distinct external key for the fixed-proposal template, which has no external steps", () => {
     expect(setupProblems(input({ model: false }), fallback, matching(input({ model: false })), pins).join("\n")).toMatch(/no external steps/);
   });
 });

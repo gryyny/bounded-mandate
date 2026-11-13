@@ -1,5 +1,5 @@
 // gate: LIVE — the optional open challenge (SPEC.md "Open challenge grant (optional)") against a local sandbox only
-// (never a public network), on the exact deployment binary from fixtures/deploy. After a completed run of the primary
+// (never a public network), on the exact deployment binary from fixtures/deploy. After a completed run of the optional
 // live-agent template, a new owner deposit and a fresh grant through the challenge template; then an ADVERSARY SCRIPT
 // that holds only the agent's key (handed over as a credential file in a temp dir, like the published key) and its own
 // account tries every withdrawal, transfer, key and policy route, trades at the limits as its own counterparty, relays
@@ -178,7 +178,7 @@ describe("open challenge on the exact deployment binary", () => {
       await settleFinal();
     };
 
-    // 1. The completed primary run: the primary template's whole sequence. Sandbox deviation: the grant's order lifetime
+    // 1. The completed primary run: the live-agent template's whole sequence. Sandbox deviation: the grant's order lifetime
     // and oracle age are 1800 s, so the withheld order is still unexpired while the challenge grant is live and its
     // rejection there is attributable to key removal, not to expiry.
     const primary = template("manifest.live-agent.example.json");
