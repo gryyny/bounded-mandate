@@ -15,9 +15,10 @@ export const AGENT_API_EXAMPLES_URL = `${AGENT_API_EXAMPLES.repository}/blob/${A
 
 /** Hosted documentation for the ordinary action routes. */
 export const AGENT_API_DOCS = {
+  limitOrders: "https://docs.agentsonintents.com/integration/agent-api/limit-orders",
   executions: "https://docs.agentsonintents.com/integration/agent-api/executions",
   grants: "https://docs.agentsonintents.com/integration/agent-api/grants",
-  read: "2026-11-06",
+  read: "2026-11-13",
 } as const;
 
 /** One sentence of the pinned README (L114-L115), quoted verbatim. */
@@ -27,9 +28,9 @@ const code = (s: string): string => `<code>${escapeHtml(s)}</code>`;
 
 const ROWS: readonly [route: string, receives: string, reach: string][] = [
   [
-    `Hosted actions: ${code("POST /v1/agents/{agent_id}/swap")}, ${code("transfer")}, ${code("withdraw")}, ${code("shield")}, ${code("unshield")}`,
+    `Hosted actions: ${code("POST /v1/agents/{agent_id}/swap")}, ${code("limit-orders")}, ${code("transfer")}, ${code("withdraw")}, ${code("shield")}, ${code("unshield")}`,
     "A status. The API and the agent's wallet execute the action; no signed order is returned to the caller.",
-    "Revoking the grant stops an action that has not reached its dispatch commitment; after it, the docs say nothing can recall it. Not described as handing out a signature.",
+    `Revoking the grant stops an action that has not reached its dispatch commitment; after it, the docs say nothing can recall it, except a resting limit order. Limit orders are priced within a policy bound (${code("limit_order.max_deviation_bps")}, 0 to 300, default 100); cancelling needs only a grant, works while the agent is frozen and refunds the unfilled part; a freeze makes the API cancel resting orders (best effort). Not described as handing out a signature.`,
   ],
   [
     `Native ${code("evm/sign-intent")} and ${code("solana/sign-intent")}, off until the owner sets ${code("evm.sign_intent")} or ${code("solana.sign_intent")}`,
@@ -46,10 +47,10 @@ const ROWS: readonly [route: string, receives: string, reach: string][] = [
 /** Body of the page's Agent API comparison section. */
 export function agentApiBody(): string {
   const rows = ROWS.map(([route, receives, reach]) => `<tr><td class="route">${route}</td><td>${receives}</td><td>${reach}</td></tr>`).join("");
-  return `<p class="source">Sources, read ${AGENT_API_EXAMPLES.read}: ${code(AGENT_API_EXAMPLES_URL)} (repository ${code(AGENT_API_EXAMPLES.repository)}, commit ${code(AGENT_API_EXAMPLES.commit)}); ${code(AGENT_API_DOCS.executions)} and ${code(AGENT_API_DOCS.grants)}.</p>
+  return `<p class="source">Sources: ${code(AGENT_API_EXAMPLES_URL)} (repository ${code(AGENT_API_EXAMPLES.repository)}, commit ${code(AGENT_API_EXAMPLES.commit)}), read ${AGENT_API_EXAMPLES.read}; ${code(AGENT_API_DOCS.limitOrders)}, ${code(AGENT_API_DOCS.executions)} and ${code(AGENT_API_DOCS.grants)}, read ${AGENT_API_DOCS.read}.</p>
 <p>The official NEAR Intents Agent API is a hosted service and much broader than this project: many chains, assets and action types under one owner-signed policy. This compares only what each route hands its caller and what revocation can still reach.</p>
 <div class="scroll"><table><caption>Signed authority per route</caption><thead><tr><th scope="col">Route</th><th scope="col">What the caller receives</th><th scope="col">What revoking or freezing reaches</th></tr></thead><tbody>${rows}</tbody></table></div>
 <p><strong>Documentation evidence, not a tested weakness.</strong> We have not called the Agent API. The sign-intent behaviour is what the Agent API's own examples README documents and warns about; ordinary hosted execution is not described this way.</p>
 <h3>Complementary, not competing</h3>
-<ul><li>Agent API for breadth: chains, assets, action types, hosted execution.</li><li>Bounded mandate where trading limits and revocation must be verifiable on chain: a contract checks the limits before it signs, and revocation is a key removal anyone can check with a view call.</li><li>Any integration of the two is proposed, not built: it stays untested until caller identity (which account the mandate sees calling <code>propose_order</code>) and invocation compatibility are tested.</li></ul>`;
+<ul><li>Agent API for breadth: chains, assets, action types, hosted execution, including limit orders with a policy price bound and cancellation.</li><li>Bounded mandate where trading limits and revocation must be verifiable on chain: a contract checks the limits before it signs, and revocation is a key removal anyone can check with a view call.</li><li>Any integration of the two is proposed, not built: it stays untested until caller identity (which account the mandate sees calling <code>propose_order</code>) and invocation compatibility are tested.</li></ul>`;
 }

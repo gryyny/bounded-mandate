@@ -14,7 +14,7 @@ import { type Assertion, Evidence, type Receipt } from "../src/types.js";
 import { ATTACKS, CONSOLE_RENDERED, CONSOLE_REVOKE, STORY, expiredStoryEvidence, olderStoryEvidence, storyEvidence, txHash } from "./video-story-specimen.js";
 import { CONSOLE_BROWSER_LABEL, ConsoleReview, OWNER_CONTROLS_LABEL, PLANNED_LABEL, PLANNED_URLS, REPO_URL, SITE_PATHS, bundlePaths } from "../src/evidence/journey.js";
 import { revocationStory } from "../src/page/story.js";
-import { AGENT_API_EXAMPLES, AGENT_API_EXAMPLES_URL, AGENT_API_QUOTE } from "../src/page/related.js";
+import { AGENT_API_DOCS, AGENT_API_EXAMPLES, AGENT_API_EXAMPLES_URL, AGENT_API_QUOTE } from "../src/page/related.js";
 
 const REV = "a".repeat(40);
 const FIXTURES = { "verifier/defuse-0.4.5.wasm": "e".repeat(64) };
@@ -1016,6 +1016,12 @@ describe("evidence page: journey, attack log, withdrawal and planned URLs", () =
     expect(part).toContain(escapeHtml(AGENT_API_EXAMPLES_URL));
     expect(AGENT_API_EXAMPLES_URL).toContain(`/blob/${AGENT_API_EXAMPLES.commit}/07-native-accounts/README.md#L`);
     expect(part).toContain(`read ${AGENT_API_EXAMPLES.read}`);
+    // The hosted pages carry their own read date, and the Agent API's own price bound and cancellation are stated.
+    expect(part).toContain(`${escapeHtml(AGENT_API_DOCS.limitOrders)}</code>`);
+    expect(part).toContain(`read ${AGENT_API_DOCS.read}.`);
+    expect(part).toContain("<code>limit_order.max_deviation_bps</code>, 0 to 300, default 100");
+    expect(part).toContain("except a resting limit order");
+    expect(part).toContain("including limit orders with a policy price bound and cancellation");
     for (const route of ["evm/sign-intent", "solana/sign-intent", "POST /v1/agents/{agent_id}/swap"]) expect(part).toContain(`<code>${escapeHtml(route)}</code>`);
     expect(part).toContain(escapeHtml(AGENT_API_QUOTE));
     expect(AGENT_API_QUOTE.split(" ").length).toBeLessThan(15);
