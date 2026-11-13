@@ -1,0 +1,47 @@
+1
+00:00:00,000 --> 00:00:07,500
+An agent holding a trading key can exceed your limits, and orders it already signed can outlive your decision to stop it.
+
+2
+00:00:07,500 --> 00:00:12,633
+One local sandbox run with labelled test doubles and a replayed model recording.
+
+3
+00:00:12,633 --> 00:00:19,433
+The owner grants fixed limits on $1,899.80: each order at most 20% ($379.96), price concession at most 0.5%.
+
+4
+00:00:19,433 --> 00:00:26,933
+A recorded claude-haiku-5-5 proposal, replayed, sells 49.90 USDC for 16.5468 wNEAR, filled exactly as signed. USDC share: 52.63% to 50.01%, target 50%.
+
+5
+00:00:26,933 --> 00:00:34,433
+39 of 39 scripted hostile requests refused, nothing changed: local validation 10, contract method check 14, policy validation 4, agent key permission 10, verifier 1.
+
+6
+00:00:34,433 --> 00:00:41,933
+A second, scripted order, 20 wNEAR for 59.83 USDC, is signed by the grant key and withheld. The verifier would still accept it.
+
+7
+00:00:41,933 --> 00:00:49,433
+After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed.
+
+8
+00:00:49,433 --> 00:00:56,933
+Another account relays the withheld order 54 s before its deadline. The verifier rejects it: the signing key no longer exists.
+
+9
+00:00:56,933 --> 00:01:04,433
+With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR into its Intents account.
+
+10
+00:01:04,433 --> 00:01:11,900
+Separately, outside recovery, the owner withdraws 950.10 USDC and 316.5468 wNEAR to its NEAR account, registering storage only where needed.
+
+11
+00:01:11,900 --> 00:01:18,367
+Signed orders can still execute before confirmed key removal. Mainnet run pending approval; no mainnet transaction executed.
+
+12
+00:01:18,367 --> 00:01:25,867
+Verify the evidence: make verify, or node verify.mjs with no install. Prebuilt, uncertified demo: make quick. Certified path: make test && make demo.

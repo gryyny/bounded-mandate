@@ -1,0 +1,343 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T5",
+  "case": "baseline",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261113T205052166Z-d071eba80815",
+  "source": {
+    "revision": "66fe9635f4dc0dd200f6a5e9ad1bee03f144964d",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "claw_guard_adapted": "92504db0a732b8e5570d7d86a5373c3289bef39ff5a1f7b80d301d3966a6681c",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+  },
+  "command": "target/debug/deps/t5_baseline-ac104929105c86a1",
+  "generated_at_unix": 1794604219,
+  "data": {
+    "command": "cargo test -p claw-guard-adapted --test t5_baseline",
+    "hashes": {
+      "verifier_wasm_sha256": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547",
+      "claw_guard_adapted_wasm_sha256": "92504db0a732b8e5570d7d86a5373c3289bef39ff5a1f7b80d301d3966a6681c",
+      "mock_mpc_wasm_sha256": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e"
+    },
+    "environment": {
+      "sandbox": "near-workspaces 0.23.0",
+      "signer": "stubs/mock-mpc TEST DOUBLE (not MPC)",
+      "fee_pips": "1"
+    },
+    "baseline": {
+      "name": "Our re-implementation of the Claw Guard design, adapted to NEAR Intents token_diff (not the deployed Claw Guard product)",
+      "repository": "https://github.com/metafrogmeme-droid/claw-guard-near",
+      "commit": "225d37d3c1b04959947fa7c18544fa50e273dcd8",
+      "license": "MIT, Copyright (c) 2026 Patrick Baur (RUNECLAW)",
+      "adaptations": [
+        "Venue: the owner's own Intents account holds the assets; the owner registers the guard's derived Ed25519 key there with add_public_key (Claw Guard: owner approves the derived address as a Hyperliquid API wallet). Unlike an API wallet, an Intents key is not trade-only; only the guard's payload construction restricts it.",
+        "Payload: NEP-413 token_diff over exactly USDC and wNEAR, signer = owner, built by the guard; Ed25519 domain 1 instead of secp256k1 domain 0.",
+        "Deadline: finite order TTL of 60 s, the mandate's value (Claw Guard's Hyperliquid orders carry no expiry).",
+        "Nonce: 32-byte legacy (non-versioned) nonce derived from the receipt id, accepted by verifier v0.4.5.",
+        "Caps in USDC units: per-order token and notional caps, daily notional cap, daily order count, permission expiry; notional of a wNEAR sell is the agent's minimum USDC (Claw Guard Q-42 analog).",
+        "Omitted as irrelevant to these cases: guardian role, set_rules loosening delay, receipt ring buffer, storage reserve rule, mainnet refusal, Hyperliquid/EVM encoders."
+      ]
+    },
+    "assertions": [
+      {
+        "id": "T5.control_permitted_trade",
+        "gate": "T5",
+        "description": "Permitted order signed by the guard and relayed: executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "executed"
+        }
+      },
+      {
+        "id": "T5.over_cap_order",
+        "gate": "T5",
+        "description": "Over-cap order (per-order notional cap + 1 unit): executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "blocked"
+        }
+      },
+      {
+        "id": "T5.agent_injected_withdrawal",
+        "gate": "T5",
+        "description": "Compromised agent key: withdrawal/transfer request, direct verifier and MPC calls: executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "blocked"
+        }
+      },
+      {
+        "id": "T5.t2b_disclosed_signature_failed_callback",
+        "gate": "T5",
+        "description": "Published signature with a failed signer callback, relayed independently: executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "attack_succeeded"
+        }
+      },
+      {
+        "id": "T5.t1_withheld_after_guard_revocation",
+        "gate": "T5",
+        "description": "Withheld signed order relayed after the guard's revocation (pause + remove_agent): executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "attack_succeeded"
+        }
+      },
+      {
+        "id": "T5.t1_withheld_after_key_removal",
+        "gate": "T5",
+        "description": "Withheld signed order relayed after the owner removes the derived key from the Intents account: executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "blocked"
+        }
+      },
+      {
+        "id": "T5.t1_withheld_after_regrant",
+        "gate": "T5",
+        "description": "The same withheld order relayed after regrant: executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "attack_succeeded"
+        }
+      },
+      {
+        "id": "T5.t4_recovery_without_agent_or_signer",
+        "gate": "T5",
+        "description": "Strand owner assets by disabling the agent and the signer: executed against the baseline and classified from chain state",
+        "passed": true,
+        "observed": {
+          "baseline_outcome": "blocked"
+        }
+      }
+    ],
+    "cases": [
+      {
+        "id": "control_permitted_trade",
+        "threat": "Permitted order signed by the guard and relayed",
+        "compare_gate": "T3",
+        "baseline_outcome": "executed",
+        "summary": "Harness control: a permitted USDC->wNEAR order executes on the pinned verifier.",
+        "observed": {
+          "execute_intents_succeeded": true,
+          "nonce_used_after": true,
+          "owner_usdc_delta": "-100000000",
+          "owner_wnear_delta": "33333333000000000000000000",
+          "error": null
+        }
+      },
+      {
+        "id": "over_cap_order",
+        "threat": "Over-cap order (per-order notional cap + 1 unit)",
+        "compare_gate": "BOUNDARY",
+        "baseline_outcome": "blocked",
+        "summary": "The guard evaluates the per-order cap before requesting a signature.",
+        "observed": {
+          "decision": {
+            "allowed": false,
+            "receipt_id": "2",
+            "rule_code": "ORDER_ABOVE_CAP"
+          },
+          "receipt_status": "Blocked",
+          "rule_code": "ORDER_ABOVE_CAP"
+        }
+      },
+      {
+        "id": "agent_injected_withdrawal",
+        "threat": "Compromised agent key: withdrawal/transfer request, direct verifier and MPC calls",
+        "compare_gate": "BOUNDARY",
+        "baseline_outcome": "blocked",
+        "summary": "Function-call key restricted to propose_order; the guard only builds token_diff payloads.",
+        "observed": {
+          "attempts": {
+            "propose_withdrawal_shape": {
+              "rejected_at": "execution",
+              "error": "Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: Failed to deserialize input from JSON. Error: `missing field `sell` at line 1 column 113`\")) }) } }"
+            },
+            "verifier_mt_transfer": {
+              "rejected_at": "transaction validation",
+              "reason": "DepositWithFunctionCall",
+              "error": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+            },
+            "verifier_execute_intents_no_deposit": {
+              "rejected_at": "transaction validation",
+              "reason": "ReceiverMismatch",
+              "error": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(ReceiverMismatch { tx_receiver: AccountId(\"intents.test.near\"), ak_receiver: \"claw-guard.test.near\" }) })) } }"
+            },
+            "verifier_add_public_key": {
+              "rejected_at": "transaction validation",
+              "reason": "DepositWithFunctionCall",
+              "error": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+            },
+            "mpc_sign_direct": {
+              "rejected_at": "transaction validation",
+              "reason": "DepositWithFunctionCall",
+              "error": "Error { repr: Custom { kind: Rpc(BroadcastTxFailure), error: ServerError(HandlerError(InvalidTransaction { context: InvalidAccessKeyError(DepositWithFunctionCall) })) } }"
+            }
+          },
+          "owner_keys_and_balances_unchanged": true
+        }
+      },
+      {
+        "id": "t2b_disclosed_signature_failed_callback",
+        "threat": "Published signature with a failed signer callback, relayed independently",
+        "compare_gate": "T2b",
+        "baseline_outcome": "attack_succeeded",
+        "summary": "Our re-implementation follows Claw Guard's design of releasing a reservation when on_signed sees a failure; a signature disclosed by the signer still executes, so executed notional is no longer counted.",
+        "observed": {
+          "relay_of_disclosed_order": {
+            "execute_intents_succeeded": true,
+            "nonce_used_after": true,
+            "owner_usdc_delta": "-400000000",
+            "owner_wnear_delta": "133333333000000000000000000",
+            "error": null
+          },
+          "guard_receipt_status_after_timeout": "SignFailed",
+          "spent_today_before_usdc_units": "100000000",
+          "spent_today_while_pending": "500000000",
+          "spent_today_after_failed_callback": "100000000",
+          "daily_cap_usdc_units": "2000000000",
+          "executed_notional_since_disclosure": "2000000000",
+          "executed_today_including_control": "2100000000",
+          "follow_on_orders": [
+            {
+              "receipt_id": 4,
+              "executed": true
+            },
+            {
+              "receipt_id": 5,
+              "executed": true
+            },
+            {
+              "receipt_id": 6,
+              "executed": true
+            },
+            {
+              "receipt_id": 7,
+              "executed": true
+            },
+            {
+              "blocked": {
+                "allowed": false,
+                "receipt_id": "8",
+                "rule_code": "DAILY_CAP"
+              }
+            }
+          ],
+          "rules_day": 20770
+        }
+      },
+      {
+        "id": "t1_withheld_after_guard_revocation",
+        "threat": "Withheld signed order relayed after the guard's revocation (pause + remove_agent)",
+        "compare_gate": "T1",
+        "baseline_outcome": "attack_succeeded",
+        "summary": "As documented in Claw Guard's Q-45 and re-implemented here: pause and remove_agent stop later proposals only; issued signatures stay valid.",
+        "observed": {
+          "receipt_id": 9,
+          "relay": {
+            "execute_intents_succeeded": true,
+            "nonce_used_after": true,
+            "owner_usdc_delta": "-100000000",
+            "owner_wnear_delta": "33333333000000000000000000",
+            "error": null
+          }
+        }
+      },
+      {
+        "id": "t1_withheld_after_key_removal",
+        "threat": "Withheld signed order relayed after the owner removes the derived key from the Intents account",
+        "compare_gate": "T1",
+        "baseline_outcome": "blocked",
+        "summary": "Venue-side key removal (the Intents analog of Claw Guard's documented Q-45 mitigation on Hyperliquid) makes the withheld order fail.",
+        "observed": {
+          "receipt_id": 10,
+          "relay": {
+            "execute_intents_succeeded": false,
+            "nonce_used_after": false,
+            "owner_usdc_delta": "0",
+            "owner_wnear_delta": "0",
+            "error": "Error { repr: Custom { kind: Execution, error: ActionError(ActionError { index: Some(0), kind: FunctionCallError(ExecutionError(\"Smart contract panicked: public key 'ed25519:AyKcV4q2cN9nsv7dxtHdicuFNZfXsXHAL4j15AuznyWB' doesn't exist for account 'owner.test.near'\")) }) } }"
+          }
+        }
+      },
+      {
+        "id": "t1_withheld_after_regrant",
+        "threat": "The same withheld order relayed after regrant",
+        "compare_gate": "T1",
+        "baseline_outcome": "attack_succeeded",
+        "summary": "Fixed derivation path: regrant restores the identical key, so withheld pre-revocation orders become executable again while unexpired.",
+        "observed": {
+          "receipt_id": 10,
+          "same_key_after_regrant": true,
+          "order_deadline": "2026-11-13T21:12:26Z",
+          "deadline_not_passed_at_relay": true,
+          "relay": {
+            "execute_intents_succeeded": true,
+            "nonce_used_after": true,
+            "owner_usdc_delta": "-100000000",
+            "owner_wnear_delta": "33333333000000000000000000",
+            "error": null
+          }
+        }
+      },
+      {
+        "id": "t1_revoke_during_pending_registration",
+        "threat": "Revocation during a pending key-registration callback",
+        "compare_gate": "T1",
+        "baseline_outcome": "unsupported_by_design",
+        "summary": "The guard has no key lifecycle: the owner registers and removes the derived key directly on the verifier, outside the guard. Not executed.",
+        "observed": null
+      },
+      {
+        "id": "t1_failed_removal_and_retry",
+        "threat": "Failed key removal and retry",
+        "compare_gate": "T1",
+        "baseline_outcome": "unsupported_by_design",
+        "summary": "The guard has no key lifecycle: the owner registers and removes the derived key directly on the verifier, outside the guard. Not executed.",
+        "observed": null
+      },
+      {
+        "id": "outstanding_exposure_cap",
+        "threat": "Aggregate outstanding exposure of signed-but-unsettled orders",
+        "compare_gate": "T2",
+        "baseline_outcome": "unsupported_by_design",
+        "summary": "The guard counts signed notional per UTC day only; it has no outstanding-exposure accounting or settlement-based release. Not executed.",
+        "observed": null
+      },
+      {
+        "id": "t4_recovery_without_agent_or_signer",
+        "threat": "Strand owner assets by disabling the agent and the signer",
+        "compare_gate": "T4",
+        "baseline_outcome": "blocked",
+        "summary": "Assets stay in the owner's own Intents account; the owner's predecessor-authorized mt_transfer needs no agent, signer or oracle.",
+        "observed": {
+          "transfers": {
+            "nep141:usdc.test.near": {
+              "amount": "2700000000",
+              "succeeded": true
+            },
+            "nep141:wnear.test.near": {
+              "amount": "766666664000000000000000000",
+              "succeeded": true
+            }
+          },
+          "owner_cold_received": [
+            "2700000000",
+            "766666664000000000000000000"
+          ],
+          "owner_left": [
+            "0",
+            "0"
+          ]
+        }
+      }
+    ]
+  }
+}
