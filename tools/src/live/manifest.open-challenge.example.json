@@ -41,14 +41,14 @@
   "code_hashes": {
     "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
     "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
-    "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
+    "signer": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
     "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
     "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
     "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
   },
   "versions": {
     "verifier": "0.4.5",
-    "signer": "3.17.0",
+    "signer": "3.18.0",
     "oracle": "0.4.1"
   },
   "verifier_fee_pips": 1,

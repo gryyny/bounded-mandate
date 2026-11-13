@@ -108,7 +108,7 @@ More: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
 
 ## Mainnet runner (opt-in, not run)
 
-The funded runner remains **b480057**; the original [37-case bundle](evidence/b480057/acceptance.json) is preserved unchanged. Use the [later-reader compatibility procedure](docs/reviewers.md#later-proof-reader-original-funded-runner) to check its original inputs without assigning it the expanded certification. The spec snapshot records requirements at its pinned source date; current execution status is in [evidence/index.json](evidence/index.json).
+The mainnet signer `v1.signer` was upgraded on 2026-11-09 to near/mpc 3.18.0. The b480057 runner pins the earlier signer and refuses the upgraded one by design, so the mainnet run uses the newer certified revision that pins 3.18.0: the certified revision named in evidence/index.json ([details](docs/live-runner.md)). The contract and the deployment candidate are unchanged. The original b480057 [37-case bundle](evidence/b480057/acceptance.json) is preserved unchanged; use the [later-reader compatibility procedure](docs/reviewers.md#later-proof-reader-original-funded-runner) to check its original inputs without assigning it the expanded certification. The spec snapshot records requirements at its pinned source date; current execution status is in [evidence/index.json](evidence/index.json).
 
 `MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live` runs an approved manifest; the flag is not spending approval, and both mainnet templates are unapproved ([live runner](docs/live-runner.md)). Before the first grant, the provider path is rehearsed without any transaction; a real provider call is paid inference and needs the owner's explicit approval:
 

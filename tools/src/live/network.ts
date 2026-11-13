@@ -12,10 +12,10 @@ import type { LiveManifest } from "./manifest.js";
 export const MAINNET = {
   chain_id: "mainnet",
   genesis_hash: "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
-  /** Pinned production dependencies (read-only RPC, 2026-11-03). */
+  /** Pinned production dependencies (read-only RPC, 2026-11-03; signer re-pinned 2026-11-13 after its 2026-11-09 upgrade to 3.18.0). */
   code_hashes: {
     verifier: "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
-    signer: "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
+    signer: "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
     oracle: "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
     usdc: "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
     wnear: "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1",

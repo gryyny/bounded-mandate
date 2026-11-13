@@ -2,7 +2,7 @@
   "schema_version": 2,
   "notes": [
     "PRIMARY TEMPLATE for the approval package (the live-agent run with owner actions signed outside the runner, in the owner console or the owner's wallet). Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is. manifest.example.json is the separately labelled fixed-proposal fallback, unapproved until the owner authorizes it. Policy, inventory and sale caps equal the fallback's; the fee, deposit and transaction caps are sized for this sequence (proposed, not approved).",
-    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata. All re-read through https://free.rpc.fastnear.com on 2026-11-04 (block ~223070360): unchanged.",
+    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata. All re-read through https://free.rpc.fastnear.com on 2026-11-04 (block ~223070360): unchanged. Signer re-pinned on 2026-11-13: v1.signer was upgraded on mainnet on 2026-11-09 (first block with the new code: 223809121, 19:17:59 UTC) from 3.17.0 (code hash DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9) to 3.18.0; its code hash and version here were read at blocks 224358597-224358728, where the other code hashes and versions were re-read unchanged.",
     "RPC: https://free.rpc.fastnear.com (listed in the NEAR RPC provider directory). The rpc.mainnet.near.org endpoint is deprecated and heavily rate-limited. For reconciling older transactions, https://archival-rpc.mainnet.fastnear.com is FastNEAR's archival endpoint.",
     "Sequence: grant; one deliberately forbidden proposal (concession 51 bps > 50 bps policy maximum) that the mandate must refuse; one live agent decision (step 4), filled and settled if the agent trades; a second signed order of 0.5 USDC from the manifest that is withheld (bundle simulated, not sent); revocation signed by the owner in the console (step 9, revoke_external); relay of the withheld bundle while it is still unexpired, which passes only if the verifier rejects it for the removed key before its deadline with both nonces unused and balances unchanged; recovery of both assets to the owner's Intents account, signed in the console (steps 11-12); then, outside every recovery claim, the owner's storage registration on each token only where it is missing (steps 13-14, runner-signed by the owner key) and the owner's withdrawal of each asset from its Intents account to its NEAR account with ft_withdraw, signed in the console (steps 15-16).",
     "External owner steps (revoke_external, recover_external, withdraw_external): before the owner signs, the runner records an intent in its hash-chained ledger and writes it to out/live/<manifest sha256>/external/step-<n>-<kind>-attempt-<k>.intent.json (schema bounded-mandate/external-intent@1): signer accounts.owner, the approved key keys.owner_external (keys.owner if absent), receiver, the single FunctionCall with exact arguments, gas within [gas_tgas, gas_tgas + 20 TGas] and the exact deposit (0, or 1 yocto for ft_withdraw), and the expected end state. The console signs exactly that and writes <stem>.handoff.json ({intent_sha256, tx_hash, signer_id}); the runner stops as awaiting until then, and MANDATE_LIVE_RESUME=1 imports it (or MANDATE_LIVE_HANDOFF=<file>).",
@@ -45,14 +45,14 @@
   "code_hashes": {
     "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
     "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
-    "signer": "DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9",
+    "signer": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
     "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
     "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
     "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
   },
   "versions": {
     "verifier": "0.4.5",
-    "signer": "3.17.0",
+    "signer": "3.18.0",
     "oracle": "0.4.1"
   },
   "verifier_fee_pips": 1,
