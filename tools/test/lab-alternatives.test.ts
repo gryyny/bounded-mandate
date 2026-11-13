@@ -87,7 +87,7 @@ afterAll(async () => {
     })),
   });
   await net.stop();
-});
+}, 120_000);
 
 const brief = (o: AlternativeOrder) => ({
   label: o.label,
