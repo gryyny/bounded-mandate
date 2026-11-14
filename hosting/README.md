@@ -69,6 +69,8 @@ Owner inputs genuinely needed for hosting: approve the selected provider/size, m
 | `https://gryyny.github.io/bounded-mandate/console/` | `evidence/<rev>/console/index.html` | The static owner console of the same revision. The page links to it as `console/`. |
 | `https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4` | `evidence/<rev>/video/bounded-mandate-short.mp4` | The short cut. The page's Watch action links to it as `video/bounded-mandate-short.mp4`. |
 | `https://gryyny.github.io/bounded-mandate/video/bounded-mandate-demo.mp4` | `evidence/<rev>/video/bounded-mandate-demo.mp4` | The longer walkthrough, linked as `video/bounded-mandate-demo.mp4`. |
+| `https://gryyny.github.io/bounded-mandate/overview/` | `presentation/overview/index.html` | The overview: owner benefit, mainnet result, architecture, verification links, limits. Presentation layer, not certified evidence. |
+| `https://gryyny.github.io/bounded-mandate/pitch/bounded-mandate-pitch.mp4` | `presentation/pitch/bounded-mandate-pitch.mp4` | The narrated explainer based on recorded evidence, with `captions.vtt`, `captions.srt` and `poster.png` beside it. Not a certified cut. |
 
 These URLs follow from GitHub's project-site rule (`<owner>.github.io/<repository>/`). They exist only once the lead enables Pages.
 
@@ -84,7 +86,7 @@ These URLs follow from GitHub's project-site rule (`<owner>.github.io/<repositor
 ```sh
 cd tools
 npx tsx src/release/main.ts site --page ../evidence/<rev>/page/index.html --console ../evidence/<rev>/console \
-  --video ../evidence/<rev>/video --video-manifest ../evidence/<rev>/video.json
+  --video ../evidence/<rev>/video --video-manifest ../evidence/<rev>/video.json --presentation ../presentation
 ```
 
 It assembles `out/release/site/`, serves it from `127.0.0.1` under `/bounded-mandate/`, requests every route and every linked page, asset, cut and fragment, checks each page's CSP, and writes `out/release/site-check.json`. External links are listed and never requested. It exits 1 on any problem.
@@ -94,6 +96,8 @@ The check also requires the evidence page itself to link the console (`console/`
 - Without `--console`, the page's `console/` link is HTTP 404: a problem.
 - Without `--video`, both video links are HTTP 404: a problem (the message names `--video` and `--video-manifest`). The report then says `"video": null`; that state is never a pass for a release.
 - With `--video` and `--video-manifest`, each linked cut must be served as `video/mp4` and its sha256 must equal the certified cut of the same name in `video.json`; a missing, retyped or different file fails. `--video` without `--video-manifest` is itself a problem.
+
+- With `--presentation`, the overview and the pitch files listed in `PRESENTATION_FILES` (`tools/src/release/site.ts`) are assembled under `overview/` and `pitch/` together with the certified files, before any check; `overview/` is checked as a route, and each served presentation file must equal the sha256 in `presentation/provenance.json`. Build inputs (scenes, per-segment narration, the build script) are not published.
 
 The Pages workflow requires `evidence/<rev>/console/index.html` and requires `evidence/<rev>/video/` to hold exactly the two cuts.
 

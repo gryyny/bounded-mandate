@@ -38,17 +38,39 @@ const TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".txt": "text/plain; charset=utf-8",
   ".srt": "text/plain; charset=utf-8",
+  ".vtt": "text/vtt; charset=utf-8",
   ".woff2": "font/woff2",
 };
 
-/** Copies the page and optional console into one site directory: `index.html` and `console/`. */
-export function assembleSite(opts: { page: string; console?: string | undefined; video?: string | undefined; out: string }): string {
+/**
+ * The presentation layer published beside the certified files, as paths relative to the repository's `presentation/`
+ * directory and to the site base alike. Build inputs (scenes, per-segment audio, the build script) stay unpublished.
+ */
+export const PRESENTATION_FILES = [
+  "overview/index.html",
+  "pitch/bounded-mandate-pitch.mp4",
+  "pitch/captions.vtt",
+  "pitch/captions.srt",
+  "pitch/poster.png",
+] as const;
+
+/**
+ * Copies the page and optional console, cuts and presentation layer into one site directory: `index.html`,
+ * `console/`, `video/`, and `overview/` and `pitch/` from `presentation/` (only {@link PRESENTATION_FILES}).
+ */
+export function assembleSite(opts: { page: string; console?: string | undefined; video?: string | undefined; presentation?: string | undefined; out: string }): string {
   rmSync(opts.out, { recursive: true, force: true });
   mkdirSync(opts.out, { recursive: true });
   cpSync(opts.page, join(opts.out, "index.html"));
   if (opts.console !== undefined) cpSync(opts.console, join(opts.out, "console"), { recursive: true });
   // The page links to the cuts under video/; the bundle holds the certified cuts there (evidence/<rev>/video/).
   if (opts.video !== undefined) cpSync(opts.video, join(opts.out, "video"), { recursive: true });
+  if (opts.presentation !== undefined) {
+    for (const file of PRESENTATION_FILES) {
+      mkdirSync(join(opts.out, file, ".."), { recursive: true });
+      cpSync(join(opts.presentation, file), join(opts.out, file));
+    }
+  }
   // GitHub Pages runs Jekyll unless this file exists; Jekyll drops files and folders starting with _ or .
   writeFileSync(join(opts.out, ".nojekyll"), "");
   return opts.out;
@@ -276,6 +298,31 @@ const get = async (url: string): Promise<Fetched> => {
   if (!html) await r.body?.cancel();
   return { status: r.status, type: r.headers.get("content-type"), body, location: r.headers.get("location") };
 };
+
+/**
+ * Requests each published presentation file from the local server and compares the served bytes with the sha256
+ * recorded in `presentation/provenance.json` (`files`: path → sha256), so a stale or unrecorded asset fails.
+ */
+export async function checkPresentation(root: string, recorded: Record<string, string>, base = PLANNED_BASE): Promise<{ files: { path: string; status: number; content_type: string | null; sha256: string | null; expected_sha256: string | null }[]; problems: string[] }> {
+  const { server, origin } = await serveSite(root, base);
+  const files: { path: string; status: number; content_type: string | null; sha256: string | null; expected_sha256: string | null }[] = [];
+  const problems: string[] = [];
+  try {
+    for (const path of PRESENTATION_FILES) {
+      const r = await fetch(new URL(path.endsWith("index.html") ? path.slice(0, -"index.html".length) : path, `${origin}${base}`).href, { redirect: "manual" });
+      const body = r.status === 200 ? Buffer.from(await r.arrayBuffer()) : null;
+      const sha256 = body === null ? null : createHash("sha256").update(body).digest("hex");
+      const expected = recorded[path] ?? null;
+      files.push({ path, status: r.status, content_type: r.headers.get("content-type"), sha256, expected_sha256: expected });
+      if (r.status !== 200) problems.push(`${base}${path}: HTTP ${r.status}`);
+      else if (expected === null) problems.push(`${base}${path}: not recorded in presentation/provenance.json`);
+      else if (sha256 !== expected) problems.push(`${base}${path}: sha256 ${sha256 ?? "none"} differs from the recorded ${expected}`);
+    }
+  } finally {
+    await new Promise<void>((ok) => server.close(() => { ok(); }));
+  }
+  return { files, problems };
+}
 
 export interface VideoCheck {
   path: string;

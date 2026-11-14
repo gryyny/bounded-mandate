@@ -1,6 +1,6 @@
 // Release-preparation checks. Nothing here publishes, deploys or contacts a remote host.
 //   tsx src/release/main.ts secrets [--repo <name>=<path> ...] [--allow <file>]
-//   tsx src/release/main.ts site --page <index.html> [--console <dir>] [--video <dir> --video-manifest <video.json>] [--route <path> ...]
+//   tsx src/release/main.ts site --page <index.html> [--console <dir>] [--video <dir> --video-manifest <video.json>] [--presentation <presentation dir>] [--route <path> ...]
 //   tsx src/release/main.ts licenses
 //   tsx src/release/main.ts links          (README local links, line anchors and headings)
 // Reports go to out/release/ (ignored). Exit status 1 when a check has open problems.
@@ -11,7 +11,7 @@ import { checkReadme } from "./links.js";
 import { cargoDependencies, cargoMetadata, contractWasmCrates, licenseReport, npmDependencies } from "./licenses.js";
 import { renderMarkdown, scanRepos, type AllowEntry } from "./secrets.js";
 import { PLANNED_URLS } from "../evidence/journey.js";
-import { assembleSite, checkSite, checkVideos, PLANNED_BASE, PLANNED_ORIGIN } from "./site.js";
+import { assembleSite, checkPresentation, checkSite, checkVideos, PLANNED_BASE, PLANNED_ORIGIN } from "./site.js";
 
 const ROOT = resolve(import.meta.dirname, "../../..");
 const OUT = join(ROOT, "out/release");
@@ -37,7 +37,9 @@ const plannedVideos = (manifest: string | undefined): { path: string; sha256: st
   });
 };
 
-const AllowList = z.array(z.object({ repo: z.string(), rule: z.string(), path: z.string(), fingerprint: z.string(), reason: z.string().min(1) }).strict());
+const PresentationProvenance = z.object({ files: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)) });
+
+const AllowList =z.array(z.object({ repo: z.string(), rule: z.string(), path: z.string(), fingerprint: z.string(), reason: z.string().min(1) }).strict());
 
 async function main(): Promise<number> {
   const [command, ...args] = process.argv.slice(2);
@@ -59,20 +61,24 @@ async function main(): Promise<number> {
     const page = flags(args, "page")[0] ?? join(ROOT, "out/page/index.html");
     const consoleDir = flags(args, "console")[0];
     const videoDir = flags(args, "video")[0];
-    const site = assembleSite({ page, console: consoleDir, video: videoDir, out: join(OUT, "site") });
+    const presentationDir = flags(args, "presentation")[0];
+    // Every file is assembled before any route, link, CSP, media or hash check runs.
+    const site = assembleSite({ page, console: consoleDir, video: videoDir, presentation: presentationDir, out: join(OUT, "site") });
     const routes = flags(args, "route");
-    if (routes.length === 0) routes.push("", ...(consoleDir === undefined ? [] : ["console/"]));
+    if (routes.length === 0) routes.push("", ...(consoleDir === undefined ? [] : ["console/"]), ...(presentationDir === undefined ? [] : ["overview/"]));
     const manifest = flags(args, "video-manifest")[0];
     const report = await checkSite(site, routes);
     // Without --video the planned video URLs are not served, and the report says so (video: null).
     const video = videoDir === undefined ? null : { dir: videoDir, manifest: manifest ?? null, ...(await checkVideos(site, plannedVideos(manifest))) };
+    const presentation = presentationDir === undefined ? null : { dir: presentationDir, ...(await checkPresentation(site, PresentationProvenance.parse(JSON.parse(readFileSync(join(presentationDir, "provenance.json"), "utf8"))).files)) };
     // Served cuts are only meaningful against the certified ones, so --video and --video-manifest go together.
     const pairing = manifest !== undefined && videoDir === undefined ? ["--video-manifest given without --video"] : manifest === undefined && videoDir !== undefined ? ["--video given without --video-manifest: the cuts cannot be compared with the certified ones"] : [];
-    const problems = [...report.problems, ...(video?.problems ?? []), ...pairing];
+    const problems = [...report.problems, ...(video?.problems ?? []), ...(presentation?.problems ?? []), ...pairing];
     const passed = report.passed && problems.length === report.problems.length;
-    const path = write("site-check.json", JSON.stringify({ ...report, problems, passed, page, console: consoleDir ?? null, video }, null, 2) + "\n");
+    const path = write("site-check.json", JSON.stringify({ ...report, problems, passed, page, console: consoleDir ?? null, video, presentation }, null, 2) + "\n");
     for (const p of problems) console.error(`site: ${p}`);
-    console.log(`site check: ${report.pages.length} pages, ${report.assets.length} assets, ${video?.videos.length ?? 0} videos${manifest === undefined ? "" : " against the manifest"}, ${report.external_links.length} external links, ${problems.length} problems; ${path}`);
+    console.log(`site check: ${report.pages.length} pages, ${report.assets.length} assets, ${video?.videos.length ?? 0} videos${manifest === undefined ? "" : " against the manifest"}, ${presentation?.files.length ?? 0} presentation files against provenance.json, ${report.external_links.length} external links, ${problems.length} problems; ${path}`);
+    if (presentationDir === undefined) console.log("site check: no --presentation given; the overview and pitch were not checked");
     if (consoleDir === undefined) console.log("site check: no --console given; the console route was not checked");
     if (videoDir === undefined) console.log("site check: no --video given; the planned video URLs were not checked");
     return passed ? 0 : 1;

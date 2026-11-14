@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { PLANNED_URLS, REPO_URL, SITE_PATHS } from "../src/evidence/journey.js";
-import { assembleSite, checkCsp, checkSite, checkVideos, EVIDENCE_PAGE_LINKS, inlineBlocks, PLANNED_BASE, PLANNED_ORIGIN, references, serveSite } from "../src/release/site.js";
+import { assembleSite, checkCsp, checkPresentation, checkSite, checkVideos, EVIDENCE_PAGE_LINKS, inlineBlocks, PLANNED_BASE, PLANNED_ORIGIN, PRESENTATION_FILES, references, serveSite } from "../src/release/site.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -141,6 +141,35 @@ describe("site check over a local server", () => {
     expect(readFileSync(join(out, "index.html"), "utf8")).toBe(readFileSync(join(src, "index.html"), "utf8"));
     const report = await checkSite(out, ["", "console/"]);
     expect(report.problems).toEqual([]);
+  });
+
+  it("publishes only the listed presentation files under overview/ and pitch/, and checks each against its recorded sha256", async () => {
+    const src = site(goodSite());
+    const files: Record<string, string> = {
+      "overview/index.html": page(`<h1>Overview</h1><a href="../">Evidence</a> <a href="../pitch/bounded-mandate-pitch.mp4">Pitch</a>`),
+      "pitch/bounded-mandate-pitch.mp4": "SYNTHETIC pitch",
+      "pitch/captions.vtt": "WEBVTT\n",
+      "pitch/captions.srt": "1\n",
+      "pitch/poster.png": "PNG",
+      "pitch/build.mjs": "unpublished build input",
+      "pitch/audio/s01.wav": "unpublished narration segment",
+    };
+    const presentation = join(src, "presentation");
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(presentation, path)), { recursive: true });
+      writeFileSync(join(presentation, path), content);
+    }
+    expect([...PRESENTATION_FILES]).toEqual(Object.keys(files).slice(0, 5));
+    const out = assembleSite({ page: join(src, "index.html"), console: join(src, "console"), video: join(src, "video"), presentation, out: join(src, "with-presentation") });
+    expect(existsSync(join(out, "pitch/build.mjs"))).toBe(false);
+    expect(existsSync(join(out, "pitch/audio"))).toBe(false);
+    expect((await checkSite(out, ["", "console/", "overview/"])).problems).toEqual([]);
+    const recorded = Object.fromEntries(PRESENTATION_FILES.map((p) => [p, createHash("sha256").update(files[p] ?? "").digest("hex")]));
+    expect((await checkPresentation(out, recorded)).problems).toEqual([]);
+    const stale = { ...recorded, "pitch/bounded-mandate-pitch.mp4": createHash("sha256").update("older pitch").digest("hex") };
+    const unrecorded = Object.fromEntries(Object.entries(recorded).filter(([p]) => p !== "pitch/poster.png"));
+    expect((await checkPresentation(out, stale)).problems).toEqual([expect.stringMatching(/^\/bounded-mandate\/pitch\/bounded-mandate-pitch\.mp4: sha256 [0-9a-f]{64} differs from the recorded/)]);
+    expect((await checkPresentation(out, unrecorded)).problems).toEqual(["/bounded-mandate/pitch/poster.png: not recorded in presentation/provenance.json"]);
   });
 
   it("serves the cuts under video/ only when a video directory is given; without it the page's own video links are problems", async () => {
