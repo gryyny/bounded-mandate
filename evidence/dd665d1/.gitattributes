@@ -1,0 +1,5 @@
+# Curated evidence hashes canonical bytes; do not convert line endings on checkout.
+* -text
+# Generated HTML embeds byte-bound scripts, including upstream wallet-library formatting.
+page/index.html binary
+console/index.html binary

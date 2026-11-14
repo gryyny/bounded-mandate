@@ -2,12 +2,29 @@
   "schema_version": 1,
   "bundles": [
     {
+      "path": "evidence/dd665d1",
+      "revision": "dd665d181a03808c9c9c0a68e161cccf99955b51",
+      "status": "certified",
+      "rules": "48 required cases of 20 gates in one clean acceptance run from a fresh clone, plus one approved mainnet run of the scripted template at this revision (evidence/mainnet/attempt-3/dd665d1). LAB/EXAMPLE and DAO execute in sandbox with labelled test doubles. The live runner pins mainnet signer v1.signer 3.18.0 (code hash CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ).",
+      "run": "evidence/dd665d1/run.json",
+      "note": "Fresh local clone: macOS arm64, Node 24.22.1, cargo-nextest 0.9.150, empty target, cached registry/tool downloads, allowlisted environment (HOME, PATH, SHELL, TMPDIR, USER) without model, public-network or GitHub credentials. make test 1070 s; run 20261114T155629841Z-45c5a9286e99, all 48 required cases passed. make demo, make quick and make example passed; make page byte-identical. Changes since 831c6b1: the runner sends each transaction once and, when the RPC has not answered within 10 s, reads its status by hash until FINAL (never resending); prepare.ts accepts an approved retry on reused accounts and an RPC override; verify.mjs reads mainnet-run bundles. Contract source and deployment candidate are unchanged. The page and both cuts were rebuilt in this clone after mainnet attempt 3 and carry its receipts. Two-repository secret scan, license, README link, site and wallet adapter (8/8) checks passed; contest rules hash unchanged. No paid inference, hosting or publication."
+    },
+    {
+      "path": "evidence/mainnet/attempt-3/dd665d1",
+      "revision": "dd665d181a03808c9c9c0a68e161cccf99955b51",
+      "status": "mainnet-run",
+      "run": "evidence/mainnet/attempt-3/dd665d1/run.json",
+      "certified_bundle": "evidence/dd665d1",
+      "manifest_sha256": "5214222baee40100163076e4a436511886a3b7cca5b033d671cab89ed142155e",
+      "note": "Mainnet run attempt 3 (14 November 2026), complete: grant epoch 3 with the MPC-derived key, the contract's policy refusal, an MPC-signed order filled on intents.near (1 USDC for 0.322008 wNEAR) and settled, a second signed order withheld, revoke with the grant key removed at the verifier, the withheld order relayed with 70.8 s of its lifetime left and rejected for the removed key, and recovery of both assets to the owner's Intents account. Runner dd665d1, RPC near.drpc.org. node verify.mjs --bundle evidence/mainnet/attempt-3/dd665d1 --mainnet checks every transaction, the trade binding, the key removal, a historical replay of the relayed bundle and the recovered balances against the chain."
+    },
+    {
       "path": "evidence/831c6b1",
       "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
-      "status": "certified",
+      "status": "superseded",
       "rules": "48 required cases of 20 gates in one clean acceptance run from a fresh clone. Mainnet not run; REPLAY uses synthetic RPC cases, LAB/EXAMPLE and DAO execute in sandbox with labelled test doubles. The live runner pins mainnet signer v1.signer 3.18.0 (code hash CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ).",
       "run": "evidence/831c6b1/run.json",
-      "note": "Fresh local clone: macOS arm64, Node 24.22.1, cargo-nextest 0.9.150, empty target, cached registry/tool downloads, allowlisted environment (HOME, PATH, SHELL, TMPDIR, USER) without model, public-network or GitHub credentials. make test 1065 s with the Rust (119 tests, cargo-nextest) and TypeScript (993 tests) suites in parallel; run 20261114T110909353Z-4a25414a2c51, all 48 required cases passed. make demo 59/59 in 65 s; make page byte-identical; make quick and make example passed. Both cuts (85.9 s and 224 s) rendered from this clone's demo run. Two-repository secret scan, license, README link, site and wallet adapter (8/8) checks passed. Source changes since 66fe963: both mainnet templates charge proposal_charge_bps 1000 so a grant is bounded to 10 order records (the minimal 3.3 NEAR mandate meets the storage rule without a deviation); the example client attaches 150 TGas; superseded bundles archived; CI reduced to fast checks; parallel test execution. Contract source and deployment candidate are unchanged. This is the revision a mainnet run must use. A funded sign call from this mandate to the signer has not been made. No public-network transactions, paid inference, hosting or publication."
+      "note": "Fresh local clone: macOS arm64, Node 24.22.1, cargo-nextest 0.9.150, empty target, cached registry/tool downloads, allowlisted environment (HOME, PATH, SHELL, TMPDIR, USER) without model, public-network or GitHub credentials. make test 1065 s with the Rust (119 tests, cargo-nextest) and TypeScript (993 tests) suites in parallel; run 20261114T110909353Z-4a25414a2c51, all 48 required cases passed. make demo 59/59 in 65 s; make page byte-identical; make quick and make example passed. Both cuts (85.9 s and 224 s) rendered from this clone's demo run. Two-repository secret scan, license, README link, site and wallet adapter (8/8) checks passed. Source changes since 66fe963: both mainnet templates charge proposal_charge_bps 1000 so a grant is bounded to 10 order records (the minimal 3.3 NEAR mandate meets the storage rule without a deviation); the example client attaches 150 TGas; superseded bundles archived; CI reduced to fast checks; parallel test execution. Contract source and deployment candidate are unchanged. Superseded on 14 November by dd665d1 (the runner's transport fix); kept in place because mainnet attempts 1 and 2 ran at this revision and are bound to it. No public-network transactions, paid inference, hosting or publication."
     },
     {
       "path": "evidence/mainnet/attempt-1/831c6b1",

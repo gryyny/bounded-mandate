@@ -1,0 +1,47 @@
+1
+00:00:00,000 --> 00:00:07,500
+An agent holding a trading key can exceed your limits, and orders it already signed can outlive your decision to stop it.
+
+2
+00:00:07,500 --> 00:00:14,633
+One local sandbox run with labelled test doubles and a replayed model recording, then one approved NEAR mainnet run.
+
+3
+00:00:14,633 --> 00:00:21,433
+The owner grants fixed limits on $1,899.80: each order at most 20% ($379.96), price concession at most 0.5%.
+
+4
+00:00:21,433 --> 00:00:28,933
+A recorded claude-haiku-5-5 proposal, replayed, sells 49.90 USDC for 16.5468 wNEAR, filled exactly as signed. USDC share: 52.63% to 50.01%, target 50%.
+
+5
+00:00:28,933 --> 00:00:36,433
+39 of 39 scripted hostile requests refused, nothing changed: local validation 10, contract method check 14, policy validation 4, agent key permission 10, verifier 1.
+
+6
+00:00:36,433 --> 00:00:43,933
+A second, scripted order, 20 wNEAR for 59.83 USDC, is signed by the grant key and withheld. The verifier would still accept it.
+
+7
+00:00:43,933 --> 00:00:51,433
+Separately, on NEAR mainnet, in one approved run. The mandate's order is filled: it pays 1.00 USDC and receives 0.322008 wNEAR.
+
+8
+00:00:51,433 --> 00:00:56,567
+The owner revokes. The grant key's removal from the Intents verifier is confirmed.
+
+9
+00:00:56,567 --> 00:01:04,067
+The run's withheld order is relayed 67 s before its deadline. The verifier rejects it: the signing key no longer exists.
+
+10
+00:01:04,067 --> 00:01:09,067
+Recovery returns 3.99 USDC and 0.422008 wNEAR to the owner's Intents account.
+
+11
+00:01:09,067 --> 00:01:15,200
+Signed orders can still execute before confirmed key removal. Mainnet receipts are on the evidence page.
+
+12
+00:01:15,200 --> 00:01:22,700
+Verify the evidence: make verify, or node verify.mjs with no install. Prebuilt, uncertified demo: make quick. Certified path: make test && make demo.

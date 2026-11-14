@@ -1,0 +1,74 @@
+{
+  "schema": "bounded-mandate/site-check/v1",
+  "base": "/bounded-mandate/",
+  "routes": [
+    "",
+    "console/"
+  ],
+  "pages": [
+    {
+      "route": "/bounded-mandate/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "csp": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-RVFnyvPR6RKlqkU6FjudBPsx/6wYRgSTAOotHl2aaxY='; connect-src https:; form-action 'none'; base-uri 'none'",
+      "inline_scripts": 1,
+      "script_hashes": [
+        "'sha256-RVFnyvPR6RKlqkU6FjudBPsx/6wYRgSTAOotHl2aaxY='"
+      ],
+      "references": 105
+    },
+    {
+      "route": "/bounded-mandate/console/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "csp": "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'sha256-giC4QJ5v4snlIp1tXa6swbTjYJM/PsmOPW1NZOrHiZg=' 'sha256-4WJHykjl9+Q9MloRle9cB3/vHBXxB+4q8nRLOc0jj+s=' 'nonce-8693e0f7af22003b4ff5d482037117e5'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; form-action 'none'; base-uri 'none'",
+      "inline_scripts": 2,
+      "script_hashes": [
+        "'sha256-giC4QJ5v4snlIp1tXa6swbTjYJM/PsmOPW1NZOrHiZg='",
+        "'sha256-4WJHykjl9+Q9MloRle9cB3/vHBXxB+4q8nRLOc0jj+s='"
+      ],
+      "references": 10
+    }
+  ],
+  "assets": [],
+  "external_links": [
+    "https://github.com/gryyny/bounded-mandate",
+    "https://nearblocks.io/txns/2PzTvXv9TLzWxV1LP6KFKP9a2mGF4gP4MLwXk1XAy1MK",
+    "https://nearblocks.io/txns/4KDPzRrdFuu1Qp6iqYnNU1RtYVR8e94e9B8nvvghLivx",
+    "https://nearblocks.io/txns/4MYyWnrDyz8zh5yh7FTgvU4TYU8rDtWvy5X28vKXhz14",
+    "https://nearblocks.io/txns/5R1wKwqsfxX18XqqKJ2AakKCM4bT4TTQgYQzFzhW3LLw",
+    "https://nearblocks.io/txns/7ypZiTuugefeWqfocsDsqsT81iUw8iE5eeXroYtmrEGj",
+    "https://nearblocks.io/txns/AktZdWjn3xSxNvx5SS7Ut44L3QMZTBA9SQraHyJUAKZf",
+    "https://nearblocks.io/txns/Cuan44bAPFyyKdrvTeXpjGSEZMsvDymuj7fVjf1K2qJt",
+    "https://nearblocks.io/txns/FPdUJG76cXLcy8WojXCJgzuRzEi4r6ANdsToEu991RvZ",
+    "https://nearblocks.io/txns/H7KpB2dxPDDMJK9aYgtRd4yztqSS7nE8ZxZ1sZ5ApJSC",
+    "https://nearblocks.io/txns/t6BZT5eDLAGtSJp8Xzs23SxGqmTTU4q8NSjHyYgmpgn"
+  ],
+  "problems": [],
+  "passed": true,
+  "page": "../out/page/index.html",
+  "console": "../out/console",
+  "video": {
+    "dir": "../out/video",
+    "manifest": "../out/video/video.json",
+    "videos": [
+      {
+        "path": "video/bounded-mandate-short.mp4",
+        "status": 200,
+        "content_type": "video/mp4",
+        "bytes": 2204220,
+        "sha256": "663384deb123f77407aee09a66251626295cd372ef879b4fe4be82828937552c",
+        "expected_sha256": "663384deb123f77407aee09a66251626295cd372ef879b4fe4be82828937552c"
+      },
+      {
+        "path": "video/bounded-mandate-demo.mp4",
+        "status": 200,
+        "content_type": "video/mp4",
+        "bytes": 7038340,
+        "sha256": "094715b3bc3b570d9f5398e9f993e3fe3247f1541592ce5399ddc0f620b88f4b",
+        "expected_sha256": "094715b3bc3b570d9f5398e9f993e3fe3247f1541592ce5399ddc0f620b88f4b"
+      }
+    ],
+    "problems": []
+  }
+}

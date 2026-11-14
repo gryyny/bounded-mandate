@@ -1,0 +1,189 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "T2",
+  "case": "sandbox-interleavings",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261114T155629841Z-45c5a9286e99",
+  "source": {
+    "revision": "dd665d181a03808c9c9c0a68e161cccf99955b51",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6"
+  },
+  "command": "target/debug/deps/t2_sandbox-0fc0a7b41cfae7e1 --exact t2_sandbox_interleavings_real_verifier --nocapture",
+  "generated_at_unix": 1794672826,
+  "data": {
+    "seeds": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "actions_per_seed": 8,
+    "coverage": {
+      "expiries": {
+        "count": 5,
+        "required": 4
+      },
+      "fills": {
+        "count": 11,
+        "required": 8
+      },
+      "regrants": {
+        "count": 13,
+        "required": 7
+      },
+      "rejected_proposals": {
+        "count": 15,
+        "required": 8
+      },
+      "revocations_with_pending_signature": {
+        "count": 8,
+        "required": 4
+      },
+      "revocations_with_signed_outstanding": {
+        "count": 14,
+        "required": 8
+      },
+      "settlements": {
+        "count": 11,
+        "required": 8
+      }
+    },
+    "coverage_ok": true,
+    "violations": [],
+    "runs": [
+      {
+        "seed": 11,
+        "violations": [],
+        "actions": [
+          "prologue (seed 11)",
+          "propose on near-stale feed",
+          "propose on near-stale feed",
+          "relay 0 executed=false",
+          "relay 0 executed=false",
+          "revoke ok=true signed=true pending=false; regrant",
+          "relay 2 executed=false",
+          "propose (disclose_only)",
+          "propose (immediate)"
+        ]
+      },
+      {
+        "seed": 12,
+        "violations": [],
+        "actions": [
+          "prologue (seed 12)",
+          "propose (disclose_only)",
+          "propose (hold)",
+          "relay 11 executed=true",
+          "mpc respond 8 disclose_only",
+          "revoke ok=true signed=true pending=true; regrant",
+          "propose (immediate)",
+          "time + expire",
+          "propose (immediate_error)"
+        ]
+      },
+      {
+        "seed": 13,
+        "violations": [],
+        "actions": [
+          "prologue (seed 13)",
+          "propose (immediate)",
+          "propose (immediate)",
+          "propose (disclose_only)",
+          "mpc respond 18 valid",
+          "propose (immediate_error)",
+          "revoke ok=true signed=true pending=false; regrant",
+          "propose (immediate)",
+          "relay 26 executed=true"
+        ]
+      },
+      {
+        "seed": 14,
+        "violations": [],
+        "actions": [
+          "prologue (seed 14)",
+          "time + expire",
+          "relay 11 executed=false",
+          "propose on near-stale feed",
+          "propose (immediate_error)",
+          "relay 11 executed=false",
+          "propose (immediate_error)",
+          "relay 6 executed=false",
+          "relay 23 executed=false"
+        ]
+      },
+      {
+        "seed": 15,
+        "violations": [],
+        "actions": [
+          "prologue (seed 15)",
+          "relay 35 executed=false",
+          "propose (immediate)",
+          "relay 38 executed=true",
+          "mpc respond 27 valid",
+          "revoke ok=true signed=true pending=false; regrant",
+          "mpc respond 13 error",
+          "relay 23 executed=false",
+          "propose (disclose_only)"
+        ]
+      },
+      {
+        "seed": 16,
+        "violations": [],
+        "actions": [
+          "prologue (seed 16)",
+          "relay 6 executed=false",
+          "relay 40 executed=false",
+          "time + expire",
+          "propose (immediate_error)",
+          "relay 42 executed=false",
+          "propose (immediate)",
+          "propose on near-stale feed",
+          "propose (immediate)"
+        ]
+      },
+      {
+        "seed": 17,
+        "violations": [],
+        "actions": [
+          "prologue (seed 17)",
+          "time + expire",
+          "relay 11 executed=false",
+          "relay 40 executed=false",
+          "relay 50 executed=false",
+          "relay 11 executed=false",
+          "relay 11 executed=false",
+          "propose on near-stale feed",
+          "propose (hold)"
+        ]
+      },
+      {
+        "seed": 18,
+        "violations": [],
+        "actions": [
+          "prologue (seed 18)",
+          "propose (immediate)",
+          "propose (immediate_error)",
+          "revoke ok=true signed=true pending=false; regrant",
+          "relay 56 executed=false",
+          "revoke ok=true signed=true pending=false; regrant",
+          "propose on near-stale feed",
+          "propose on near-stale feed",
+          "propose (disclose_only)"
+        ]
+      }
+    ]
+  }
+}

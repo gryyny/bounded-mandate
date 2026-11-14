@@ -1,0 +1,55 @@
+{
+  "schema": "bounded-mandate/prepare-input@1",
+  "setup": {
+    "approval": {
+      "approved_by": "gryyny (repository owner)",
+      "reference": "setup approval A (2026-11-14), inventory approval A2 (2026-11-14) and the owner revoke of grant 2 (2026-11-14)"
+    },
+    "accounts": {
+      "owner": "bmandate.near",
+      "mandate": "mandate.bmandate.near",
+      "agent": "agent.bmandate.near",
+      "filler": "filler.bmandate.near"
+    },
+    "keys": {
+      "owner": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+      "agent": "ed25519:6tpfEXKYrjBqFJYwBg5TANhQw3cQofkct8SpNvn4ScKU",
+      "filler": "ed25519:7DZsKpJjvvRhmyQ5EjtMxo6bxtVTtLb83PwajJxAhFM7",
+      "filler_intents": "ed25519:56j6PAY24VonjYunhPFPxHXQXFsQ1sirynRNbf6GMoq7",
+      "mandate_full_access": []
+    },
+    "agent_allowance_yocto": "190470919230316800000000",
+    "deposits": {
+      "mandate": {
+        "usdc": "4999999",
+        "wnear": "99999692661812416797644"
+      },
+      "filler": {
+        "usdc": "0",
+        "wnear": "500000000000000000000000"
+      }
+    },
+    "reuse": {
+      "previous_manifest_sha256": "9b07589de7bcf0980e2f22df128594a6b226ef3b4a2402755661aec36570bf55",
+      "previous_grant_epoch": 2,
+      "approved_reference": "retry approval, 2026-11-14: attempt 3 on the accounts of attempts 1 and 2 after the owner revoked grant 2"
+    }
+  },
+  "runner": {
+    "approval": {
+      "approved_by": "gryyny (repository owner)",
+      "reference": "runner approval B3 for attempt 3 at dd665d1, 2026-11-14, by manifest sha256"
+    },
+    "grant_timing": {
+      "order_ttl_sec": 120,
+      "oracle_max_age_sec": 120
+    },
+    "credentials": {
+      "owner": "$HOME/.config/bounded-mandate-keys/owner.json",
+      "agent": "$HOME/.config/bounded-mandate-keys/agent.json",
+      "filler": "$HOME/.config/bounded-mandate-keys/filler.json",
+      "filler_intents": "$HOME/.config/bounded-mandate-keys/filler-intents.json"
+    },
+    "rpc_url": "https://near.drpc.org"
+  }
+}

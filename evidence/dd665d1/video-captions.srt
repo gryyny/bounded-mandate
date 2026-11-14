@@ -1,0 +1,131 @@
+1
+00:00:00,000 --> 00:00:06,100
+Give an AI agent trading authority without unrestricted control of your treasury.
+
+2
+00:00:06,100 --> 00:00:15,100
+Claim: the contract builds and signs every trade; after confirmed key removal, withheld orders fail and the owner recovers without agent, oracle or signer.
+
+3
+00:00:15,100 --> 00:00:24,100
+Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM.
+
+4
+00:00:24,100 --> 00:00:33,100
+The owner grants the mandate. Initial reference value: $1,899.80. Limits are fixed for the grant; the agent cannot change them.
+
+5
+00:00:33,100 --> 00:00:41,900
+The owner console reads it back from the sandbox: grant active, key registered on the verifier, limits as granted.
+
+6
+00:00:41,900 --> 00:00:50,900
+Recorded genuine model output, claude-haiku-5-5, replayed with no provider call: sell 49.90 USDC for wNEAR, at most 50 bps concession. The contract signs it.
+
+7
+00:00:50,900 --> 00:00:59,900
+Our filler fills it on the pinned mainnet verifier WASM, running in the sandbox: the mandate pays 49.90 USDC and receives 16.5468 wNEAR, exactly as signed.
+
+8
+00:00:59,900 --> 00:01:05,900
+Local validation: 10 hostile requests refused, each with no state change.
+
+9
+00:01:05,900 --> 00:01:12,000
+Contract method check: 14 hostile requests refused, each with no state change.
+
+10
+00:01:12,000 --> 00:01:18,000
+Policy validation: 4 hostile requests refused, each with no state change.
+
+11
+00:01:18,000 --> 00:01:24,100
+Agent key permission: 10 hostile requests refused, each with no state change.
+
+12
+00:01:24,100 --> 00:01:30,100
+Verifier: 1 hostile request refused, each with no state change.
+
+13
+00:01:30,100 --> 00:01:39,100
+A scripted second order (order id 1) is signed and withheld. Before revocation the verifier's simulation accepts this exact bundle.
+
+14
+00:01:39,100 --> 00:01:48,100
+After an exact preview, the owner revokes in the console with the local sandbox test signer, not a wallet. Key removal is confirmed.
+
+15
+00:01:48,100 --> 00:01:57,100
+Another account relays the withheld order 55 s before its deadline. The verifier rejects it: the key no longer exists.
+
+16
+00:01:57,100 --> 00:02:06,100
+With the oracle failing and the MPC test double on hold, the owner recovers 950.10 USDC and 316.5468 wNEAR into its Intents account through ordinary recovery.
+
+17
+00:02:06,100 --> 00:02:15,100
+Separately, outside recovery, the owner withdraws 950.10 USDC and 316.5468 wNEAR to its NEAR account, registering storage only where needed.
+
+18
+00:02:15,100 --> 00:02:24,100
+Separately, on NEAR mainnet, in one approved run. The mandate's order is filled: it pays 1.00 USDC and receives 0.322008 wNEAR.
+
+19
+00:02:24,100 --> 00:02:30,600
+The owner revokes. The grant key's removal from the Intents verifier is confirmed.
+
+20
+00:02:30,600 --> 00:02:39,600
+The run's withheld order is relayed 67 s before its deadline. The verifier rejects it: the signing key no longer exists.
+
+21
+00:02:39,600 --> 00:02:45,700
+Recovery returns 3.99 USDC and 0.422008 wNEAR to the owner's Intents account.
+
+22
+00:02:45,700 --> 00:02:51,700
+48 of 48 required cases passed, certified for this demo.
+
+23
+00:02:51,700 --> 00:02:58,600
+The remaining required cases, including the historical replay, sandbox lab and independent client example.
+
+24
+00:02:58,600 --> 00:03:05,100
+The emergency owner-key rescue is reported separately; it never counts as ordinary recovery.
+
+25
+00:03:05,100 --> 00:03:12,000
+15 of 15 selected legitimate sandbox trades executed and settled, with 0 authorization refusals.
+
+26
+00:03:12,000 --> 00:03:20,800
+Complete-list nonce cancellation works with the signer. Confirmed removal covers outstanding orders even when the owner lacks their nonces.
+
+27
+00:03:20,800 --> 00:03:26,800
+Keep the old key retired when trading resumes.
+
+28
+00:03:26,800 --> 00:03:35,600
+T5 runs the same threats against our own re-implementation of the pinned Claw Guard design, not the deployed product:
+
+29
+00:03:35,600 --> 00:03:41,600
+3 of 11 cases executed as successful attacks.
+
+30
+00:03:41,600 --> 00:03:50,600
+Limits: the sandbox scenes use test doubles for MPC, oracle and tokens, and the mainnet segment is one approved run; the model step is a replay.
+
+31
+00:03:50,600 --> 00:03:56,600
+No guarantee of profit or a maximum loss.
+
+32
+00:03:56,600 --> 00:04:05,600
+Revocation is not instant: signed orders can still execute while it is pending. The claim covers orders after confirmed key removal.
+
+33
+00:04:05,600 --> 00:04:14,600
+Certified for this demo: the latest certified acceptance run binds to this demo's clean revision, spec, fixtures and every deployed WASM.

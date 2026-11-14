@@ -1,0 +1,13 @@
+{
+  "source": "dd665d181a03808c9c9c0a68e161cccf99955b51",
+  "command": "make page after make test && make demo",
+  "before_sha256": "501d187f8b719e4da43bcbc2a4ceea6e5a2cc9cd161f7815fb174fe7c2f8481b",
+  "after_sha256": "501d187f8b719e4da43bcbc2a4ceea6e5a2cc9cd161f7815fb174fe7c2f8481b",
+  "byte_identical": true,
+  "exit_code": 0,
+  "final_page": {
+    "command": "make page after the approved mainnet run (attempt 3) wrote out/evidence/live-mainnet.json",
+    "sha256": "5a0beca33cbaf8744b0e2f794ef1846bd78df429ac75eca03c808662f0bbacd1",
+    "note": "page/index.html is this final page: the gate's page plus the mainnet receipts"
+  }
+}
