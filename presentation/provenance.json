@@ -69,13 +69,14 @@
     "pitch/scenes/theme.css": "e7e1304641ef5a838b53d75e6f7bd5de1779e7aba6c96b519309c35b4935ad68"
   },
   "files": {
-    "overview/index.html": "ebe5a3d8326be3cb8485c66f5c73c41b0d07a3781109e8527fdb5678686ecbae",
+    "overview/index.html": "c66f3ab286755cf6a3b14dcc28173d14a947f9e25617ea6cd258caac169498a0",
     "pitch/bounded-mandate-pitch.mp4": "c63a721000ada3ef212a83aa2b3fd1ffe161138d29f1a0f18ea47f677c863867",
     "pitch/captions.vtt": "129d9c44c59f2eca634ab83df1200c31e070d970ede1c142701649b917e4c452",
     "pitch/captions.srt": "28073c1ca1859a273f94cb1ed18e40c50cd1aff50d0b228256fd266b8f83ec59",
     "pitch/poster.png": "29f71fe82de492aa967f1b528228df6eff1951336b9bb86b510f09779d314077"
   },
   "revisions": [
-    "14 November 2026: s03, s04 and s13 narration, captions and scene text rewritten after review: the agent cannot sign Intents orders (its key can only request a proposal); stopping an agent does not itself invalidate orders already signed; node verify.mjs --mainnet is the chain check and make verify the offline file check. Duration 88.17 s."
+    "14 November 2026: s03, s04 and s13 narration, captions and scene text rewritten after review: the agent cannot sign Intents orders (its key can only request a proposal); stopping an agent does not itself invalidate orders already signed; node verify.mjs --mainnet is the chain check and make verify the offline file check. Duration 88.17 s.",
+    "14 November 2026: overview kicker, opening, proof strip, limitations and meta description aligned with the final positioning (revocable trading on NEAR Intents; contract builds and checks each order before its MPC signature; bounded advantage over expiry). Pitch unchanged."
   ]
 }

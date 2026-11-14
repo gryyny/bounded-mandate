@@ -5,10 +5,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-pPUc0GPtk9DhrXsYv3bOM7SnL7+/BY7POHbfRvNT0GU='; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bounded Mandate — overview</title>
-<meta name="description" content="Give an AI agent trading authority without unrestricted control of your treasury. Limits enforced before signing, revocation by key removal at NEAR Intents, recovery without the agent. One approved mainnet run and a sandbox-certified test suite.">
+<meta name="description" content="Revocable trading on NEAR Intents: an agent trades within owner-defined limits, the contract builds and checks each order before its MPC signature, and the owner can revoke outstanding signed orders and recover the assets. One verified mainnet run.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Bounded Mandate — overview">
-<meta property="og:description" content="Give an AI agent trading authority without unrestricted control of your treasury. One mainnet run: trade, confirmed revocation, the same signed order rejected, recovery.">
+<meta property="og:description" content="Pausing a trading agent doesn't void orders it already signed. On NEAR Intents mainnet: a 1 USDC trade, confirmed revocation, the same held signed order rejected 67.25 s before expiry, recovery.">
 <meta name="color-scheme" content="light dark">
 <style>
 :root {
@@ -202,10 +202,10 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; padding-bottom: 3
 <body>
 
 <header class="wrap">
-  <p class="kicker">Bounded Mandate · NEAR<span class="k-more"> Intents · Chain Signatures</span></p>
+  <p class="kicker">Bounded Mandate · revocable trading<span class="k-more"> on NEAR Intents</span></p>
   <h1>Give an AI agent trading authority without unrestricted control of your treasury.</h1>
-  <p class="lede">You set the limits, and the contract checks them before any order is signed. One revoke call removes the signing key, so signed orders the agent still holds fail once the removal is confirmed. You can recover the funds without the agent.</p>
-  <p class="proof"><b>Mainnet, 14 Nov 2026:</b> trade filled → key revoked → the same signed order rejected 67.25 s before expiry → assets recovered · <a href="#h-verify">Verify ↓</a></p>
+  <p class="lede">Pausing a trading agent doesn't void orders it already signed. Here the agent trades within your limits: the contract builds and checks each order before requesting its MPC signature. Revoke removes the signing key, so signed orders not yet executed fail once removal is confirmed, and you recover the assets without the agent.</p>
+  <p class="proof"><b>Mainnet, 14 Nov 2026:</b> 1 USDC trade filled → key revoked → the same held signed order rejected 67.25 s before expiry → assets recovered · <a href="#h-verify">Verify ↓</a></p>
 </header>
 
 <main>
@@ -438,6 +438,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; padding-bottom: 3
     <li>"Certified" means the project's own acceptance gate, not an external audit.</li>
     <li>No guarantee of principal or profit. Limits bound what the agent can sign, not market outcomes.</li>
     <li>The owner and the NEAR and NEAR Intents infrastructure are trusted.</li>
+    <li>Revocation's advantage over waiting for expiry is bounded by the order's remaining lifetime (120 s maximum in this run).</li>
     <li>Mainnet evidence is one small run with fixed proposals, not a live model.</li>
     <li>The mainnet trade was filled by our own account, not third-party liquidity or the solver network.</li>
   </ul>
