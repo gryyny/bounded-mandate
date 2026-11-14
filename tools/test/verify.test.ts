@@ -311,6 +311,12 @@ describe("verify.mjs on a SYNTHETIC mainnet-run record bundle", () => {
     expect(lineOf(r.out, "acceptance.report")).toMatch(/^PASS /);
   });
 
+  it("stays bound to its certified bundle after a later certification supersedes it", async () => {
+    const dir = await withRunBundle();
+    editJson(join(dir, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.status = "superseded"; }); });
+    expect(lineOf((await verifyRun(dir)).out, "bundle.index")).toMatch(/^PASS /);
+  });
+
   it("is never selected by default", async () => {
     const dir = await withRunBundle();
     const r = await runVerify(["--root", dir]);
@@ -327,8 +333,9 @@ describe("verify.mjs on a SYNTHETIC mainnet-run record bundle", () => {
   const failures: [string, (dir: string) => void, string][] = [
     ["no certified_bundle", (d) => { editRunEntry(d, (e) => { delete e.certified_bundle; }); }, `a mainnet-run entry must name its certified_bundle; ${RUN_BUNDLE} names null`],
     ["a certified_bundle without an index entry", (d) => { editRunEntry(d, (e) => { e.certified_bundle = "evidence/nope"; }); }, "certified_bundle evidence/nope has no entry in evidence/index.json"],
-    ["a certified_bundle that is not certified", (d) => { editJson(join(d, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.status = "superseded"; }); }); }, `certified_bundle ${SYNTHETIC_BUNDLE} has status "superseded", not "certified"`],
-    ["a certified_bundle naming itself", (d) => { editRunEntry(d, (e) => { e.certified_bundle = RUN_BUNDLE; }); }, `certified_bundle ${RUN_BUNDLE} has status "mainnet-run", not "certified"`],
+    ["a certified_bundle that is legacy", (d) => { editJson(join(d, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.status = "legacy"; }); }); }, `certified_bundle ${SYNTHETIC_BUNDLE} has status "legacy", not "certified" or "superseded"`],
+    ["a superseded certified_bundle whose files were archived", (d) => { editJson(join(d, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.status = "superseded"; }); }); rmSync(join(d, SYNTHETIC_BUNDLE, "acceptance.json")); }, `${SYNTHETIC_BUNDLE}/acceptance.json is missing, so ${RUN_BUNDLE}/acceptance.json cannot be bound to it`],
+    ["a certified_bundle naming itself", (d) => { editRunEntry(d, (e) => { e.certified_bundle = RUN_BUNDLE; }); }, `certified_bundle ${RUN_BUNDLE} has status "mainnet-run", not "certified" or "superseded"`],
     ["a certified_bundle of another revision", (d) => { editJson(join(d, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.revision = "5e5e5e5000000000000000000000000000000000"; }); }); }, `certified_bundle ${SYNTHETIC_BUNDLE} has revision 5e5e5e5000000000000000000000000000000000, not 5e5e5e5`],
     ["run.json bytes that differ from the certified bundle", (d) => { appendFileSync(join(d, RUN_BUNDLE, "run.json"), "\n"); }, `${RUN_BUNDLE}/run.json sha256 `],
     ["acceptance.json bytes that differ from the certified bundle", (d) => { appendFileSync(join(d, RUN_BUNDLE, "acceptance.json"), " "); }, `${RUN_BUNDLE}/acceptance.json sha256 `],

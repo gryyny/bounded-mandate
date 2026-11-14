@@ -273,7 +273,8 @@ function mainnetRunProblems(root, bundleDir, bundle, entry, indexed) {
   const certified = indexed.find((b) => isObject(b) && b.path === certifiedPath);
   if (certified === undefined) out.push(`certified_bundle ${certifiedPath} has no entry in evidence/index.json`);
   else {
-    if (certified.status !== "certified") out.push(`certified_bundle ${certifiedPath} has status ${JSON.stringify(certified.status)}, not "certified"`);
+    // A later certification supersedes the bundle; the run stays bound to it while its files remain (checked below).
+    if (certified.status !== "certified" && certified.status !== "superseded") out.push(`certified_bundle ${certifiedPath} has status ${JSON.stringify(certified.status)}, not "certified" or "superseded"`);
     if (certified.revision !== entry.revision) out.push(`certified_bundle ${certifiedPath} has revision ${certified.revision}, not ${entry.revision}`);
   }
   for (const file of ["run.json", "acceptance.json"]) {
