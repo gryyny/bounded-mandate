@@ -11,56 +11,56 @@ Bounded Mandate: give an AI agent trading authority
 without unrestricted control of your treasury.
 
 s03-problem
-00:00:15.608 --> 00:00:23.267
-Pausing an agent stops new orders. Orders it already signed
-stay valid until they expire or are cancelled one by one.
+00:00:15.608 --> 00:00:21.667
+Pausing an agent stops new orders, but does
+not itself invalidate orders already signed.
 
 s04-agent
-00:00:23.547 --> 00:00:28.069
-The agent holds no signing key.
-Its only key can propose an order.
+00:00:21.947 --> 00:00:27.216
+The agent cannot sign Intents orders.
+Its key can only request a proposal.
 
 s05-contract
-00:00:28.349 --> 00:00:37.032
+00:00:27.496 --> 00:00:36.179
 A NEAR contract prices each order from the oracle, checks your
 limits, then asks NEAR's MPC network to sign it (Chain Signatures).
 
 s06-verifier
-00:00:37.312 --> 00:00:43.584
+00:00:36.459 --> 00:00:42.731
 The NEAR Intents verifier checks that key on every
 order, so revoking is one owner call that removes it.
 
 s07-run
-00:00:43.864 --> 00:00:53.080
+00:00:43.011 --> 00:00:52.227
 Mainnet, fixed proposals, our own filler: an over-limit
 order refused; a 1 USDC order signed and filled.
 
 s08-revoke
-00:00:53.360 --> 00:00:58.693
+00:00:52.507 --> 00:00:57.840
 A second signed order was held back. The owner
 revoked; removal of the key was confirmed.
 
 s09-reject
-00:00:58.973 --> 00:01:03.987
+00:00:58.120 --> 00:01:03.133
 The held order was relayed and rejected:
 its signing key no longer exists.
 
 s10-recover
-00:01:04.267 --> 00:01:07.765
+00:01:03.413 --> 00:01:06.912
 Recovery returned both assets
 to the owner's Intents account.
 
 s11-sandbox
-00:01:08.045 --> 00:01:15.043
+00:01:07.192 --> 00:01:14.189
 Sandbox, labelled test doubles: 39 scripted
 hostile requests refused across five layers.
 
 s12-limits
-00:01:15.323 --> 00:01:22.811
+00:01:14.469 --> 00:01:21.957
 Orders executed before confirmed removal stay
 executed. Not an audit; no profit promised.
 
 s13-verify
-00:01:23.091 --> 00:01:28.701
-Check each transaction on nearblocks, or
-run make verify. Start at the overview page.
+00:01:22.237 --> 00:01:27.549
+Check the mainnet proof against the chain: node verify.mjs --mainnet
+(make verify is the offline file check). Start at the overview page.

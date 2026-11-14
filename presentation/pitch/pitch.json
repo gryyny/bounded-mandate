@@ -1,10 +1,10 @@
 {
-  "generated": "2026-11-14T17:47:23.451Z",
+  "generated": "2026-11-14T17:59:42.364Z",
   "statement": "Explainer based on recorded evidence (evidence/dd665d1, mainnet attempt 3); not a certified cut; mainnet timings are actual; diagrams are illustrative.",
   "mode": "final",
   "command": "node presentation/pitch/build.mjs",
   "source": {
-    "revision": "4a4f5ba9207c12a5f2a86bfaa01921e50f86ca32",
+    "revision": "e4f2e733b388e3d1d03dd1cba255e4a13f35a113",
     "dirty": true
   },
   "tools": {
@@ -19,13 +19,13 @@
     "tail_s": 0.6,
     "scene_crossfade_s": 0.28,
     "state_crossfade_s": 0.3,
-    "total_s": 89.333
+    "total_s": 88.167
   },
   "inputs": [
     {
       "path": "presentation/pitch/narration.md",
-      "sha256": "0710c8caf7e32cdb2abf4020086d9596cdcd3e6275e74957efe188da6d590a12",
-      "bytes": 3225
+      "sha256": "781d4fd766fde451796d0506f5c70142bfa8d3af0c50e96850067db7bcc86fae",
+      "bytes": 3244
     },
     {
       "path": "presentation/pitch/audio/s01-proof.wav",
@@ -41,15 +41,15 @@
     },
     {
       "path": "presentation/pitch/audio/s03-problem.wav",
-      "sha256": "6e2c674830cae6c310205669158a41072a2efeec92073f0fb2ac0e72fc48c140",
-      "bytes": 367660,
-      "duration_s": 7.659
+      "sha256": "82eac7e05ea39f9c55ac1b0c7430e0ab1b4a83a68d741e7852ba5094588ccbae",
+      "bytes": 290860,
+      "duration_s": 6.059
     },
     {
       "path": "presentation/pitch/audio/s04-agent.wav",
-      "sha256": "26d32e63e71f6b12abb1787ac2f2a2d8fab52eb4ab3e2ca99167c4e5a1c0913f",
-      "bytes": 217132,
-      "duration_s": 4.523
+      "sha256": "c9b1161f30f8416b0daff8ab60fd4a3bb091e5ff32721214070f4eeb2d99b615",
+      "bytes": 252972,
+      "duration_s": 5.269
     },
     {
       "path": "presentation/pitch/audio/s05-contract.wav",
@@ -101,9 +101,9 @@
     },
     {
       "path": "presentation/pitch/audio/s13-verify.wav",
-      "sha256": "04c37c21700216a3d209d9d5fb0b4d2ab6b8bc0c6a2519be10129c9a08a8fa4d",
-      "bytes": 269356,
-      "duration_s": 5.611
+      "sha256": "9df8e928e5ad1adfc416ca5c0f33a1cc5e81b8eac646cff377b0a4843cdd79a8",
+      "bytes": 255020,
+      "duration_s": 5.312
     },
     {
       "path": "evidence/dd665d1/console/screens/demo-console-review.png",
@@ -118,13 +118,13 @@
     },
     {
       "path": "presentation/pitch/build.mjs",
-      "sha256": "81d80d02ad5ff8aaccfb7a8d0dcea150a951ddfb09207212243edfe8e8abc76b",
-      "bytes": 22808
+      "sha256": "1b8891db9c776a14511636064e634115de5f782bb9511b6015cb599e9db2aa71",
+      "bytes": 22830
     },
     {
       "path": "presentation/pitch/scenes/scenes.html",
-      "sha256": "0b93a680054b2623d4c07d94db6ddd568dc34438481fbe91ba9c36805f8034c1",
-      "bytes": 16735
+      "sha256": "ff1e1ab463176a9617c66da5020e9324c10dd504e8db2c9cf2e1c8e79f003a4a",
+      "bytes": 16740
     },
     {
       "path": "presentation/pitch/scenes/theme.css",
@@ -160,79 +160,79 @@
     {
       "id": "s03-problem",
       "start_s": 15.608,
-      "end_s": 23.267,
-      "duration_s": 7.659,
-      "caption": "Pausing an agent stops new orders. Orders it already signed stay valid until they expire or are cancelled one by one."
+      "end_s": 21.667,
+      "duration_s": 6.059,
+      "caption": "Pausing an agent stops new orders, but does not itself invalidate orders already signed."
     },
     {
       "id": "s04-agent",
-      "start_s": 23.547,
-      "end_s": 28.069,
-      "duration_s": 4.523,
-      "caption": "The agent holds no signing key. Its only key can propose an order."
+      "start_s": 21.947,
+      "end_s": 27.216,
+      "duration_s": 5.269,
+      "caption": "The agent cannot sign Intents orders. Its key can only request a proposal."
     },
     {
       "id": "s05-contract",
-      "start_s": 28.349,
-      "end_s": 37.032,
+      "start_s": 27.496,
+      "end_s": 36.179,
       "duration_s": 8.683,
       "caption": "A NEAR contract prices each order from the oracle, checks your limits, then asks NEAR's MPC network to sign it (Chain Signatures)."
     },
     {
       "id": "s06-verifier",
-      "start_s": 37.312,
-      "end_s": 43.584,
+      "start_s": 36.459,
+      "end_s": 42.731,
       "duration_s": 6.272,
       "caption": "The NEAR Intents verifier checks that key on every order, so revoking is one owner call that removes it."
     },
     {
       "id": "s07-run",
-      "start_s": 43.864,
-      "end_s": 53.08,
+      "start_s": 43.011,
+      "end_s": 52.227,
       "duration_s": 9.216,
       "caption": "Mainnet, fixed proposals, our own filler: an over-limit order refused; a 1 USDC order signed and filled."
     },
     {
       "id": "s08-revoke",
-      "start_s": 53.36,
-      "end_s": 58.693,
+      "start_s": 52.507,
+      "end_s": 57.84,
       "duration_s": 5.333,
       "caption": "A second signed order was held back. The owner revoked; removal of the key was confirmed."
     },
     {
       "id": "s09-reject",
-      "start_s": 58.973,
-      "end_s": 63.987,
+      "start_s": 58.12,
+      "end_s": 63.133,
       "duration_s": 5.013,
       "caption": "The held order was relayed and rejected: its signing key no longer exists."
     },
     {
       "id": "s10-recover",
-      "start_s": 64.267,
-      "end_s": 67.765,
+      "start_s": 63.413,
+      "end_s": 66.912,
       "duration_s": 3.499,
       "caption": "Recovery returned both assets to the owner's Intents account."
     },
     {
       "id": "s11-sandbox",
-      "start_s": 68.045,
-      "end_s": 75.043,
+      "start_s": 67.192,
+      "end_s": 74.189,
       "duration_s": 6.997,
       "caption": "Sandbox, labelled test doubles: 39 scripted hostile requests refused across five layers."
     },
     {
       "id": "s12-limits",
-      "start_s": 75.323,
-      "end_s": 82.811,
+      "start_s": 74.469,
+      "end_s": 81.957,
       "duration_s": 7.488,
       "caption": "Orders executed before confirmed removal stay executed. Not an audit; no profit promised."
     },
     {
       "id": "s13-verify",
-      "start_s": 83.091,
-      "end_s": 88.701,
-      "duration_s": 5.611,
-      "caption": "Check each transaction on nearblocks, or run make verify. Start at the overview page."
+      "start_s": 82.237,
+      "end_s": 87.549,
+      "duration_s": 5.312,
+      "caption": "Check the mainnet proof against the chain: node verify.mjs --mainnet (make verify is the offline file check). Start at the overview page."
     }
   ],
   "scenes": [
@@ -268,161 +268,161 @@
       "segment": "s03-problem",
       "board": "pause",
       "state": 2,
-      "start_s": 17.685,
+      "start_s": 17.697,
       "crossfade_s": 0.3
     },
     {
       "segment": "s04-agent",
       "board": "arch",
       "state": 1,
-      "start_s": 23.267,
+      "start_s": 21.667,
       "crossfade_s": 0.28
     },
     {
       "segment": "s04-agent",
       "board": "arch",
       "state": 2,
-      "start_s": 25.814,
+      "start_s": 24.725,
       "crossfade_s": 0.3
     },
     {
       "segment": "s05-contract",
       "board": "arch",
       "state": 3,
-      "start_s": 28.069,
+      "start_s": 27.216,
       "crossfade_s": 0.28
     },
     {
       "segment": "s05-contract",
       "board": "arch",
       "state": 4,
-      "start_s": 31.415,
+      "start_s": 30.562,
       "crossfade_s": 0.3
     },
     {
       "segment": "s05-contract",
       "board": "arch",
       "state": 5,
-      "start_s": 32.664,
+      "start_s": 31.811,
       "crossfade_s": 0.3
     },
     {
       "segment": "s06-verifier",
       "board": "arch",
       "state": 6,
-      "start_s": 37.032,
+      "start_s": 36.179,
       "crossfade_s": 0.28
     },
     {
       "segment": "s06-verifier",
       "board": "arch",
       "state": 7,
-      "start_s": 40.69,
+      "start_s": 39.837,
       "crossfade_s": 0.3
     },
     {
       "segment": "s07-run",
       "board": "run",
       "state": 1,
-      "start_s": 43.584,
+      "start_s": 42.731,
       "crossfade_s": 0.28
     },
     {
       "segment": "s07-run",
       "board": "run",
       "state": 2,
-      "start_s": 47.2,
+      "start_s": 46.347,
       "crossfade_s": 0.3
     },
     {
       "segment": "s07-run",
       "board": "run",
       "state": 3,
-      "start_s": 49.888,
+      "start_s": 49.035,
       "crossfade_s": 0.3
     },
     {
       "segment": "s08-revoke",
       "board": "revoke",
       "state": 1,
-      "start_s": 53.08,
+      "start_s": 52.227,
       "crossfade_s": 0.28
     },
     {
       "segment": "s08-revoke",
       "board": "revoke",
       "state": 2,
-      "start_s": 55.385,
+      "start_s": 54.532,
       "crossfade_s": 0.3
     },
     {
       "segment": "s09-reject",
       "board": "revoke",
       "state": 3,
-      "start_s": 58.693,
+      "start_s": 57.84,
       "crossfade_s": 0.28
     },
     {
       "segment": "s10-recover",
       "board": "run",
       "state": 4,
-      "start_s": 63.987,
+      "start_s": 63.133,
       "crossfade_s": 0.28
     },
     {
       "segment": "s11-sandbox",
       "board": "sandbox",
       "state": 1,
-      "start_s": 67.765,
+      "start_s": 66.912,
       "crossfade_s": 0.28
     },
     {
       "segment": "s11-sandbox",
       "board": "sandbox",
       "state": 2,
-      "start_s": 70.626,
+      "start_s": 69.773,
       "crossfade_s": 0.3
     },
     {
       "segment": "s12-limits",
       "board": "limits",
       "state": 1,
-      "start_s": 75.043,
+      "start_s": 74.189,
       "crossfade_s": 0.28
     },
     {
       "segment": "s12-limits",
       "board": "limits",
       "state": 2,
-      "start_s": 79.453,
+      "start_s": 78.599,
       "crossfade_s": 0.3
     },
     {
       "segment": "s12-limits",
       "board": "limits",
       "state": 3,
-      "start_s": 80.937,
+      "start_s": 80.083,
       "crossfade_s": 0.3
     },
     {
       "segment": "s13-verify",
       "board": "verify",
       "state": 1,
-      "start_s": 82.811,
+      "start_s": 81.957,
       "crossfade_s": 0.28
     },
     {
       "segment": "s13-verify",
       "board": "verify",
       "state": 2,
-      "start_s": 85.585,
+      "start_s": 84.547,
       "crossfade_s": 0.3
     },
     {
       "segment": "s13-verify",
       "board": "verify",
       "state": 3,
-      "start_s": 86.86,
+      "start_s": 85.904,
       "crossfade_s": 0.3
     }
   ],
@@ -442,51 +442,51 @@
       "LRA": 11
     },
     "raw_mix": {
-      "input_i": "-19.34",
+      "input_i": "-19.27",
       "input_tp": "0.03",
-      "input_lra": "2.30",
-      "input_thresh": "-29.77",
-      "output_i": "-16.16",
-      "output_tp": "-2.00",
-      "output_lra": "1.90",
-      "output_thresh": "-26.59",
-      "normalization_type": "dynamic",
-      "target_offset": "0.16"
-    },
-    "limiter_ceiling_dbfs": -5.84,
-    "pass1": {
-      "input_i": "-19.37",
-      "input_tp": "-5.76",
       "input_lra": "2.20",
-      "input_thresh": "-29.82",
-      "output_i": "-16.12",
-      "output_tp": "-2.45",
-      "output_lra": "1.90",
-      "output_thresh": "-26.55",
+      "input_thresh": "-29.70",
+      "output_i": "-16.13",
+      "output_tp": "-2.00",
+      "output_lra": "2.10",
+      "output_thresh": "-26.54",
       "normalization_type": "dynamic",
-      "target_offset": "0.12"
+      "target_offset": "0.13"
+    },
+    "limiter_ceiling_dbfs": -5.77,
+    "pass1": {
+      "input_i": "-19.34",
+      "input_tp": "-5.70",
+      "input_lra": "2.10",
+      "input_thresh": "-29.76",
+      "output_i": "-16.10",
+      "output_tp": "-2.38",
+      "output_lra": "2.10",
+      "output_thresh": "-26.50",
+      "normalization_type": "dynamic",
+      "target_offset": "0.10"
     },
     "pass2": {
-      "input_i": "-19.30",
-      "input_tp": "-5.84",
+      "input_i": "-19.27",
+      "input_tp": "-5.77",
       "input_lra": "1.90",
-      "input_thresh": "-29.73",
-      "output_i": "-15.94",
-      "output_tp": "-2.47",
+      "input_thresh": "-29.69",
+      "output_i": "-15.95",
+      "output_tp": "-2.43",
       "output_lra": "1.90",
-      "output_thresh": "-26.37",
+      "output_thresh": "-26.35",
       "normalization_type": "linear",
-      "target_offset": "-0.06"
+      "target_offset": "-0.05"
     }
   },
   "checks": {
-    "duration": 89.333,
-    "video_stream": 89.333,
-    "audio_stream": 89.333,
+    "duration": 88.167,
+    "video_stream": 88.167,
+    "audio_stream": 88.167,
     "av_difference": 0,
     "integrated_lufs": -16,
     "loudness_range_lu": 2,
-    "true_peak_dbtp": -2.3,
+    "true_peak_dbtp": -2.4,
     "max_volume_db": -2.4,
     "mean_volume_db": -19.2,
     "caption_sync": [
@@ -513,97 +513,97 @@
       },
       {
         "id": "s04-agent",
-        "cue_start": 23.547,
-        "audio_start": 23.547,
+        "cue_start": 21.947,
+        "audio_start": 21.947,
         "cue_offset": 0,
-        "speech_onset_after_cue": 0.027
+        "speech_onset_after_cue": 0.036
       },
       {
         "id": "s05-contract",
-        "cue_start": 28.349,
-        "audio_start": 28.349,
+        "cue_start": 27.496,
+        "audio_start": 27.496,
         "cue_offset": 0,
-        "speech_onset_after_cue": 0.037
+        "speech_onset_after_cue": 0.036
       },
       {
         "id": "s06-verifier",
-        "cue_start": 37.312,
-        "audio_start": 37.312,
+        "cue_start": 36.459,
+        "audio_start": 36.459,
         "cue_offset": 0,
         "speech_onset_after_cue": 0.031
       },
       {
         "id": "s07-run",
-        "cue_start": 43.864,
-        "audio_start": 43.864,
+        "cue_start": 43.011,
+        "audio_start": 43.011,
         "cue_offset": 0,
         "speech_onset_after_cue": 0.035
       },
       {
         "id": "s08-revoke",
-        "cue_start": 53.36,
-        "audio_start": 53.36,
+        "cue_start": 52.507,
+        "audio_start": 52.507,
         "cue_offset": 0,
         "speech_onset_after_cue": 0.035
       },
       {
         "id": "s09-reject",
-        "cue_start": 58.973,
-        "audio_start": 58.973,
-        "cue_offset": 0,
-        "speech_onset_after_cue": 0.049
-      },
-      {
-        "id": "s10-recover",
-        "cue_start": 64.267,
-        "audio_start": 64.267,
+        "cue_start": 58.12,
+        "audio_start": 58.12,
         "cue_offset": 0,
         "speech_onset_after_cue": 0.048
       },
       {
+        "id": "s10-recover",
+        "cue_start": 63.413,
+        "audio_start": 63.413,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.049
+      },
+      {
         "id": "s11-sandbox",
-        "cue_start": 68.045,
-        "audio_start": 68.045,
+        "cue_start": 67.192,
+        "audio_start": 67.192,
         "cue_offset": 0,
         "speech_onset_after_cue": 0.041
       },
       {
         "id": "s12-limits",
-        "cue_start": 75.323,
-        "audio_start": 75.323,
+        "cue_start": 74.469,
+        "audio_start": 74.469,
         "cue_offset": 0,
-        "speech_onset_after_cue": 0.041
+        "speech_onset_after_cue": 0.042
       },
       {
         "id": "s13-verify",
-        "cue_start": 83.091,
-        "audio_start": 83.091,
+        "cue_start": 82.237,
+        "audio_start": 82.237,
         "cue_offset": 0,
-        "speech_onset_after_cue": 0.033
+        "speech_onset_after_cue": 0.042
       }
     ]
   },
   "outputs": [
     {
       "path": "presentation/pitch/bounded-mandate-pitch.mp4",
-      "sha256": "2341f7d5bae4dd05b4ec366a526a579f12013b54a2831757e8d3383002c978e0",
-      "bytes": 10986666,
-      "duration_s": 89.333
+      "sha256": "c63a721000ada3ef212a83aa2b3fd1ffe161138d29f1a0f18ea47f677c863867",
+      "bytes": 10961888,
+      "duration_s": 88.167
     },
     {
       "path": "presentation/pitch/captions.srt",
-      "sha256": "6fe0743ae8eda5a810ab62357a21264df93f68fb2ae73990940b3f435cde78cf",
-      "bytes": 1665
+      "sha256": "28073c1ca1859a273f94cb1ed18e40c50cd1aff50d0b228256fd266b8f83ec59",
+      "bytes": 1696
     },
     {
       "path": "presentation/pitch/captions.vtt",
-      "sha256": "7e001bd566c9b9106ffb62adf5d468f46ae502e66adcfcdb3d233fbad37020b4",
-      "bytes": 1786
+      "sha256": "129d9c44c59f2eca634ab83df1200c31e070d970ede1c142701649b917e4c452",
+      "bytes": 1817
     },
     {
       "path": "presentation/pitch/poster.png",
-      "sha256": "a88110a8ec192e26498d17a21cc2a53c03c0073a05f5420d696f6ce9092616f2",
-      "bytes": 339668
+      "sha256": "29f71fe82de492aa967f1b528228df6eff1951336b9bb86b510f09779d314077",
+      "bytes": 339762
     }
   ]
 }

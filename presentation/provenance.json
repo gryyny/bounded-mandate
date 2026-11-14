@@ -2,7 +2,7 @@
   "schema": "bounded-mandate/presentation-provenance/v1",
   "generated_at": "2026-11-14",
   "kind": "Presentation layer: an overview page and a narrated explainer based on recorded evidence. Not certified evidence and not a certified cut; the certified files stay in evidence/dd665d1/ unchanged.",
-  "base_commit": "4a4f5ba9207c12a5f2a86bfaa01921e50f86ca32",
+  "base_commit": "e4f2e733b3",
   "evidence": {
     "certified_bundle": "evidence/dd665d1",
     "mainnet_run": "evidence/mainnet/attempt-3/dd665d1",
@@ -47,11 +47,11 @@
     "details": "presentation/pitch/pitch.json"
   },
   "inputs": {
-    "pitch/audio/METHOD.md": "7819f3de9d15ede80f2a453892c4e1805834c16912b97d609bb8ee6c27d4e130",
+    "pitch/audio/METHOD.md": "3fbf2b7fdc53bfcba4e45f7fdfc06e03f388a9cfd63451b9f7f875d3a63081c5",
     "pitch/audio/s01-proof.wav": "81be72ea510a071c9d5ee587756d3de7565a096d158f22e04b7891fba61e8469",
     "pitch/audio/s02-name.wav": "433b2fcc060fef7498ae8dad7a300231f9e5c113567ce2f0ef4fd2a9f10d1ccc",
-    "pitch/audio/s03-problem.wav": "6e2c674830cae6c310205669158a41072a2efeec92073f0fb2ac0e72fc48c140",
-    "pitch/audio/s04-agent.wav": "26d32e63e71f6b12abb1787ac2f2a2d8fab52eb4ab3e2ca99167c4e5a1c0913f",
+    "pitch/audio/s03-problem.wav": "82eac7e05ea39f9c55ac1b0c7430e0ab1b4a83a68d741e7852ba5094588ccbae",
+    "pitch/audio/s04-agent.wav": "c9b1161f30f8416b0daff8ab60fd4a3bb091e5ff32721214070f4eeb2d99b615",
     "pitch/audio/s05-contract.wav": "ed76a6c6fbee9c6caa86352799fc6e87e0174ecdda17ae5ed1c996d5a559dd0e",
     "pitch/audio/s06-verifier.wav": "f2b10c6862942602bce29e2d6c1dac2ee69272d6269ec0b2bea779511397c492",
     "pitch/audio/s07-run.wav": "a203c64a32705682e17ad5ed6858611166edc367f1ea416fd980ea4a1a2a6321",
@@ -60,19 +60,22 @@
     "pitch/audio/s10-recover.wav": "8ce9e878e3b5395f456216a5f6d2898aca43a90b5aadb8c0f0e9c9966cdd5b51",
     "pitch/audio/s11-sandbox.wav": "105ce69d96f7dc940681577a0ed07e91eb3015691b671c534ff6d8cc57260396",
     "pitch/audio/s12-limits.wav": "1b9f2a5d675db26555a35643e137c719a0a9a9afff4b65a2efa7fe71f22c3542",
-    "pitch/audio/s13-verify.wav": "04c37c21700216a3d209d9d5fb0b4d2ab6b8bc0c6a2519be10129c9a08a8fa4d",
-    "pitch/build.mjs": "81d80d02ad5ff8aaccfb7a8d0dcea150a951ddfb09207212243edfe8e8abc76b",
-    "pitch/narration.md": "0710c8caf7e32cdb2abf4020086d9596cdcd3e6275e74957efe188da6d590a12",
+    "pitch/audio/s13-verify.wav": "9df8e928e5ad1adfc416ca5c0f33a1cc5e81b8eac646cff377b0a4843cdd79a8",
+    "pitch/build.mjs": "1b8891db9c776a14511636064e634115de5f782bb9511b6015cb599e9db2aa71",
+    "pitch/narration.md": "781d4fd766fde451796d0506f5c70142bfa8d3af0c50e96850067db7bcc86fae",
     "pitch/scenes/caption.html": "c37ad264d8797c5e3f5ee18dc8b43a4d6307ce03c05efb9331f302a7327d443c",
     "pitch/scenes/scene.js": "680ebc9d6949ccc26caf703a3a5a9c963e837d1c52b687f0d54b0201eea81b71",
-    "pitch/scenes/scenes.html": "0b93a680054b2623d4c07d94db6ddd568dc34438481fbe91ba9c36805f8034c1",
+    "pitch/scenes/scenes.html": "ff1e1ab463176a9617c66da5020e9324c10dd504e8db2c9cf2e1c8e79f003a4a",
     "pitch/scenes/theme.css": "e7e1304641ef5a838b53d75e6f7bd5de1779e7aba6c96b519309c35b4935ad68"
   },
   "files": {
     "overview/index.html": "ebe5a3d8326be3cb8485c66f5c73c41b0d07a3781109e8527fdb5678686ecbae",
-    "pitch/bounded-mandate-pitch.mp4": "2341f7d5bae4dd05b4ec366a526a579f12013b54a2831757e8d3383002c978e0",
-    "pitch/captions.vtt": "7e001bd566c9b9106ffb62adf5d468f46ae502e66adcfcdb3d233fbad37020b4",
-    "pitch/captions.srt": "6fe0743ae8eda5a810ab62357a21264df93f68fb2ae73990940b3f435cde78cf",
-    "pitch/poster.png": "a88110a8ec192e26498d17a21cc2a53c03c0073a05f5420d696f6ce9092616f2"
-  }
+    "pitch/bounded-mandate-pitch.mp4": "c63a721000ada3ef212a83aa2b3fd1ffe161138d29f1a0f18ea47f677c863867",
+    "pitch/captions.vtt": "129d9c44c59f2eca634ab83df1200c31e070d970ede1c142701649b917e4c452",
+    "pitch/captions.srt": "28073c1ca1859a273f94cb1ed18e40c50cd1aff50d0b228256fd266b8f83ec59",
+    "pitch/poster.png": "29f71fe82de492aa967f1b528228df6eff1951336b9bb86b510f09779d314077"
+  },
+  "revisions": [
+    "14 November 2026: s03, s04 and s13 narration, captions and scene text rewritten after review: the agent cannot sign Intents orders (its key can only request a proposal); stopping an agent does not itself invalidate orders already signed; node verify.mjs --mainnet is the chain check and make verify the offline file check. Duration 88.17 s."
+  ]
 }

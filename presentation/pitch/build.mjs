@@ -44,8 +44,8 @@ const STATEMENT = "Explainer based on recorded evidence (evidence/dd665d1, mainn
 const PLAN = {
   "s01-proof": { board: "proof", states: [[1, null], [2, "rejected"]] },
   "s02-name": { board: "name", states: [[1, null]] },
-  "s03-problem": { board: "pause", states: [[1, null], [2, "But orders"]] },
-  "s04-agent": { board: "arch", states: [[1, null], [2, "Its only key"]] },
+  "s03-problem": { board: "pause", states: [[1, null], [2, "but does not"]] },
+  "s04-agent": { board: "arch", states: [[1, null], [2, "Its key can only"]] },
   "s05-contract": { board: "arch", states: [[3, null], [4, "checks your limits"], [5, "then asks"]] },
   "s06-verifier": { board: "arch", states: [[6, null], [7, "So revoking"]] },
   "s07-run": { board: "run", states: [[1, null], [2, "the contract refused"], [3, "then signed"]] },
@@ -54,7 +54,7 @@ const PLAN = {
   "s10-recover": { board: "run", states: [[4, null]] },
   "s11-sandbox": { board: "sandbox", states: [[1, null], [2, "thirty-nine"]] },
   "s12-limits": { board: "limits", states: [[1, null], [2, "This is not"], [3, "and it promises"]] },
-  "s13-verify": { board: "verify", states: [[1, null], [2, "or run"], [3, "Start at"]] },
+  "s13-verify": { board: "verify", states: [[1, null], [2, "with the verify script"], [3, "Start at"]] },
 };
 const POSTER = ["proof", 2];
 const SCREENSHOTS = ["evidence/dd665d1/console/screens/demo-console-review.png"];

@@ -50,7 +50,7 @@
 <section class="board" id="pause">
   <div class="kicker"><span class="pill muted">Illustrative</span></div>
   <div class="headline" data-hide="2">Pausing an agent stops new orders…</div>
-  <div class="headline" data-show="2">…but orders it already <span class="amber">signed</span> stay valid</div>
+  <div class="headline" data-show="2">…but that does not invalidate <span class="amber">signed</span> orders</div>
   <div class="box" style="left: 80px; top: 320px; width: 360px; height: 470px">
     <h3>AI agent</h3>
     <span class="chip" data-show="2" style="border-color: var(--amber); color: var(--amber)">paused</span>
@@ -75,14 +75,14 @@
   <div class="chip" style="position: absolute; left: 500px; top: 640px; margin: 0; border-color: var(--amber)">signed</div>
   <div class="chip" style="position: absolute; left: 790px; top: 640px; margin: 0; border-color: var(--amber)">signed</div>
   <div class="chip" style="position: absolute; left: 1080px; top: 640px; margin: 0; border-color: var(--amber)">signed</div>
-  <div class="wlabel amber" data-show="2" style="left: 480px; top: 505px; width: 900px; font-size: 48px; white-space: normal; line-height: 1.2">still valid until they expire, or are cancelled one by one</div>
+  <div class="wlabel amber" data-show="2" style="left: 480px; top: 505px; width: 900px; font-size: 48px; white-space: normal; line-height: 1.2">stopping the agent does not by itself invalidate them</div>
 </section>
 
 <!-- s04-s06: architecture, built up across three segments -->
 <section class="board" id="arch">
   <div class="kicker"><span class="pill muted">How it works · simplified</span></div>
-  <div class="headline" data-hide="2">The agent holds no signing key</div>
-  <div class="headline" data-show="2" data-hide="3">Its only key can call <span class="green">propose_order</span></div>
+  <div class="headline" data-hide="2">The agent cannot sign Intents orders</div>
+  <div class="headline" data-show="2" data-hide="3">Its key can only request a proposal</div>
   <div class="headline" data-show="3" data-hide="4">Each order is priced from the oracle…</div>
   <div class="headline" data-show="4" data-hide="5">…and checked against your limits</div>
   <div class="headline" data-show="5" data-hide="6">Then NEAR's MPC network signs it</div>
@@ -105,7 +105,7 @@
 
   <div class="box" style="left: 60px; top: 290px; width: 470px; height: 320px" data-on="2">
     <h3>AI agent</h3>
-    <p><span class="x">✕</span> no signing key</p>
+    <p><span class="x">✕</span> cannot sign</p>
     <p class="muted">its only key:</p>
     <span class="chip" data-on="2">propose_order</span>
   </div>
@@ -256,8 +256,8 @@
   <div class="kicker"><span class="pill green">Verify</span></div>
   <div class="headline">Check it yourself</div>
   <div class="vrow" style="top: 290px; font-size: 56px; font-weight: 600">Every transaction on <span class="green">nearblocks.io</span></div>
-  <div class="vrow" style="top: 400px" data-show="2"><span class="cmd">make verify</span><div class="sub">offline, from a fresh clone</div></div>
-  <div class="vrow" style="top: 575px" data-show="2"><span class="cmd">node verify.mjs --mainnet</span><div class="sub">re-reads the receipts: 54 read-only chain checks passed, 0 failed</div></div>
+  <div class="vrow" style="top: 400px" data-show="2"><span class="cmd">node verify.mjs --mainnet</span><div class="sub">mainnet proof, read from the chain: 54 read-only checks passed, 0 failed</div></div>
+  <div class="vrow" style="top: 575px" data-show="2"><span class="cmd">make verify</span><div class="sub">offline check of the committed files, not the chain</div></div>
   <div class="vrow" style="top: 770px" data-show="3"><span class="url">gryyny.github.io/bounded-mandate/overview/</span></div>
 </section>
 
