@@ -188,6 +188,8 @@ npx tsx src/agent/rehearse.ts --state ../out/rehearsal-state.json --manifest <ap
 
 **Hackathon window.** This repository's history starts at commit `85cda4b` on 2026-11-03, inside the NEAR HACKATHON window. The project does not exist on another chain.
 
+**Other project by the same author** (rule Q-015). The author also submitted [Schelling Deals](https://github.com/gryyny/schelling-deals), a separate project: independent buyer agents pool a purchase through a keyless escrow whose address is derived from the deal terms. The two projects share no code.
+
 **AI tools** (rule Q-005):
 - Claude Code (Anthropic Claude models) helped implement the product code, tests and documentation under the author's direction and review.
 - OpenAI Codex implemented and tested presentation and provenance fixes, independently reviewed the design, code and evidence, and helped with research, documentation and release verification.
