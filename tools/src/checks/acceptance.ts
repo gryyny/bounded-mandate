@@ -66,14 +66,17 @@ export function makeTestCommands(root: string): string[] {
   const path = join(root, "Makefile");
   if (!existsSync(path)) return [];
   const lines = readFileSync(path, "utf8").split("\n");
-  const start = lines.findIndex((l) => /^test:/.test(l));
-  if (start < 0) return [];
-  const out: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (!line.startsWith("\t")) break;
-    out.push(line.trim());
-  }
-  return out;
+  // make test runs its suites through the test-rust and test-ts sub-targets; their recipes are part of the run.
+  return ["test", "test-rust", "test-ts"].flatMap((target) => {
+    const start = lines.findIndex((l) => l.startsWith(`${target}:`));
+    if (start < 0) return [];
+    const out: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+      if (!line.startsWith("\t")) break;
+      out.push(line.trim());
+    }
+    return out;
+  });
 }
 
 function currentWasm(root: string): Record<string, string> {

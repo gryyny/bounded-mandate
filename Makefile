@@ -35,7 +35,7 @@ test:
 	$(call build_wasm)
 	$(TSX) src/checks/run.ts wasm
 	cd tools && npm run lint && npm run typecheck && npm run build
-	# The Rust and TypeScript suites run at the same time; each starts its own sandboxes.
+	# The Rust and TypeScript suites run at the same time, four tests each, so their sandboxes stay within one machine's capacity.
 	$(RUN_ID) $(MAKE) --no-print-directory -j2 test-rust test-ts
 	$(TSX) src/release/main.ts links
 	$(TSX) src/release/main.ts secrets
@@ -48,11 +48,11 @@ test:
 # With cargo-nextest installed every Rust test runs in its own process, in parallel (the workspace has no doctests);
 # without it, cargo test runs the test binaries one after another and is several times slower.
 test-rust:
-	if cargo nextest --version >/dev/null 2>&1; then cargo nextest run --workspace --locked --no-fail-fast --status-level fail --final-status-level slow; else cargo test --workspace --locked; fi
+	if cargo nextest --version >/dev/null 2>&1; then cargo nextest run --workspace --locked --no-fail-fast --test-threads 4 --status-level fail --final-status-level slow; else cargo test --workspace --locked; fi
 	cargo test -p bounded-mandate --lib --locked --features fault-injection
 
 test-ts:
-	cd tools && npm test
+	cd tools && npm test -- --maxWorkers 4
 
 # Fast checks while editing (about a minute): formatting, lint, types, the contract's unit tests and the TypeScript tests
 # that need no sandbox or browser. Not an acceptance run; make test is.
