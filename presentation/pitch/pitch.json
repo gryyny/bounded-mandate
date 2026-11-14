@@ -1,0 +1,609 @@
+{
+  "generated": "2026-11-14T17:47:23.451Z",
+  "statement": "Explainer based on recorded evidence (evidence/dd665d1, mainnet attempt 3); not a certified cut; mainnet timings are actual; diagrams are illustrative.",
+  "mode": "final",
+  "command": "node presentation/pitch/build.mjs",
+  "source": {
+    "revision": "4a4f5ba9207c12a5f2a86bfaa01921e50f86ca32",
+    "dirty": true
+  },
+  "tools": {
+    "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "chrome": "157.0.8103.78",
+    "node": "v24.22.1"
+  },
+  "timing": {
+    "fps": 30,
+    "lead_s": 0.2,
+    "gap_s": 0.28,
+    "tail_s": 0.6,
+    "scene_crossfade_s": 0.28,
+    "state_crossfade_s": 0.3,
+    "total_s": 89.333
+  },
+  "inputs": [
+    {
+      "path": "presentation/pitch/narration.md",
+      "sha256": "0710c8caf7e32cdb2abf4020086d9596cdcd3e6275e74957efe188da6d590a12",
+      "bytes": 3225
+    },
+    {
+      "path": "presentation/pitch/audio/s01-proof.wav",
+      "sha256": "81be72ea510a071c9d5ee587756d3de7565a096d158f22e04b7891fba61e8469",
+      "bytes": 413740,
+      "duration_s": 8.619
+    },
+    {
+      "path": "presentation/pitch/audio/s02-name.wav",
+      "sha256": "433b2fcc060fef7498ae8dad7a300231f9e5c113567ce2f0ef4fd2a9f10d1ccc",
+      "bytes": 299052,
+      "duration_s": 6.229
+    },
+    {
+      "path": "presentation/pitch/audio/s03-problem.wav",
+      "sha256": "6e2c674830cae6c310205669158a41072a2efeec92073f0fb2ac0e72fc48c140",
+      "bytes": 367660,
+      "duration_s": 7.659
+    },
+    {
+      "path": "presentation/pitch/audio/s04-agent.wav",
+      "sha256": "26d32e63e71f6b12abb1787ac2f2a2d8fab52eb4ab3e2ca99167c4e5a1c0913f",
+      "bytes": 217132,
+      "duration_s": 4.523
+    },
+    {
+      "path": "presentation/pitch/audio/s05-contract.wav",
+      "sha256": "ed76a6c6fbee9c6caa86352799fc6e87e0174ecdda17ae5ed1c996d5a559dd0e",
+      "bytes": 416812,
+      "duration_s": 8.683
+    },
+    {
+      "path": "presentation/pitch/audio/s06-verifier.wav",
+      "sha256": "f2b10c6862942602bce29e2d6c1dac2ee69272d6269ec0b2bea779511397c492",
+      "bytes": 301100,
+      "duration_s": 6.272
+    },
+    {
+      "path": "presentation/pitch/audio/s07-run.wav",
+      "sha256": "a203c64a32705682e17ad5ed6858611166edc367f1ea416fd980ea4a1a2a6321",
+      "bytes": 442412,
+      "duration_s": 9.216
+    },
+    {
+      "path": "presentation/pitch/audio/s08-revoke.wav",
+      "sha256": "f3b03a9c9d2f5882f77917eca92d151aff4afb0002aaf386431379d2cae242cc",
+      "bytes": 256044,
+      "duration_s": 5.333
+    },
+    {
+      "path": "presentation/pitch/audio/s09-reject.wav",
+      "sha256": "4c3e6a00c58158b7e945dba70cc90357ca3739645f353aae300c32f0941177d0",
+      "bytes": 240684,
+      "duration_s": 5.013
+    },
+    {
+      "path": "presentation/pitch/audio/s10-recover.wav",
+      "sha256": "8ce9e878e3b5395f456216a5f6d2898aca43a90b5aadb8c0f0e9c9966cdd5b51",
+      "bytes": 167980,
+      "duration_s": 3.499
+    },
+    {
+      "path": "presentation/pitch/audio/s11-sandbox.wav",
+      "sha256": "105ce69d96f7dc940681577a0ed07e91eb3015691b671c534ff6d8cc57260396",
+      "bytes": 335916,
+      "duration_s": 6.997
+    },
+    {
+      "path": "presentation/pitch/audio/s12-limits.wav",
+      "sha256": "1b9f2a5d675db26555a35643e137c719a0a9a9afff4b65a2efa7fe71f22c3542",
+      "bytes": 359468,
+      "duration_s": 7.488
+    },
+    {
+      "path": "presentation/pitch/audio/s13-verify.wav",
+      "sha256": "04c37c21700216a3d209d9d5fb0b4d2ab6b8bc0c6a2519be10129c9a08a8fa4d",
+      "bytes": 269356,
+      "duration_s": 5.611
+    },
+    {
+      "path": "evidence/dd665d1/console/screens/demo-console-review.png",
+      "sha256": "de6bba47007baaf925d3b0dcefb3decbbcfddc709b8195a21d894fe8e376b7c6",
+      "bytes": 249087
+    },
+    {
+      "path": "evidence/dd665d1/live-mainnet.json",
+      "sha256": "2ef7249b8ae1a55121a10f1f3de621064d84f86d19771627fa806b39cbc9362d",
+      "bytes": 74877,
+      "use": "receipt cards checked against it"
+    },
+    {
+      "path": "presentation/pitch/build.mjs",
+      "sha256": "81d80d02ad5ff8aaccfb7a8d0dcea150a951ddfb09207212243edfe8e8abc76b",
+      "bytes": 22808
+    },
+    {
+      "path": "presentation/pitch/scenes/scenes.html",
+      "sha256": "0b93a680054b2623d4c07d94db6ddd568dc34438481fbe91ba9c36805f8034c1",
+      "bytes": 16735
+    },
+    {
+      "path": "presentation/pitch/scenes/theme.css",
+      "sha256": "e7e1304641ef5a838b53d75e6f7bd5de1779e7aba6c96b519309c35b4935ad68",
+      "bytes": 8359
+    },
+    {
+      "path": "presentation/pitch/scenes/scene.js",
+      "sha256": "680ebc9d6949ccc26caf703a3a5a9c963e837d1c52b687f0d54b0201eea81b71",
+      "bytes": 2650
+    },
+    {
+      "path": "presentation/pitch/scenes/caption.html",
+      "sha256": "c37ad264d8797c5e3f5ee18dc8b43a4d6307ce03c05efb9331f302a7327d443c",
+      "bytes": 1078
+    }
+  ],
+  "segments": [
+    {
+      "id": "s01-proof",
+      "start_s": 0.2,
+      "end_s": 8.819,
+      "duration_s": 8.619,
+      "caption": "On NEAR mainnet, a signed order was rejected 67 s before it expired, because the owner had already revoked its key."
+    },
+    {
+      "id": "s02-name",
+      "start_s": 9.099,
+      "end_s": 15.328,
+      "duration_s": 6.229,
+      "caption": "Bounded Mandate: give an AI agent trading authority without unrestricted control of your treasury."
+    },
+    {
+      "id": "s03-problem",
+      "start_s": 15.608,
+      "end_s": 23.267,
+      "duration_s": 7.659,
+      "caption": "Pausing an agent stops new orders. Orders it already signed stay valid until they expire or are cancelled one by one."
+    },
+    {
+      "id": "s04-agent",
+      "start_s": 23.547,
+      "end_s": 28.069,
+      "duration_s": 4.523,
+      "caption": "The agent holds no signing key. Its only key can propose an order."
+    },
+    {
+      "id": "s05-contract",
+      "start_s": 28.349,
+      "end_s": 37.032,
+      "duration_s": 8.683,
+      "caption": "A NEAR contract prices each order from the oracle, checks your limits, then asks NEAR's MPC network to sign it (Chain Signatures)."
+    },
+    {
+      "id": "s06-verifier",
+      "start_s": 37.312,
+      "end_s": 43.584,
+      "duration_s": 6.272,
+      "caption": "The NEAR Intents verifier checks that key on every order, so revoking is one owner call that removes it."
+    },
+    {
+      "id": "s07-run",
+      "start_s": 43.864,
+      "end_s": 53.08,
+      "duration_s": 9.216,
+      "caption": "Mainnet, fixed proposals, our own filler: an over-limit order refused; a 1 USDC order signed and filled."
+    },
+    {
+      "id": "s08-revoke",
+      "start_s": 53.36,
+      "end_s": 58.693,
+      "duration_s": 5.333,
+      "caption": "A second signed order was held back. The owner revoked; removal of the key was confirmed."
+    },
+    {
+      "id": "s09-reject",
+      "start_s": 58.973,
+      "end_s": 63.987,
+      "duration_s": 5.013,
+      "caption": "The held order was relayed and rejected: its signing key no longer exists."
+    },
+    {
+      "id": "s10-recover",
+      "start_s": 64.267,
+      "end_s": 67.765,
+      "duration_s": 3.499,
+      "caption": "Recovery returned both assets to the owner's Intents account."
+    },
+    {
+      "id": "s11-sandbox",
+      "start_s": 68.045,
+      "end_s": 75.043,
+      "duration_s": 6.997,
+      "caption": "Sandbox, labelled test doubles: 39 scripted hostile requests refused across five layers."
+    },
+    {
+      "id": "s12-limits",
+      "start_s": 75.323,
+      "end_s": 82.811,
+      "duration_s": 7.488,
+      "caption": "Orders executed before confirmed removal stay executed. Not an audit; no profit promised."
+    },
+    {
+      "id": "s13-verify",
+      "start_s": 83.091,
+      "end_s": 88.701,
+      "duration_s": 5.611,
+      "caption": "Check each transaction on nearblocks, or run make verify. Start at the overview page."
+    }
+  ],
+  "scenes": [
+    {
+      "segment": "s01-proof",
+      "board": "proof",
+      "state": 1,
+      "start_s": 0,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s01-proof",
+      "board": "proof",
+      "state": 2,
+      "start_s": 2.87,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s02-name",
+      "board": "name",
+      "state": 1,
+      "start_s": 8.819,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s03-problem",
+      "board": "pause",
+      "state": 1,
+      "start_s": 15.328,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s03-problem",
+      "board": "pause",
+      "state": 2,
+      "start_s": 17.685,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s04-agent",
+      "board": "arch",
+      "state": 1,
+      "start_s": 23.267,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s04-agent",
+      "board": "arch",
+      "state": 2,
+      "start_s": 25.814,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s05-contract",
+      "board": "arch",
+      "state": 3,
+      "start_s": 28.069,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s05-contract",
+      "board": "arch",
+      "state": 4,
+      "start_s": 31.415,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s05-contract",
+      "board": "arch",
+      "state": 5,
+      "start_s": 32.664,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s06-verifier",
+      "board": "arch",
+      "state": 6,
+      "start_s": 37.032,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s06-verifier",
+      "board": "arch",
+      "state": 7,
+      "start_s": 40.69,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s07-run",
+      "board": "run",
+      "state": 1,
+      "start_s": 43.584,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s07-run",
+      "board": "run",
+      "state": 2,
+      "start_s": 47.2,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s07-run",
+      "board": "run",
+      "state": 3,
+      "start_s": 49.888,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s08-revoke",
+      "board": "revoke",
+      "state": 1,
+      "start_s": 53.08,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s08-revoke",
+      "board": "revoke",
+      "state": 2,
+      "start_s": 55.385,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s09-reject",
+      "board": "revoke",
+      "state": 3,
+      "start_s": 58.693,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s10-recover",
+      "board": "run",
+      "state": 4,
+      "start_s": 63.987,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s11-sandbox",
+      "board": "sandbox",
+      "state": 1,
+      "start_s": 67.765,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s11-sandbox",
+      "board": "sandbox",
+      "state": 2,
+      "start_s": 70.626,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s12-limits",
+      "board": "limits",
+      "state": 1,
+      "start_s": 75.043,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s12-limits",
+      "board": "limits",
+      "state": 2,
+      "start_s": 79.453,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s12-limits",
+      "board": "limits",
+      "state": 3,
+      "start_s": 80.937,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s13-verify",
+      "board": "verify",
+      "state": 1,
+      "start_s": 82.811,
+      "crossfade_s": 0.28
+    },
+    {
+      "segment": "s13-verify",
+      "board": "verify",
+      "state": 2,
+      "start_s": 85.585,
+      "crossfade_s": 0.3
+    },
+    {
+      "segment": "s13-verify",
+      "board": "verify",
+      "state": 3,
+      "start_s": 86.86,
+      "crossfade_s": 0.3
+    }
+  ],
+  "receipt_cards_checked": [
+    "2PzTvX…y1MK #224541424 success",
+    "4KDPzR…Livx #224541390 failure",
+    "5R1wKw…3LLw #224541503 failure",
+    "7ypZiT…rEGj #224541533 success",
+    "Cuan44…2qJt #224541512 success",
+    "FPdUJG…1RvZ #224541463 success",
+    "H7KpB2…pJSC #224541484 success"
+  ],
+  "loudnorm": {
+    "target": {
+      "I": -16,
+      "TP": -2,
+      "LRA": 11
+    },
+    "raw_mix": {
+      "input_i": "-19.34",
+      "input_tp": "0.03",
+      "input_lra": "2.30",
+      "input_thresh": "-29.77",
+      "output_i": "-16.16",
+      "output_tp": "-2.00",
+      "output_lra": "1.90",
+      "output_thresh": "-26.59",
+      "normalization_type": "dynamic",
+      "target_offset": "0.16"
+    },
+    "limiter_ceiling_dbfs": -5.84,
+    "pass1": {
+      "input_i": "-19.37",
+      "input_tp": "-5.76",
+      "input_lra": "2.20",
+      "input_thresh": "-29.82",
+      "output_i": "-16.12",
+      "output_tp": "-2.45",
+      "output_lra": "1.90",
+      "output_thresh": "-26.55",
+      "normalization_type": "dynamic",
+      "target_offset": "0.12"
+    },
+    "pass2": {
+      "input_i": "-19.30",
+      "input_tp": "-5.84",
+      "input_lra": "1.90",
+      "input_thresh": "-29.73",
+      "output_i": "-15.94",
+      "output_tp": "-2.47",
+      "output_lra": "1.90",
+      "output_thresh": "-26.37",
+      "normalization_type": "linear",
+      "target_offset": "-0.06"
+    }
+  },
+  "checks": {
+    "duration": 89.333,
+    "video_stream": 89.333,
+    "audio_stream": 89.333,
+    "av_difference": 0,
+    "integrated_lufs": -16,
+    "loudness_range_lu": 2,
+    "true_peak_dbtp": -2.3,
+    "max_volume_db": -2.4,
+    "mean_volume_db": -19.2,
+    "caption_sync": [
+      {
+        "id": "s01-proof",
+        "cue_start": 0.2,
+        "audio_start": 0.2,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.036
+      },
+      {
+        "id": "s02-name",
+        "cue_start": 9.099,
+        "audio_start": 9.099,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.056
+      },
+      {
+        "id": "s03-problem",
+        "cue_start": 15.608,
+        "audio_start": 15.608,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.045
+      },
+      {
+        "id": "s04-agent",
+        "cue_start": 23.547,
+        "audio_start": 23.547,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.027
+      },
+      {
+        "id": "s05-contract",
+        "cue_start": 28.349,
+        "audio_start": 28.349,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.037
+      },
+      {
+        "id": "s06-verifier",
+        "cue_start": 37.312,
+        "audio_start": 37.312,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.031
+      },
+      {
+        "id": "s07-run",
+        "cue_start": 43.864,
+        "audio_start": 43.864,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.035
+      },
+      {
+        "id": "s08-revoke",
+        "cue_start": 53.36,
+        "audio_start": 53.36,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.035
+      },
+      {
+        "id": "s09-reject",
+        "cue_start": 58.973,
+        "audio_start": 58.973,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.049
+      },
+      {
+        "id": "s10-recover",
+        "cue_start": 64.267,
+        "audio_start": 64.267,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.048
+      },
+      {
+        "id": "s11-sandbox",
+        "cue_start": 68.045,
+        "audio_start": 68.045,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.041
+      },
+      {
+        "id": "s12-limits",
+        "cue_start": 75.323,
+        "audio_start": 75.323,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.041
+      },
+      {
+        "id": "s13-verify",
+        "cue_start": 83.091,
+        "audio_start": 83.091,
+        "cue_offset": 0,
+        "speech_onset_after_cue": 0.033
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "path": "presentation/pitch/bounded-mandate-pitch.mp4",
+      "sha256": "2341f7d5bae4dd05b4ec366a526a579f12013b54a2831757e8d3383002c978e0",
+      "bytes": 10986666,
+      "duration_s": 89.333
+    },
+    {
+      "path": "presentation/pitch/captions.srt",
+      "sha256": "6fe0743ae8eda5a810ab62357a21264df93f68fb2ae73990940b3f435cde78cf",
+      "bytes": 1665
+    },
+    {
+      "path": "presentation/pitch/captions.vtt",
+      "sha256": "7e001bd566c9b9106ffb62adf5d468f46ae502e66adcfcdb3d233fbad37020b4",
+      "bytes": 1786
+    },
+    {
+      "path": "presentation/pitch/poster.png",
+      "sha256": "a88110a8ec192e26498d17a21cc2a53c03c0073a05f5420d696f6ce9092616f2",
+      "bytes": 339668
+    }
+  ]
+}

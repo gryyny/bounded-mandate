@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pitch caption</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  #cap { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); max-width: 1720px; width: max-content; text-align: center; text-wrap: balance;
+         font-size: 46px; line-height: 1.25; font-weight: 600; color: #ffffff; background: #000000; border: 2px solid #2c3746; border-radius: 14px; padding: 12px 34px; }
+</style>
+</head>
+<body class="transparent">
+<div id="cap"></div>
+<script>
+  // ../build.mjs sets the text and reads back the rendered line count.
+  window.__setCaption = (text) => {
+    const el = document.getElementById("cap");
+    el.textContent = text;
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    const pad = parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);
+    const r = el.getBoundingClientRect();
+    return { lines: Math.round((el.clientHeight - pad) / lh), top: r.top, left: r.left, right: r.right };
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-pPUc0GPtk9DhrXsYv3bOM7SnL7+/BY7POHbfRvNT0GU='; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bounded Mandate — overview</title>
+<meta name="description" content="Give an AI agent trading authority without unrestricted control of your treasury. Limits enforced before signing, revocation by key removal at NEAR Intents, recovery without the agent. One approved mainnet run and a sandbox-certified test suite.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Bounded Mandate — overview">
+<meta property="og:description" content="Give an AI agent trading authority without unrestricted control of your treasury. One mainnet run: trade, confirmed revocation, the same signed order rejected, recovery.">
+<meta name="color-scheme" content="light dark">
+<style>
+:root {
+  --bg: #f5f3ed;
+  --surface: #fffdf8;
+  --ink: #1b1e20;
+  --ink-2: #4f555b;
+  --line: #d8d3c6;
+  --line-2: #bdb6a6;
+  --ok: #1d6a4c;
+  --ok-soft: #dcebe2;
+  --cut: #b02a1f;
+  --cut-soft: #f6dfdb;
+  --link: #17507f;
+  --code-bg: #ece8dd;
+  --serif: "Iowan Old Style", "Charter", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121416;
+    --surface: #1a1d20;
+    --ink: #ebe8e1;
+    --ink-2: #a9adb1;
+    --line: #2f3439;
+    --line-2: #474e55;
+    --ok: #6cc9a0;
+    --ok-soft: #1c3229;
+    --cut: #ff8a7d;
+    --cut-soft: #3a1f1c;
+    --link: #8cc4f2;
+    --code-bg: #24282c;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 var(--sans);
+}
+a { color: var(--link); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: 0.9em; }
+code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+.wrap { max-width: 880px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+.wide { max-width: 1040px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+section { padding-top: 26px; padding-bottom: 26px; border-top: 1px solid var(--line); }
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 1.45rem; line-height: 1.25; margin: 0 0 6px; }
+h3 { font-size: 1.05rem; margin: 0; }
+p { margin: 0 0 12px; }
+.muted { color: var(--ink-2); }
+.small { font-size: 0.875rem; }
+.label {
+  display: inline-block; font: 600 0.72rem/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 8px; vertical-align: middle;
+}
+
+/* 1. Header */
+header { padding-top: 14px; padding-bottom: 16px; }
+.kicker { font: 600 0.78rem/1.3 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; }
+h1 { font-size: clamp(1.5rem, 6vw, 2.6rem); line-height: 1.12; margin: 0 0 10px; max-width: 22ch; }
+.lede { font-size: 1rem; max-width: 62ch; margin: 0; }
+.k-more { display: none; }
+@media (min-width: 560px) { .k-more { display: inline; } .lede { font-size: 1.04rem; } }
+.proof { margin: 12px 0 0; padding: 7px 10px; border-left: 3px solid var(--ok); background: var(--surface); font-size: 0.88rem; line-height: 1.45; max-width: 72ch; }
+.proof a { white-space: nowrap; font-weight: 600; }
+.fig-note { font-family: var(--sans); font-size: 0.8em; color: var(--ink-2); }
+
+/* 2. Mainnet steps */
+.result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 4px; }
+.scope { font-size: 0.875rem; color: var(--ink-2); margin: 0 0 16px; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: step; }
+ol.steps li {
+  position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px 12px 50px; counter-increment: step;
+}
+ol.steps li::before {
+  content: counter(step); position: absolute; left: 12px; top: 12px; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; font: 700 0.85rem/1 var(--sans); color: var(--bg); background: var(--ok);
+}
+ol.steps li.is-cut::before { background: var(--cut); }
+ol.steps li.is-cut { border-color: var(--cut); }
+.step-title { font-weight: 650; margin: 0 0 2px; }
+.step-fig { font-family: var(--mono); font-size: 0.95rem; margin: 0 0 4px; overflow-wrap: anywhere; }
+.step-body { font-size: 0.92rem; color: var(--ink-2); margin: 0 0 6px; }
+.tx { font-size: 0.85rem; margin: 0; overflow-wrap: anywhere; }
+.tx a { font-family: var(--mono); }
+@media (min-width: 760px) {
+  ol.steps { grid-template-columns: repeat(4, 1fr); }
+  ol.steps li { padding: 46px 14px 14px; }
+  .step-fig { font-size: 0.86rem; }
+  ol.steps li::before { left: 14px; top: 14px; }
+}
+
+/* Lifetime bar */
+.lifetime { margin: 22px 0 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 12px; }
+.lifetime h3 { font-family: var(--sans); font-size: 0.95rem; font-weight: 650; margin: 0 0 2px; }
+.lifetime .sub { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 8px; }
+.bar-area { position: relative; height: 104px; margin: 0 12px; }
+.track { position: absolute; left: 0; right: 0; top: 54px; height: 16px; border-radius: 3px; overflow: hidden; display: flex; }
+.seg-live { width: 34.25%; background: var(--ok-soft); border-right: 0; }
+.seg-removed {
+  flex: 1;
+  background: repeating-linear-gradient(135deg, var(--cut-soft) 0 6px, transparent 6px 11px), var(--cut-soft);
+  background-color: transparent;
+  border: 1px solid var(--cut); border-left: 0; border-radius: 0 3px 3px 0;
+}
+.seg-live { border: 1px solid var(--ok); border-right: 0; border-radius: 3px 0 0 3px; }
+.mark { position: absolute; top: 48px; height: 28px; width: 0; border-left: 2px solid var(--ink); }
+.mark.cut { border-color: var(--cut); }
+.pin {
+  position: absolute; transform: translateX(-50%); width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font: 700 0.72rem/1 var(--sans); color: var(--bg); background: var(--ink);
+}
+.pin.up { top: 26px; }
+.pin.up.high { top: 0; }
+.mark.high { top: 22px; height: 54px; }
+.pin.down { top: 80px; }
+.pin.cut { background: var(--cut); }
+.pin.ok { background: var(--ok); }
+.at-s { left: 30.08%; }
+.at-r { left: 34.25%; }
+.at-c { left: 41%; }
+.at-x { left: 43.96%; }
+th.num { text-align: right; }
+.axis { display: flex; justify-content: space-between; font: 0.75rem/1 var(--mono); color: var(--ink-2); margin: 4px 0 10px; padding: 0 2px; }
+dl.legend { margin: 0; display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 0.875rem; }
+dl.legend div { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: start; }
+dl.legend dt { margin: 0; }
+dl.legend dt .pin { position: static; transform: none; }
+dl.legend dd { margin: 0; }
+dl.legend b { font-family: var(--mono); font-weight: 600; }
+@media (min-width: 640px) { dl.legend { grid-template-columns: 1fr 1fr; } }
+.cmdline { font-size: 0.9rem; margin: 12px 0 0; }
+
+/* 3. Diagram */
+.diagram { margin: 14px 0 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.diagram svg { display: block; width: 100%; height: auto; }
+.diagram .d-wide { display: none; }
+@media (min-width: 760px) { .diagram .d-wide { display: block; } .diagram .d-tall { display: none; } }
+svg .box { fill: var(--bg); stroke: var(--line-2); stroke-width: 1.25; }
+svg .box.key { fill: var(--surface); stroke: var(--ink); stroke-width: 1.5; }
+svg .t { fill: var(--ink); font: 600 14px var(--sans); }
+svg .s { fill: var(--ink-2); font: 12.5px var(--sans); }
+svg .m { fill: var(--ink-2); font: 12px var(--mono); }
+svg .arrow { stroke: var(--ink-2); stroke-width: 1.5; fill: none; }
+svg .revoke { stroke: var(--cut); stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
+svg .rt { fill: var(--cut); font: 600 12.5px var(--sans); }
+svg .ah { fill: var(--ink-2); }
+svg .ahc { fill: var(--cut); }
+svg .halo { fill: var(--surface); }
+ul.notes { margin: 8px 0 0; padding-left: 1.1em; font-size: 0.92rem; }
+ul.notes li { margin: 0 0 4px; }
+
+/* 4. Video */
+.video { background: #000; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.video video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+.caption { font-size: 0.875rem; color: var(--ink-2); margin: 8px 0 4px; }
+
+/* 5. Verify */
+.linklist { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 6px; }
+.linklist li { overflow-wrap: anywhere; }
+.cmds { display: grid; gap: 10px; margin: 0; }
+.cmd { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.cmd pre { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.88rem/1.4 var(--mono); }
+.cmd p { margin: 0; font-size: 0.85rem; color: var(--ink-2); }
+
+/* 6. Limits */
+ul.limits { margin: 0; padding-left: 1.1em; }
+ul.limits li { margin: 0 0 6px; }
+
+/* 7. Details */
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; }
+summary { cursor: pointer; padding: 12px 14px; font-weight: 650; list-style-position: inside; }
+details > div { padding: 0 14px 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 650; }
+td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+dl.gloss { margin: 0; }
+dl.gloss dt { font-weight: 650; margin-top: 10px; }
+dl.gloss dd { margin: 2px 0 0; font-size: 0.92rem; }
+
+footer { border-top: 1px solid var(--line); padding-top: 18px; padding-bottom: 32px; font-size: 0.85rem; color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <p class="kicker">Bounded Mandate · NEAR<span class="k-more"> Intents · Chain Signatures</span></p>
+  <h1>Give an AI agent trading authority without unrestricted control of your treasury.</h1>
+  <p class="lede">You set the limits, and the contract checks them before any order is signed. One revoke call removes the signing key, so signed orders the agent still holds fail once the removal is confirmed. You can recover the funds without the agent.</p>
+  <p class="proof"><b>Mainnet, 14 Nov 2026:</b> trade filled → key revoked → the same signed order rejected 67.25 s before expiry → assets recovered · <a href="#h-verify">Verify ↓</a></p>
+</header>
+
+<main>
+<section class="wrap" aria-labelledby="h-mainnet">
+  <div class="result-head">
+    <h2 id="h-mainnet">What happened on mainnet</h2>
+    <span class="label">Mainnet</span>
+  </div>
+  <p class="scope">One approved mainnet run, 14 Nov 2026, fixed proposals, our own filler; shows integration, not reliability or profitability.</p>
+
+  <ol class="steps">
+    <li>
+      <p class="step-title">Permitted trade</p>
+      <p class="step-fig">1.00 USDC <span class="fig-note">paid by the mandate</span> → 0.322008 wNEAR</p>
+      <p class="step-body">A fixed proposal within the limits, signed through v1.signer (Chain Signatures) and filled.</p>
+      <p class="tx">Fill: <a href="https://nearblocks.io/txns/2PzTvXv9TLzWxV1LP6KFKP9a2mGF4gP4MLwXk1XAy1MK" rel="noopener noreferrer">2PzTvX…y1MK</a></p>
+    </li>
+    <li>
+      <p class="step-title">Confirmed revocation</p>
+      <p class="step-fig">key removed at intents.near</p>
+      <p class="step-body">The owner calls revoke. The grant's signing key is removed from the verifier, and the removal is confirmed.</p>
+      <p class="tx">Revoke: <a href="https://nearblocks.io/txns/H7KpB2dxPDDMJK9aYgtRd4yztqSS7nE8ZxZ1sZ5ApJSC" rel="noopener noreferrer">H7KpB2…ApJSC</a></p>
+    </li>
+    <li class="is-cut">
+      <p class="step-title">Same signed order rejected</p>
+      <p class="step-fig">67.25 s before expiry</p>
+      <p class="step-body">A second order, signed before revoke and withheld, is relayed unchanged. intents.near rejects it: the key no longer exists for the mandate account.</p>
+      <p class="tx">Relay: <a href="https://nearblocks.io/txns/5R1wKwqsfxX18XqqKJ2AakKCM4bT4TTQgYQzFzhW3LLw" rel="noopener noreferrer">5R1wKw…3LLw</a></p>
+    </li>
+    <li>
+      <p class="step-title">Recovery</p>
+      <p class="step-fig">3.999999 USDC + 0.422008 wNEAR</p>
+      <p class="step-body">Returned to the owner's Intents account, without the agent. Withdrawing to a NEAR wallet is the owner's separate step.</p>
+      <p class="tx">Recover: <a href="https://nearblocks.io/txns/Cuan44bAPFyyKdrvTeXpjGSEZMsvDymuj7fVjf1K2qJt" rel="noopener noreferrer">Cuan44…2qJt</a>, <a href="https://nearblocks.io/txns/7ypZiTuugefeWqfocsDsqsT81iUw8iE5eeXroYtmrEGj" rel="noopener noreferrer">7ypZiT…rEGj</a></p>
+    </li>
+  </ol>
+
+  <div class="lifetime" role="group" aria-labelledby="h-life">
+    <h3 id="h-life">The withheld order's lifetime, measured on chain</h3>
+    <p class="sub">120 s order lifetime (approved policy maximum). Axis: seconds left before the order's deadline.</p>
+    <div class="bar-area" aria-hidden="true">
+      <div class="track"><div class="seg-live"></div><div class="seg-removed"></div></div>
+      <span class="mark at-s"></span>
+      <span class="mark at-r"></span>
+      <span class="mark at-c"></span>
+      <span class="mark cut high at-x"></span>
+      <span class="pin down at-s">S</span>
+      <span class="pin up ok at-r">R</span>
+      <span class="pin down at-c">C</span>
+      <span class="pin up high cut at-x">X</span>
+    </div>
+    <div class="axis" aria-hidden="true"><span>120 s</span><span>60 s</span><span>0 s · deadline</span></div>
+    <dl class="legend">
+      <div><dt><span class="pin">S</span></dt><dd>Order signed: <b>83.9 s</b> before the deadline</dd></div>
+      <div><dt><span class="pin ok">R</span></dt><dd>Revoke transaction's block: <b>78.9 s</b> before</dd></div>
+      <div><dt><span class="pin">C</span></dt><dd>Check after confirmed removal: <b>70.8 s</b> still left</dd></div>
+      <div><dt><span class="pin cut">X</span></dt><dd>Rejection executed at intents.near: <b>67.25 s</b> before</dd></div>
+    </dl>
+  </div>
+  <p class="small muted">Shaded: from the revoke transaction's block to the deadline. Without revocation the order could have been relayed and executed anywhere in this window.</p>
+  <p class="cmdline"><code>node verify.mjs --mainnet</code> re-reads the run from the chain: 54 read-only chain checks passed, 0 failed.</p>
+</section>
+
+<section aria-labelledby="h-how">
+  <div class="wrap">
+    <h2 id="h-how">How it works</h2>
+    <p class="muted">The agent can only propose. The contract prices the order, checks it against the owner's limits, and only then asks the MPC network to sign it.</p>
+  </div>
+  <div class="wide">
+    <div class="diagram">
+      <svg class="d-wide" viewBox="0 0 960 330" role="img" aria-labelledby="dw-title dw-desc">
+        <title id="dw-title">Architecture</title>
+        <desc id="dw-desc">The owner grants, limits, revokes and recovers through the mandate contract, a keyless account. The agent holds a function-call key that can only call propose_order. The mandate reads prices from aggregate-oracle.near, checks size, turnover and concession limits, and asks v1.signer (Chain Signatures, MPC) to sign. The signed order goes to the intents.near verifier, which checks the registered key on every intent, and is settled by a filler (our own account in the mainnet run). Revoke removes that key at intents.near.</desc>
+        <defs>
+          <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
+          <marker id="awc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahc" d="M0 0 L10 5 L0 10 z"/></marker>
+        </defs>
+        <!-- revoke path -->
+        <path class="revoke" d="M115 60 V22 H875 V124" marker-end="url(#awc)"/>
+        <rect class="halo" x="560" y="11" width="250" height="22"/>
+        <text class="rt" x="685" y="27" text-anchor="middle">revoke: remove the key at intents.near</text>
+        <!-- owner -->
+        <rect class="box key" x="16" y="60" width="216" height="62" rx="8"/>
+        <text class="t" x="28" y="84">Owner (wallet or DAO)</text>
+        <text class="s" x="28" y="104">grant · limits · revoke · recover</text>
+        <!-- agent -->
+        <rect class="box" x="16" y="214" width="216" height="62" rx="8"/>
+        <text class="t" x="28" y="238">AI agent</text>
+        <text class="s" x="28" y="258">key allows propose_order only</text>
+        <!-- arrows into mandate -->
+        <path class="arrow" d="M232 91 H244 V150 H256" marker-end="url(#aw)"/>
+        <path class="arrow" d="M232 245 H244 V180 H256" marker-end="url(#aw)"/>
+        <!-- mandate -->
+        <rect class="box key" x="258" y="124" width="162" height="80" rx="8"/>
+        <text class="t" x="272" y="150">Mandate contract</text>
+        <text class="s" x="272" y="170">keyless account</text>
+        <text class="s" x="272" y="188">holds the funds</text>
+        <!-- oracle -->
+        <rect class="box" x="450" y="48" width="144" height="50" rx="8"/>
+        <text class="m" x="462" y="70">aggregate-oracle</text>
+        <text class="s" x="462" y="88">prices</text>
+        <path class="arrow" d="M522 98 V122" marker-end="url(#aw)"/>
+        <!-- checks -->
+        <path class="arrow" d="M420 164 H448" marker-end="url(#aw)"/>
+        <rect class="box" x="450" y="124" width="144" height="80" rx="8"/>
+        <text class="t" x="462" y="150">Limit checks</text>
+        <text class="s" x="462" y="170">size, turnover,</text>
+        <text class="s" x="462" y="188">concession</text>
+        <!-- signer -->
+        <path class="arrow" d="M594 164 H622" marker-end="url(#aw)"/>
+        <rect class="box" x="624" y="124" width="160" height="80" rx="8"/>
+        <text class="m" x="636" y="148">v1.signer</text>
+        <text class="s" x="636" y="168">Chain Signatures (MPC)</text>
+        <text class="s" x="636" y="188">signs the order</text>
+        <!-- verifier -->
+        <path class="arrow" d="M704 204 V226 H836 V206" marker-end="url(#aw)"/>
+        <text class="s" x="630" y="246">signed order,</text>
+        <text class="s" x="630" y="263">relayed by a filler</text>
+        <rect class="box key" x="802" y="124" width="146" height="80" rx="8"/>
+        <text class="m" x="814" y="148">intents.near</text>
+        <text class="s" x="814" y="168">checks the key on</text>
+        <text class="s" x="814" y="188">every signed intent</text>
+        <rect class="halo" x="790" y="86" width="80" height="20"/>
+        <text class="rt" x="868" y="101" text-anchor="end">key removed</text>
+        <!-- settled -->
+        <path class="arrow" d="M900 204 V236" marker-end="url(#aw)"/>
+        <rect class="box" x="802" y="238" width="146" height="82" rx="8"/>
+        <text class="t" x="814" y="260">Settled</text>
+        <text class="s" x="814" y="279">by a filler (our own</text>
+        <text class="s" x="814" y="296">account in the</text>
+        <text class="s" x="814" y="313">mainnet run)</text>
+      </svg>
+
+      <svg class="d-tall" viewBox="0 0 340 556" role="img" aria-labelledby="dt-title dt-desc">
+        <title id="dt-title">Architecture</title>
+        <desc id="dt-desc">The owner grants, limits, revokes and recovers through the mandate contract, a keyless account. The agent holds a function-call key that can only call propose_order. The mandate reads prices from aggregate-oracle.near, checks size, turnover and concession limits, and asks v1.signer (Chain Signatures, MPC) to sign. The signed order goes to the intents.near verifier, which checks the registered key on every intent, and is settled by a filler (our own account in the mainnet run). Revoke removes that key at intents.near.</desc>
+        <defs>
+          <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
+          <marker id="atc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahc" d="M0 0 L10 5 L0 10 z"/></marker>
+        </defs>
+        <!-- owner / agent -->
+        <rect class="box key" x="4" y="6" width="160" height="76" rx="8"/>
+        <text class="t" x="16" y="30">Owner</text>
+        <text class="s" x="16" y="50">grant, limits,</text>
+        <text class="s" x="16" y="68">revoke, recover</text>
+        <rect class="box" x="176" y="6" width="160" height="76" rx="8"/>
+        <text class="t" x="188" y="30">AI agent</text>
+        <text class="s" x="188" y="50">function-call key:</text>
+        <text class="m" x="188" y="68">propose_order</text>
+        <path class="arrow" d="M100 82 V110" marker-end="url(#at)"/>
+        <path class="arrow" d="M256 82 V110" marker-end="url(#at)"/>
+        <!-- mandate -->
+        <rect class="box key" x="40" y="112" width="296" height="56" rx="8"/>
+        <text class="t" x="52" y="136">Mandate contract</text>
+        <text class="s" x="52" y="156">keyless account that holds the funds</text>
+        <path class="arrow" d="M120 168 V192" marker-end="url(#at)"/>
+        <!-- checks + oracle -->
+        <rect class="box" x="40" y="194" width="176" height="60" rx="8"/>
+        <text class="t" x="52" y="218">Limit checks</text>
+        <text class="s" x="52" y="238">size, turnover, concession</text>
+        <rect class="box" x="230" y="194" width="106" height="60" rx="8"/>
+        <text class="m" x="240" y="216">aggregate-</text>
+        <text class="m" x="240" y="232">oracle</text>
+        <text class="s" x="240" y="248">prices</text>
+        <path class="arrow" d="M230 224 H218" marker-end="url(#at)"/>
+        <path class="arrow" d="M120 254 V278" marker-end="url(#at)"/>
+        <!-- signer -->
+        <rect class="box" x="40" y="280" width="296" height="60" rx="8"/>
+        <text class="m" x="52" y="302">v1.signer</text>
+        <text class="s" x="52" y="322">Chain Signatures (MPC) signs the order</text>
+        <path class="arrow" d="M120 340 V378" marker-end="url(#at)"/>
+        <text class="s" x="130" y="356">signed order,</text>
+        <text class="s" x="130" y="372">relayed by a filler</text>
+        <!-- verifier -->
+        <rect class="box key" x="40" y="380" width="296" height="60" rx="8"/>
+        <text class="m" x="52" y="402">intents.near verifier</text>
+        <text class="s" x="52" y="422">checks the key on every signed intent</text>
+        <path class="arrow" d="M120 440 V466" marker-end="url(#at)"/>
+        <!-- settled -->
+        <rect class="box" x="40" y="468" width="296" height="80" rx="8"/>
+        <text class="t" x="52" y="490">Settled</text>
+        <text class="s" x="52" y="509">by a filler (our own account</text>
+        <text class="s" x="52" y="527">in the mainnet run)</text>
+        <!-- revoke -->
+        <path class="revoke" d="M18 82 V410 H38" marker-end="url(#atc)"/>
+        <text class="rt" transform="translate(13 360) rotate(-90)">revoke: remove key at intents.near</text>
+      </svg>
+    </div>
+  </div>
+  <div class="wrap">
+    <ul class="notes">
+      <li>Every signed intent is checked against the key registered for the mandate at intents.near. Revoke removes that key, so every outstanding signed order fails once the removal is confirmed.</li>
+      <li>Recover returns the assets to the owner's Intents account. It needs no agent, oracle or MPC.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="h-video">
+  <h2 id="h-video">Watch</h2>
+  <div class="video">
+    <video controls preload="metadata" playsinline src="../pitch/bounded-mandate-pitch.mp4" poster="../pitch/poster.png">
+      <track kind="captions" srclang="en" label="English" src="../pitch/captions.vtt" default>
+    </video>
+  </div>
+  <p class="caption">Narrated explainer based on recorded evidence; not a certified cut.</p>
+  <p class="small">Recorded demo cuts from the project's own test gate (not an external certification): <a href="../video/bounded-mandate-short.mp4">short</a> · <a href="../video/bounded-mandate-demo.mp4">full</a></p>
+</section>
+
+<section class="wrap" aria-labelledby="h-verify">
+  <h2 id="h-verify">Verify it yourself</h2>
+  <ul class="linklist small">
+    <li>Trade fill: <a class="mono" href="https://nearblocks.io/txns/2PzTvXv9TLzWxV1LP6KFKP9a2mGF4gP4MLwXk1XAy1MK" rel="noopener noreferrer">2PzTvXv9TLzWxV1LP6KFKP9a2mGF4gP4MLwXk1XAy1MK</a></li>
+    <li>Revoke: <a class="mono" href="https://nearblocks.io/txns/H7KpB2dxPDDMJK9aYgtRd4yztqSS7nE8ZxZ1sZ5ApJSC" rel="noopener noreferrer">H7KpB2dxPDDMJK9aYgtRd4yztqSS7nE8ZxZ1sZ5ApJSC</a></li>
+    <li>Rejected relay: <a class="mono" href="https://nearblocks.io/txns/5R1wKwqsfxX18XqqKJ2AakKCM4bT4TTQgYQzFzhW3LLw" rel="noopener noreferrer">5R1wKwqsfxX18XqqKJ2AakKCM4bT4TTQgYQzFzhW3LLw</a></li>
+    <li>Recover: <a class="mono" href="https://nearblocks.io/txns/Cuan44bAPFyyKdrvTeXpjGSEZMsvDymuj7fVjf1K2qJt" rel="noopener noreferrer">Cuan44bAPFyyKdrvTeXpjGSEZMsvDymuj7fVjf1K2qJt</a></li>
+    <li><a href="../">Full evidence page</a> · <a href="../console/">Owner console</a> <span class="muted">(sandbox snapshot)</span> · <a href="https://github.com/gryyny/bounded-mandate" rel="noopener noreferrer">Repository</a></li>
+  </ul>
+  <div class="cmds">
+    <div class="cmd"><pre>make verify</pre><p>Checks the committed evidence. Offline, no install.</p></div>
+    <div class="cmd"><pre>node verify.mjs --mainnet --rpc https://near.drpc.org</pre><p>Reads the mainnet run from the chain, read-only.</p></div>
+    <div class="cmd"><pre>make quick</pre><p>Replays the story in a local sandbox. Node 24, no Rust.</p></div>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="h-limits">
+  <h2 id="h-limits">Limitations</h2>
+  <ul class="limits">
+    <li>Revocation takes effect after the key removal is confirmed. Orders executed before that stay executed.</li>
+    <li>The sandbox uses labelled test doubles for the MPC signer, the oracle and the tokens, with the real pinned Intents verifier.</li>
+    <li>"Certified" means the project's own acceptance gate, not an external audit.</li>
+    <li>No guarantee of principal or profit. Limits bound what the agent can sign, not market outcomes.</li>
+    <li>The owner and the NEAR and NEAR Intents infrastructure are trusted.</li>
+    <li>Mainnet evidence is one small run with fixed proposals, not a live model.</li>
+    <li>The mainnet trade was filled by our own account, not third-party liquidity or the solver network.</li>
+  </ul>
+</section>
+
+<section class="wrap" aria-labelledby="h-more">
+  <h2 id="h-more">More detail</h2>
+
+  <details>
+    <summary>Hostile requests refused, by layer <span class="label">Sandbox</span></summary>
+    <div>
+      <p class="small muted">39 of 39 scripted hostile requests refused in the sandbox, each at the layer that stopped it. Supporting evidence, not a security guarantee.</p>
+      <table>
+        <thead><tr><th scope="col">Layer</th><th scope="col" class="num">Refused</th></tr></thead>
+        <tbody>
+          <tr><td>Local validation</td><td class="num">10</td></tr>
+          <tr><td>Contract method checks</td><td class="num">14</td></tr>
+          <tr><td>Policy checks</td><td class="num">4</td></tr>
+          <tr><td>Agent key permission</td><td class="num">10</td></tr>
+          <tr><td>Verifier</td><td class="num">1</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Other ways to stop a signed order <span class="label">Sandbox</span></summary>
+    <div>
+      <p class="small muted">Withheld, unexpired signed orders were relayed after each owner action. Wait, nonce cancel and key removal used three orders each.</p>
+      <table>
+        <thead><tr><th scope="col">Owner's action</th><th scope="col">Withheld orders that still executed (lower is better)</th></tr></thead>
+        <tbody>
+          <tr><td>Wait for expiry</td><td>3 of 3</td></tr>
+          <tr><td>Cancel nonces, list incomplete</td><td>1 of 3</td></tr>
+          <tr><td>Pause flag (our re-implementation of a published pause design)</td><td>a withheld order executed after pause</td></tr>
+          <tr><td>Remove the key at intents.near</td><td>0 of 3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Glossary</summary>
+    <div>
+      <dl class="gloss">
+        <dt>Function-call key</dt>
+        <dd>A NEAR access key limited to one contract and named methods. The agent's key can only call <code>propose_order</code>.</dd>
+        <dt>Chain Signatures (MPC)</dt>
+        <dd>NEAR's multi-party signing service at <code>v1.signer</code>. The mandate asks it to sign with a key derived for the grant; the agent never holds that key.</dd>
+        <dt>NEAR Intents verifier</dt>
+        <dd>The <code>intents.near</code> contract. It executes a signed intent only if the signing key is registered for the account.</dd>
+        <dt>Withheld order</dt>
+        <dd>An order that was signed but not relayed yet. Whoever holds it can relay it until its deadline.</dd>
+        <dt>Revoke vs recover</dt>
+        <dd>Revoke removes the grant's key, so outstanding signed orders fail. Recover moves the assets back to the owner's Intents account.</dd>
+        <dt>Certified</dt>
+        <dd>All 48 required cases passed in one clean run from a fresh clone at revision dd665d1. The project's own gate, not an external audit.</dd>
+      </dl>
+    </div>
+  </details>
+</section>
+</main>
+
+<footer class="wrap">
+  Evidence revision dd665d1. Mainnet run 14 Nov 2026: owner <span class="mono">bmandate.near</span>, mandate <span class="mono">mandate.bmandate.near</span>. <a href="https://github.com/gryyny/bounded-mandate" rel="noopener noreferrer">github.com/gryyny/bounded-mandate</a>
+</footer>
+</body>
+</html>

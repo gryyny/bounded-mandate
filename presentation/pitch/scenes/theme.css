@@ -1,0 +1,127 @@
+/* Pitch explainer scenes: 1920x1080 boards rendered to PNG by ../build.mjs.
+   Readability floor at 1080p: body text >= 44px, headlines >= 72px; only .small labels go below 44px. */
+:root {
+  --bg: #0a0e13;
+  --panel: #131a23;
+  --panel-2: #1a232f;
+  --line: #2c3746;
+  --text: #f3f6f9;
+  --muted: #b3bfcc;
+  --green: #3ee6a0;
+  --red: #ff6161;
+  --amber: #ffc24b;
+  --blue: #7cc0ff;
+  --sans: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --mono: "SF Mono", Menlo, Monaco, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 48px; line-height: 1.25; }
+html:has(body.transparent), body.transparent { background: transparent; }
+.board { position: absolute; inset: 0; display: none; background: radial-gradient(1400px 800px at 70% 20%, #121a25 0%, var(--bg) 70%); }
+.board.active { display: block; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+.green { color: var(--green); }
+.red { color: var(--red); }
+.amber { color: var(--amber); }
+.blue { color: var(--blue); }
+b, strong { font-weight: 700; }
+
+/* state-driven visibility (scene.js): data-show=n visible from state n, data-hide=n hidden from state n */
+.off { display: none !important; }
+
+/* chrome */
+.tag { position: absolute; z-index: 10; top: 22px; right: 40px; font-size: 26px; color: var(--muted); border: 1px solid var(--line); background: #0d1218; border-radius: 999px; padding: 5px 18px; letter-spacing: 0.01em; }
+.kicker { position: absolute; top: 72px; left: 80px; display: flex; gap: 16px; }
+.pill { font-size: 36px; font-weight: 600; padding: 6px 22px; border-radius: 999px; border: 2px solid currentColor; background: rgba(255, 255, 255, 0.03); white-space: nowrap; }
+.pill.green { color: var(--green); }
+.pill.amber { color: var(--amber); }
+.pill.blue { color: var(--blue); }
+.pill.muted { color: var(--muted); }
+.headline { position: absolute; top: 160px; left: 80px; right: 80px; font-size: 76px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.1; }
+
+/* boxes */
+.box { position: absolute; background: var(--panel); border: 3px solid var(--line); border-radius: 28px; padding: 24px 30px; overflow: hidden; }
+.box h3 { font-size: 54px; font-weight: 800; line-height: 1.15; }
+.box p { font-size: 44px; line-height: 1.25; }
+.box.on { border-color: var(--green); box-shadow: 0 0 0 6px rgba(62, 230, 160, 0.16); }
+.box.warn { border-color: var(--amber); box-shadow: 0 0 0 6px rgba(255, 194, 75, 0.16); }
+.box.bad { border-color: var(--red); box-shadow: 0 0 0 6px rgba(255, 97, 97, 0.16); }
+
+/* s01 proof */
+.order { left: 80px; top: 180px; width: 860px; height: 420px; }
+.order .row { font-size: 46px; margin-top: 14px; }
+.stamp { position: absolute; left: 150px; top: 445px; transform: rotate(-5deg); font-size: 92px; font-weight: 900; letter-spacing: 0.06em; color: var(--red); border: 10px solid var(--red); border-radius: 18px; padding: 0 30px; background: rgba(10, 14, 19, 0.82); }
+.bignum { position: absolute; left: 1010px; top: 190px; width: 830px; }
+.bignum .n { font-size: 210px; font-weight: 900; line-height: 1; color: var(--red); letter-spacing: -0.03em; }
+.bignum .t { font-size: 60px; font-weight: 700; line-height: 1.15; margin-top: 10px; }
+.bignum .s { font-size: 44px; color: var(--muted); margin-top: 18px; }
+
+/* to-scale lifetime bar and block track */
+.scale { position: absolute; left: 80px; width: 1760px; }
+.scale .cap { position: absolute; left: 0; font-size: 34px; color: var(--muted); white-space: nowrap; }
+.scale .bar { position: absolute; left: 0; right: 0; height: 34px; border-radius: 17px; background: #253142; overflow: visible; }
+.scale .fill { position: absolute; top: 0; bottom: 0; border-radius: 17px; }
+.mark { position: absolute; width: 0; }
+.mark::before { content: ""; position: absolute; left: -3px; width: 6px; background: currentColor; border-radius: 3px; }
+.mark.up::before { bottom: -6px; height: 104px; }
+.mark.down::before { top: -6px; height: 104px; }
+.mark .l { position: absolute; white-space: nowrap; font-size: 44px; font-weight: 700; line-height: 1.1; }
+.mark.up .l { bottom: 104px; }
+.mark.down .l { top: 104px; }
+.mark .l.r { right: -3px; text-align: right; }
+.mark .l.c { transform: translateX(-50%); text-align: center; }
+.mark .l.lft { left: -3px; }
+.end { position: absolute; font-size: 34px; color: var(--muted); white-space: nowrap; }
+.dot { position: absolute; top: 3px; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%; background: #4a5a6e; }
+.dot.on { background: var(--green); }
+.dot.bad { background: var(--red); }
+.dot.warn { background: var(--amber); }
+
+/* s02 name */
+.name { position: absolute; left: 80px; right: 80px; top: 250px; }
+.name h1 { font-size: 160px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; }
+.name .lead { font-size: 68px; font-weight: 600; line-height: 1.2; margin-top: 44px; max-width: 1640px; }
+.name .stack { font-size: 46px; color: var(--muted); margin-top: 48px; }
+
+/* receipt cards */
+.card { position: absolute; width: 860px; height: 330px; background: var(--panel); border: 3px solid var(--line); border-radius: 28px; padding: 22px 32px; overflow: hidden; display: flex; flex-direction: column; }
+.card .what { font-size: 48px; font-weight: 750; line-height: 1.2; flex: 1; }
+.card .meta { font-size: 44px; line-height: 1.3; font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+.card .meta b { color: var(--text); font-weight: 600; }
+.card .out { display: inline-block; vertical-align: 3px; font-family: var(--sans); font-size: 36px; font-weight: 800; letter-spacing: 0.05em; padding: 0 14px; border-radius: 10px; margin-left: 18px; line-height: 1.35; }
+.card .out.ok { color: #04130c; background: var(--green); }
+.card .out.fail { color: #1a0505; background: var(--red); }
+.card.on { border-color: var(--green); }
+.card.bad { border-color: var(--red); }
+.card.warn { border-color: var(--amber); }
+.slot-l { left: 80px; top: 520px; }
+.slot-r { left: 980px; top: 520px; }
+
+/* diagrams */
+svg.wires { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: visible; }
+.chip { display: inline-block; font-size: 44px; font-family: var(--mono); padding: 4px 16px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel-2); margin-top: 14px; }
+.chip.on { border-color: var(--green); color: var(--green); }
+.chip.dead { border-color: var(--red); color: var(--red); text-decoration: line-through; text-decoration-thickness: 5px; }
+.x { color: var(--red); font-weight: 900; }
+.wlabel { position: absolute; font-size: 40px; font-weight: 700; white-space: nowrap; }
+
+/* sandbox */
+.shot { position: absolute; left: 80px; top: 180px; width: 860px; height: 620px; border-radius: 22px; border: 3px solid var(--amber); overflow: hidden; background: #f4efe6; }
+.shot img { position: absolute; left: -163px; top: -316px; width: 1022px; }
+.shotcap { position: absolute; left: 80px; top: 815px; font-size: 32px; color: var(--muted); }
+.big39 { position: absolute; left: 1020px; top: 170px; width: 820px; }
+.big39 .n { font-size: 170px; font-weight: 900; line-height: 1; color: var(--green); letter-spacing: -0.03em; }
+.big39 .t { font-size: 52px; font-weight: 700; line-height: 1.15; margin-top: 6px; }
+.layers { position: absolute; left: 1020px; top: 510px; width: 820px; }
+.layer { display: grid; grid-template-columns: 1fr 90px; align-items: center; height: 66px; border-bottom: 2px solid var(--line); font-size: 44px; }
+.layer .c { text-align: right; font-weight: 800; color: var(--green); font-variant-numeric: tabular-nums; }
+
+/* limits + verify */
+.lines { position: absolute; left: 80px; right: 80px; top: 320px; }
+.line { display: grid; grid-template-columns: 70px 1fr; font-size: 56px; font-weight: 600; line-height: 1.2; margin-bottom: 46px; }
+.line .i { color: var(--amber); font-weight: 900; }
+.cmd { font-family: var(--mono); font-size: 56px; font-weight: 600; background: var(--panel); border: 3px solid var(--line); border-radius: 18px; padding: 8px 28px; display: inline-block; }
+.vrow { position: absolute; left: 80px; right: 80px; }
+.vrow .sub { font-size: 44px; color: var(--muted); margin-top: 10px; }
+.url { font-family: var(--mono); font-size: 62px; font-weight: 700; color: var(--green); }

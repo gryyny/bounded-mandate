@@ -1,0 +1,78 @@
+{
+  "schema": "bounded-mandate/presentation-provenance/v1",
+  "generated_at": "2026-11-14",
+  "kind": "Presentation layer: an overview page and a narrated explainer based on recorded evidence. Not certified evidence and not a certified cut; the certified files stay in evidence/dd665d1/ unchanged.",
+  "base_commit": "4a4f5ba9207c12a5f2a86bfaa01921e50f86ca32",
+  "evidence": {
+    "certified_bundle": "evidence/dd665d1",
+    "mainnet_run": "evidence/mainnet/attempt-3/dd665d1",
+    "sources": [
+      "evidence/dd665d1/live-mainnet.json",
+      "evidence/dd665d1/tests/BOUNDARY.attacks.json",
+      "evidence/dd665d1/tests/COMPARE.revocation-alternatives.json",
+      "evidence/dd665d1/console/screens"
+    ]
+  },
+  "timings": {
+    "order_lifetime_s": {
+      "value": 120,
+      "source": "live-mainnet.json grant event policy.order_ttl_sec (approved policy maximum)"
+    },
+    "signed_to_deadline_s": {
+      "value": 83.909,
+      "source": "live-mainnet.json signed_to_deadline_ms"
+    },
+    "remaining_after_confirmed_removal_s": {
+      "value": 70.844,
+      "source": "live-mainnet.json remaining_after_confirmed_removal_ms"
+    },
+    "rejection_before_deadline_s": {
+      "value": 67.248,
+      "source": "live-mainnet.json deadline_ns 1794675052000000000 minus executed_at_ns 1794674984751735167 (intents.near receipt, block 224541504)"
+    },
+    "revoke_block_before_deadline_s": {
+      "value": 78.889,
+      "source": "read-only RPC lookup, not in the bundle: block 224541484 header timestamp_nanosec 1794674973111077864 (https://near.drpc.org, 14 Nov 2026) against deadline_ns 1794675052000000000"
+    }
+  },
+  "narration": {
+    "method": "presentation/pitch/audio/METHOD.md",
+    "model": "Kokoro-82M (Apache-2.0) via kokoro-onnx, local CPU",
+    "voice": "af_heart (stock)",
+    "script": "presentation/pitch/narration.md",
+    "check": "local faster-whisper small.en transcription of each segment and of the final MP4 audio"
+  },
+  "pitch_build": {
+    "command": "node presentation/pitch/build.mjs",
+    "details": "presentation/pitch/pitch.json"
+  },
+  "inputs": {
+    "pitch/audio/METHOD.md": "7819f3de9d15ede80f2a453892c4e1805834c16912b97d609bb8ee6c27d4e130",
+    "pitch/audio/s01-proof.wav": "81be72ea510a071c9d5ee587756d3de7565a096d158f22e04b7891fba61e8469",
+    "pitch/audio/s02-name.wav": "433b2fcc060fef7498ae8dad7a300231f9e5c113567ce2f0ef4fd2a9f10d1ccc",
+    "pitch/audio/s03-problem.wav": "6e2c674830cae6c310205669158a41072a2efeec92073f0fb2ac0e72fc48c140",
+    "pitch/audio/s04-agent.wav": "26d32e63e71f6b12abb1787ac2f2a2d8fab52eb4ab3e2ca99167c4e5a1c0913f",
+    "pitch/audio/s05-contract.wav": "ed76a6c6fbee9c6caa86352799fc6e87e0174ecdda17ae5ed1c996d5a559dd0e",
+    "pitch/audio/s06-verifier.wav": "f2b10c6862942602bce29e2d6c1dac2ee69272d6269ec0b2bea779511397c492",
+    "pitch/audio/s07-run.wav": "a203c64a32705682e17ad5ed6858611166edc367f1ea416fd980ea4a1a2a6321",
+    "pitch/audio/s08-revoke.wav": "f3b03a9c9d2f5882f77917eca92d151aff4afb0002aaf386431379d2cae242cc",
+    "pitch/audio/s09-reject.wav": "4c3e6a00c58158b7e945dba70cc90357ca3739645f353aae300c32f0941177d0",
+    "pitch/audio/s10-recover.wav": "8ce9e878e3b5395f456216a5f6d2898aca43a90b5aadb8c0f0e9c9966cdd5b51",
+    "pitch/audio/s11-sandbox.wav": "105ce69d96f7dc940681577a0ed07e91eb3015691b671c534ff6d8cc57260396",
+    "pitch/audio/s12-limits.wav": "1b9f2a5d675db26555a35643e137c719a0a9a9afff4b65a2efa7fe71f22c3542",
+    "pitch/audio/s13-verify.wav": "04c37c21700216a3d209d9d5fb0b4d2ab6b8bc0c6a2519be10129c9a08a8fa4d",
+    "pitch/build.mjs": "81d80d02ad5ff8aaccfb7a8d0dcea150a951ddfb09207212243edfe8e8abc76b",
+    "pitch/narration.md": "0710c8caf7e32cdb2abf4020086d9596cdcd3e6275e74957efe188da6d590a12",
+    "pitch/scenes/caption.html": "c37ad264d8797c5e3f5ee18dc8b43a4d6307ce03c05efb9331f302a7327d443c",
+    "pitch/scenes/scene.js": "680ebc9d6949ccc26caf703a3a5a9c963e837d1c52b687f0d54b0201eea81b71",
+    "pitch/scenes/scenes.html": "0b93a680054b2623d4c07d94db6ddd568dc34438481fbe91ba9c36805f8034c1",
+    "pitch/scenes/theme.css": "e7e1304641ef5a838b53d75e6f7bd5de1779e7aba6c96b519309c35b4935ad68"
+  },
+  "files": {
+    "overview/index.html": "ebe5a3d8326be3cb8485c66f5c73c41b0d07a3781109e8527fdb5678686ecbae",
+    "pitch/bounded-mandate-pitch.mp4": "2341f7d5bae4dd05b4ec366a526a579f12013b54a2831757e8d3383002c978e0",
+    "pitch/captions.vtt": "7e001bd566c9b9106ffb62adf5d468f46ae502e66adcfcdb3d233fbad37020b4",
+    "pitch/captions.srt": "6fe0743ae8eda5a810ab62357a21264df93f68fb2ae73990940b3f435cde78cf",
+    "pitch/poster.png": "a88110a8ec192e26498d17a21cc2a53c03c0073a05f5420d696f6ce9092616f2"
+  }
+}

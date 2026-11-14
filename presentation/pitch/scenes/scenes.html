@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bounded Mandate pitch scenes</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<!-- Every number below is from evidence/dd665d1/live-mainnet.json (mainnet attempt 3) or the sandbox gate results.
+     Bar positions are to scale: lifetime bar = (120 + t) / 120, t in seconds before the withheld order's deadline
+     1794675052 s (signed -83.909, revoke tx block -78.9, intents.near rejection executed -67.248);
+     block track = (height - 224541360) / 185. -->
+<div class="tag">Explainer based on recorded evidence · not a certified cut</div>
+
+<!-- s01: the proof -->
+<section class="board" id="proof">
+  <div class="kicker"><span class="pill green">NEAR mainnet · 14 Nov 2026</span></div>
+  <div class="box order" data-on="2" data-on-class="bad">
+    <h3>Signed order #4</h3>
+    <p class="row">sell 0.50 USDC for wNEAR</p>
+    <p class="row muted">signed via Chain Signatures (MPC)</p>
+  </div>
+  <div class="stamp" data-show="2">REJECTED</div>
+  <div class="bignum" data-show="2">
+    <div class="n">67.25 s</div>
+    <div class="t">before it expired: the owner had already revoked its key</div>
+  </div>
+  <div class="scale" style="top: 760px">
+    <div class="bar">
+      <div class="fill" style="left: 0; width: 43.96%; background: #3a4b62"></div>
+      <div class="fill" data-show="2" style="left: 43.96%; right: 0; background: rgba(255, 97, 97, 0.35)"></div>
+      <div class="mark up amber" data-show="2" style="left: 34.25%"><span class="l r">key revoked −78.9 s</span></div>
+      <div class="mark up red" data-show="2" style="left: 43.96%"><span class="l lft">rejected −67.25 s</span></div>
+      <div class="mark up muted" style="left: 100%"><span class="l r">expiry</span></div>
+    </div>
+    <div class="cap" style="top: 54px">120 s order lifetime · chain time · to scale</div>
+  </div>
+</section>
+
+<!-- s02: name and lead line -->
+<section class="board" id="name">
+  <div class="name">
+    <h1>Bounded Mandate</h1>
+    <p class="lead">Give an AI agent trading authority without unrestricted control of your treasury.</p>
+    <p class="stack">NEAR · Chain Signatures · NEAR Intents</p>
+  </div>
+</section>
+
+<!-- s03: why pause is not enough (illustrative) -->
+<section class="board" id="pause">
+  <div class="kicker"><span class="pill muted">Illustrative</span></div>
+  <div class="headline" data-hide="2">Pausing an agent stops new orders…</div>
+  <div class="headline" data-show="2">…but orders it already <span class="amber">signed</span> stay valid</div>
+  <div class="box" style="left: 80px; top: 320px; width: 360px; height: 470px">
+    <h3>AI agent</h3>
+    <span class="chip" data-show="2" style="border-color: var(--amber); color: var(--amber)">paused</span>
+  </div>
+  <div class="box" style="left: 1440px; top: 320px; width: 400px; height: 470px">
+    <h3>Venue</h3>
+    <p class="muted">settles any valid signed order</p>
+  </div>
+  <svg class="wires">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8796aa"/></marker>
+      <marker id="ahg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3ee6a0"/></marker>
+      <marker id="ahr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff6161"/></marker>
+      <marker id="aha" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffc24b"/></marker>
+    </defs>
+    <line x1="450" y1="430" x2="1425" y2="430" stroke="#8796aa" stroke-width="8" marker-end="url(#ah)" data-hide="2"/>
+    <line x1="450" y1="430" x2="900" y2="430" stroke="#8796aa" stroke-width="8" stroke-dasharray="20 14" data-show="2"/>
+    <line x1="450" y1="700" x2="1425" y2="700" stroke="#ffc24b" stroke-width="8" marker-end="url(#aha)"/>
+  </svg>
+  <div class="wlabel muted" style="left: 480px; top: 362px">new orders</div>
+  <div class="wlabel red" data-show="2" style="left: 930px; top: 400px; font-size: 52px">✕ blocked</div>
+  <div class="chip" style="position: absolute; left: 500px; top: 640px; margin: 0; border-color: var(--amber)">signed</div>
+  <div class="chip" style="position: absolute; left: 790px; top: 640px; margin: 0; border-color: var(--amber)">signed</div>
+  <div class="chip" style="position: absolute; left: 1080px; top: 640px; margin: 0; border-color: var(--amber)">signed</div>
+  <div class="wlabel amber" data-show="2" style="left: 480px; top: 505px; width: 900px; font-size: 48px; white-space: normal; line-height: 1.2">still valid until they expire, or are cancelled one by one</div>
+</section>
+
+<!-- s04-s06: architecture, built up across three segments -->
+<section class="board" id="arch">
+  <div class="kicker"><span class="pill muted">How it works · simplified</span></div>
+  <div class="headline" data-hide="2">The agent holds no signing key</div>
+  <div class="headline" data-show="2" data-hide="3">Its only key can call <span class="green">propose_order</span></div>
+  <div class="headline" data-show="3" data-hide="4">Each order is priced from the oracle…</div>
+  <div class="headline" data-show="4" data-hide="5">…and checked against your limits</div>
+  <div class="headline" data-show="5" data-hide="6">Then NEAR's MPC network signs it</div>
+  <div class="headline" data-show="6" data-hide="7">The verifier checks that key on every order</div>
+  <div class="headline" data-show="7">Revoke: one owner call <span class="red">removes the key</span></div>
+
+  <svg class="wires">
+    <defs>
+      <marker id="bg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3ee6a0"/></marker>
+      <marker id="bm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8796aa"/></marker>
+      <marker id="br" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff6161"/></marker>
+    </defs>
+    <line x1="530" y1="440" x2="628" y2="440" stroke="#3ee6a0" stroke-width="8" marker-end="url(#bg)"/>
+    <line x1="930" y1="614" x2="930" y2="656" stroke="#8796aa" stroke-width="8" data-show="3"/>
+    <line x1="1220" y1="440" x2="1318" y2="440" stroke="#8796aa" stroke-width="8" marker-end="url(#bm)" data-show="5"/>
+    <line x1="1595" y1="618" x2="1595" y2="652" stroke="#8796aa" stroke-width="8" marker-end="url(#bm)" data-show="6"/>
+    <line x1="530" y1="740" x2="660" y2="624" stroke="#ff6161" stroke-width="8" marker-end="url(#br)" data-show="7"/>
+    <line x1="1220" y1="600" x2="1320" y2="720" stroke="#ff6161" stroke-width="8" stroke-dasharray="18 12" marker-end="url(#br)" data-show="7"/>
+  </svg>
+
+  <div class="box" style="left: 60px; top: 290px; width: 470px; height: 320px" data-on="2">
+    <h3>AI agent</h3>
+    <p><span class="x">✕</span> no signing key</p>
+    <p class="muted">its only key:</p>
+    <span class="chip" data-on="2">propose_order</span>
+  </div>
+  <div class="box" style="left: 640px; top: 290px; width: 580px; height: 320px" data-on="3">
+    <h3>Mandate contract</h3>
+    <p class="muted">keyless account</p>
+    <p class="green" data-show="3">✓ oracle price</p>
+    <p class="green" data-show="4">✓ size and turnover limits</p>
+  </div>
+  <div class="box" style="left: 640px; top: 660px; width: 580px; height: 210px" data-show="3">
+    <h3>Price oracle</h3>
+    <p class="muted">aggregate-oracle.near</p>
+  </div>
+  <div class="box" style="left: 1330px; top: 290px; width: 530px; height: 320px" data-show="5" data-on="5">
+    <h3>v1.signer</h3>
+    <p>Chain Signatures</p>
+    <p class="muted">NEAR's MPC network</p>
+  </div>
+  <div class="box" style="left: 1330px; top: 660px; width: 530px; height: 210px" data-show="6" data-on="6">
+    <h3>intents.near</h3>
+    <div style="white-space: nowrap"><span class="chip on" data-hide="7">grant key ✓</span><span class="chip dead" data-show="7">grant key</span><span class="red" data-show="7" style="font-size: 44px; font-weight: 800"> removed</span></div>
+  </div>
+  <div class="box" style="left: 60px; top: 660px; width: 470px; height: 210px" data-show="7" data-on="7" data-on-class="bad">
+    <h3>Owner</h3>
+    <p class="muted" data-hide="7">wallet or DAO</p>
+    <p class="red" data-show="7" style="font-weight: 800">calls revoke</p>
+  </div>
+</section>
+
+<!-- s07, s10: the mainnet run on a block-height track -->
+<section class="board" id="run">
+  <div class="kicker"><span class="pill green">NEAR mainnet</span><span class="pill muted">recorded receipts · fixed proposals, our own filler</span></div>
+  <div class="scale" style="top: 323px">
+    <div class="bar">
+      <div class="dot" style="left: 5.95%"></div>
+      <div class="dot" data-on="2" data-on-class="bad" style="left: 16.22%"></div>
+      <div class="dot" data-on="3" style="left: 21.62%"></div>
+      <div class="dot" data-on="3" style="left: 34.59%"></div>
+      <div class="dot" style="left: 44.86%"></div>
+      <div class="dot" style="left: 55.68%"></div>
+      <div class="dot" style="left: 67.03%"></div>
+      <div class="dot" style="left: 77.30%"></div>
+      <div class="dot" data-on="4" style="left: 82.16%"></div>
+      <div class="dot" data-on="4" style="left: 93.51%"></div>
+      <div class="mark up muted" style="left: 5.95%"><span class="l c">grant</span></div>
+      <div class="mark up" data-on="2" data-on-class="red" style="left: 16.22%; color: #8796aa"><span class="l lft">refused</span></div>
+      <div class="mark down" data-on="3" data-on-class="green" style="left: 34.59%; color: #8796aa"><span class="l c">fill</span></div>
+      <div class="mark up muted" style="left: 55.68%"><span class="l c">order #4</span></div>
+      <div class="mark down muted" style="left: 67.03%"><span class="l c">revoke</span></div>
+      <div class="mark up muted" style="left: 77.30%"><span class="l c">rejected</span></div>
+      <div class="mark down" data-on="4" data-on-class="green" style="left: 87.84%; color: #8796aa"><span class="l c">recovery ×2</span></div>
+    </div>
+    <div class="cap" style="top: 54px">block height · to scale</div>
+  </div>
+
+  <div class="card slot-l bad" data-show="2" data-hide="4">
+    <div class="what">Proposal refused: concession above the policy maximum</div>
+    <div class="meta">nearblocks · <b>4KDPzR…Livx</b></div>
+    <div class="meta">block 224,541,390 <span class="out fail">FAILED</span></div>
+      </div>
+  <div class="card slot-r on" data-show="3" data-hide="4">
+    <div class="what">Filled: 1.00 USDC paid by the mandate → <span class="green">0.322008 wNEAR</span></div>
+    <div class="meta">nearblocks · <b>2PzTvX…y1MK</b></div>
+    <div class="meta">block 224,541,424 <span class="out ok">SUCCESS</span></div>
+      </div>
+  <div class="card slot-l on" data-show="4">
+    <div class="what">Recovered <span class="green">3.999999 USDC</span> to the owner's Intents account</div>
+    <div class="meta">nearblocks · <b>Cuan44…2qJt</b></div>
+    <div class="meta">block 224,541,512 <span class="out ok">SUCCESS</span></div>
+  </div>
+  <div class="card slot-r on" data-show="4">
+    <div class="what">Recovered <span class="green">0.422008 wNEAR</span> to the owner's Intents account</div>
+    <div class="meta">nearblocks · <b>7ypZiT…rEGj</b></div>
+    <div class="meta">block 224,541,533 <span class="out ok">SUCCESS</span></div>
+  </div>
+</section>
+
+<!-- s08, s09: the withheld order's 120 s lifetime, to scale in chain time -->
+<section class="board" id="revoke">
+  <div class="kicker"><span class="pill green">NEAR mainnet</span><span class="pill muted">recorded receipts · fixed proposals, our own filler</span></div>
+  <div class="scale" style="top: 323px">
+    <div class="bar">
+      <div class="fill" data-hide="2" style="left: 0; width: 30.08%; background: #3a4b62"></div>
+      <div class="fill" data-show="2" data-hide="3" style="left: 0; width: 34.25%; background: #3a4b62"></div>
+      <div class="fill" data-show="3" style="left: 0; width: 43.96%; background: #3a4b62"></div>
+      <div class="fill" data-show="3" style="left: 43.96%; right: 0; background: rgba(255, 97, 97, 0.35)"></div>
+      <div class="mark up green" style="left: 30.08%"><span class="l r">order #4 signed −83.9 s</span></div>
+      <div class="mark down amber" data-show="2" style="left: 34.25%"><span class="l r">revoke tx −78.9 s</span></div>
+      <div class="mark up red" data-show="3" style="left: 43.96%"><span class="l lft">rejected −67.25 s</span></div>
+      <div class="mark up muted" style="left: 100%"><span class="l r">expiry</span></div>
+    </div>
+    <div class="cap" style="top: 54px; left: auto; right: 0">120 s order lifetime · chain time · to scale</div>
+  </div>
+
+  <div class="card slot-l on" data-hide="3">
+    <div class="what">Order #4 (sell 0.50 USDC) signed, then held back</div>
+    <div class="meta">nearblocks · <b>FPdUJG…1RvZ</b></div>
+    <div class="meta">block 224,541,463 <span class="out ok">SUCCESS</span></div>
+      </div>
+  <div class="card slot-r warn" data-show="2" data-hide="3">
+    <div class="what">Owner revokes: <span class="amber">key removed at intents.near</span></div>
+    <div class="meta">nearblocks · <b>H7KpB2…pJSC</b></div>
+    <div class="meta">block 224,541,484 <span class="out ok">SUCCESS</span></div>
+  </div>
+  <div class="card slot-l warn" data-show="3">
+    <div class="what">Owner revokes: <span class="amber">key removed at intents.near</span></div>
+    <div class="meta">nearblocks · <b>H7KpB2…pJSC</b></div>
+    <div class="meta">block 224,541,484 <span class="out ok">SUCCESS</span></div>
+  </div>
+  <div class="card slot-r bad" data-show="3">
+    <div class="what">Held order relayed: <span class="red">rejected</span>, its signing key no longer exists</div>
+    <div class="meta">nearblocks · <b>5R1wKw…3LLw</b></div>
+    <div class="meta">block 224,541,503 <span class="out fail">REJECTED</span></div>
+      </div>
+</section>
+
+<!-- s11: sandbox -->
+<section class="board" id="sandbox">
+  <div class="kicker"><span class="pill amber">Sandbox · labelled test doubles · recorded model output replayed</span></div>
+  <div class="shot"><img src="../../../evidence/dd665d1/console/screens/demo-console-review.png" alt=""></div>
+  <div class="shotcap">Owner console on the local sandbox (evidence/dd665d1)</div>
+  <div class="big39" data-show="2">
+    <div class="n">39 / 39</div>
+    <div class="t">scripted hostile requests refused, across five layers</div>
+  </div>
+  <div class="layers" data-show="2">
+    <div class="layer"><span>Local validation</span><span class="c">10</span></div>
+    <div class="layer"><span>Contract method checks</span><span class="c">14</span></div>
+    <div class="layer"><span>Policy checks</span><span class="c">4</span></div>
+    <div class="layer"><span>Agent key permission</span><span class="c">10</span></div>
+    <div class="layer"><span>Intents verifier</span><span class="c">1</span></div>
+  </div>
+</section>
+
+<!-- s12: limits -->
+<section class="board" id="limits">
+  <div class="kicker"><span class="pill amber">Limits</span></div>
+  <div class="headline">What this does not claim</div>
+  <div class="lines">
+    <div class="line"><span class="i">!</span><span>Orders executed before key removal is confirmed stay executed.</span></div>
+    <div class="line" data-show="2"><span class="i">!</span><span>Not an audit. Test counts are evidence, not guarantees.</span></div>
+    <div class="line" data-show="3"><span class="i">!</span><span>No profit promised. Mainnet was one small run: an integration check.</span></div>
+  </div>
+</section>
+
+<!-- s13: verify -->
+<section class="board" id="verify">
+  <div class="kicker"><span class="pill green">Verify</span></div>
+  <div class="headline">Check it yourself</div>
+  <div class="vrow" style="top: 290px; font-size: 56px; font-weight: 600">Every transaction on <span class="green">nearblocks.io</span></div>
+  <div class="vrow" style="top: 400px" data-show="2"><span class="cmd">make verify</span><div class="sub">offline, from a fresh clone</div></div>
+  <div class="vrow" style="top: 575px" data-show="2"><span class="cmd">node verify.mjs --mainnet</span><div class="sub">re-reads the receipts: 54 read-only chain checks passed, 0 failed</div></div>
+  <div class="vrow" style="top: 770px" data-show="3"><span class="url">gryyny.github.io/bounded-mandate/overview/</span></div>
+</section>
+
+<script src="scene.js"></script>
+</body>
+</html>
