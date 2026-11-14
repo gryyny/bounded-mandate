@@ -135,15 +135,22 @@ describe("landing: the first screen", () => {
     expect(first.indexOf('class="claim-size"')).toBeGreaterThan(first.indexOf("One owner call removes the signing key"));
   });
 
-  it("opens the README with the same lead line and the same two sentences as the page, the console and the cuts", () => {
+  it("opens the README with the page's lead line and states the page's two sentences, without overclaiming", () => {
     const readme = readFileSync(join(repo, "README.md"), "utf8");
     const opening = readme.slice(0, readme.indexOf("\n## "));
-    expect(opening.split("\n").slice(0, 5)).toEqual([`# ${DISPLAY_NAME}`, "", LEAD_LINE, "", POSITION]);
-    expect(opening).not.toMatch(/counterparty|cannot choose|\bthe (first|only)\b|\b(AI|LLM) (screener|reviewer|judge)/i);
+    const lines = opening.split("\n");
+    expect(lines[0]).toBe(`# ${DISPLAY_NAME.split(":")[0] ?? ""}`);
+    expect(lines.slice(1, 4).filter((l) => l !== "")).toEqual([LEAD_LINE]);
+    expect(opening).not.toMatch(/counterparty|cannot choose|choose (its|the|a) (price|counterparty)|\b(first|only|instant(ly)?)\b|guarantee|\bprofit|\b(AI|LLM) (screener|reviewer|judge)/i);
+    expect(readme).toContain(POSITION);
     // The README presents the same four paths, in the page's order.
     const paths = readme.slice(readme.indexOf("\n## Four paths"), readme.indexOf("\n## Three checkable facts"));
     expect([...paths.matchAll(/^\| \*\*([A-Za-z]+)\*\* \|/gm)].map((m) => (m[1] ?? "").toLowerCase())).toEqual([...PATH_KEYS]);
     for (const command of ["`make lab`", "`make example`", "`make verify`", "gate COMPARE", "Inspect the real mainnet trade, the confirmed key removal, the rejection of the still-unexpired withheld order and the recovery", "node verify.mjs --mainnet"]) expect(paths).toContain(command);
+    // The mainnet section keeps the size of the claim next to the result.
+    const mainnet = readme.slice(readme.indexOf("\n## What happened on mainnet"), readme.indexOf("\n## ", readme.indexOf("\n## What happened on mainnet") + 1));
+    for (const safeguard of ["fixed proposals", "not a model proposal", "our own filler account", "integration, not reliability or profitability", "filed incomplete", "Intents account (not the owner's NEAR wallet"]) expect(mainnet).toContain(safeguard);
+    expect(readme).toContain("not an external audit");
   });
 
   it("never calls the agent keyless: it holds a function-call key, and no signing key", () => {
