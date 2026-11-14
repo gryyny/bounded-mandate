@@ -1,0 +1,55 @@
+{
+  "schema": "bounded-mandate/prepare-input@1",
+  "setup": {
+    "approval": {
+      "approved_by": "gryyny (repository owner)",
+      "reference": "setup approval A (2026-11-14) plus retry inventory approval A2 (2026-11-14): Intents transfers to mandate and filler"
+    },
+    "accounts": {
+      "owner": "bmandate.near",
+      "mandate": "mandate.bmandate.near",
+      "agent": "agent.bmandate.near",
+      "filler": "filler.bmandate.near"
+    },
+    "keys": {
+      "owner": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+      "agent": "ed25519:6tpfEXKYrjBqFJYwBg5TANhQw3cQofkct8SpNvn4ScKU",
+      "filler": "ed25519:7DZsKpJjvvRhmyQ5EjtMxo6bxtVTtLb83PwajJxAhFM7",
+      "filler_intents": "ed25519:56j6PAY24VonjYunhPFPxHXQXFsQ1sirynRNbf6GMoq7",
+      "mandate_full_access": []
+    },
+    "agent_allowance_yocto": "193704442638906100000000",
+    "deposits": {
+      "mandate": {
+        "usdc": "4999999",
+        "wnear": "99999692661812416797644"
+      },
+      "filler": {
+        "usdc": "0",
+        "wnear": "500000000000000000000000"
+      }
+    },
+    "reuse": {
+      "previous_manifest_sha256": "a79870a8b8f4bd8c9a8f19051abfd1f56d5413c1706e3b936cf05c933fd6447e",
+      "previous_grant_epoch": 1,
+      "approved_reference": "retry approval, 2026-11-14: attempt 2 on the accounts of attempt 1"
+    }
+  },
+  "runner": {
+    "approval": {
+      "approved_by": "gryyny (repository owner)",
+      "reference": "runner approval B for attempt 2, 2026-11-14, by manifest sha256"
+    },
+    "grant_timing": {
+      "order_ttl_sec": 120,
+      "oracle_max_age_sec": 120
+    },
+    "credentials": {
+      "owner": "$HOME/.config/bounded-mandate-keys/owner.json",
+      "agent": "$HOME/.config/bounded-mandate-keys/agent.json",
+      "filler": "$HOME/.config/bounded-mandate-keys/filler.json",
+      "filler_intents": "$HOME/.config/bounded-mandate-keys/filler-intents.json"
+    },
+    "rpc_url": "https://near.drpc.org"
+  }
+}

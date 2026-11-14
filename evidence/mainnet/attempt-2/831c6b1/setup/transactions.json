@@ -1,0 +1,43 @@
+{
+  "approval": "Inventory approval A2 (2026-11-14): Intents transfers X1-X4 before attempt 2; then, after attempt 2 stopped, the owner's standalone revoke of grant 2 (approved 2026-11-14), signed with the runner key outside the runner.",
+  "transactions": [
+    {
+      "step": "X1",
+      "tx_hash": "HgFhdMoHWJ4rcNzAomyfWKEaPBxaGPDYBqY83vkH7tUh",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "503958338734400000000",
+      "at": "2026-11-14T15:37:09Z"
+    },
+    {
+      "step": "X2",
+      "tx_hash": "9Y4KVqe23qnkGbd87CzwtZKwGQnQdSrTyydFiFRSvbD1",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "429979320968100050000",
+      "at": "2026-11-14T15:37:15Z"
+    },
+    {
+      "step": "X3",
+      "tx_hash": "A239NCgUEcXBdBBVBHkoFTzsLAzoXpvcqA3sMPqdZrsK",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "443264382165300000000",
+      "at": "2026-11-14T15:37:22Z"
+    },
+    {
+      "step": "X4",
+      "tx_hash": "Bh4y7iYbpteYXJpvdnjYa36J1QBATkXGWCr7fq8XW5aj",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "448244099265500000000",
+      "at": "2026-11-14T15:37:28Z"
+    },
+    {
+      "step": "R2-revoke",
+      "tx_hash": "8SThhkEivEW7nNY1pghaHVob33cP8vgP15n45G61yrdA",
+      "at": "2026-11-14T15:46:59Z"
+    }
+  ],
+  "tool": "near-cli-rs 0.30.1"
+}

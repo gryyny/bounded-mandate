@@ -19,6 +19,15 @@
       "note": "Mainnet run attempt 1 (14 November 2026), scripted template, owner bmandate.near, keyless mandate mandate.bmandate.near. On chain: grant with the MPC-derived key, a policy refusal by the contract, one MPC-signed order filled on intents.near (1 USDC for 0.307338 wNEAR) and settled, a second signed order, revoke with the grant key removed at the verifier, and recovery of both assets to the owner's Intents account. The public RPC rate-limited the runner twice (HTTP 429); both stops were resumed under the same manifest without resubmission. The second order expired during the first stop, so the withheld-order relay was not sent: recorded inconclusive, and node verify.mjs --mainnet reports the relay NOT VERIFIED and the run incomplete."
     },
     {
+      "path": "evidence/mainnet/attempt-2/831c6b1",
+      "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+      "status": "mainnet-run",
+      "run": "evidence/mainnet/attempt-2/831c6b1/run.json",
+      "certified_bundle": "evidence/831c6b1",
+      "manifest_sha256": "9b07589de7bcf0980e2f22df128594a6b226ef3b4a2402755661aec36570bf55",
+      "note": "Mainnet run attempt 2 (14 November 2026) on the accounts of attempt 1, RPC near.drpc.org. Grant epoch 2, the contract's policy refusal and an MPC-signed order succeeded on chain, but the RPC answered each FINAL send about 90 s after the receipts finished, so the order expired before the fill: the fill was rejected (deadline has expired) and the runner stopped. No trade. The owner revoked grant 2 outside the runner afterwards. node verify.mjs --mainnet reports the run incomplete."
+    },
+    {
       "path": "evidence/66fe963",
       "revision": "66fe9635f4dc0dd200f6a5e9ad1bee03f144964d",
       "status": "superseded",
