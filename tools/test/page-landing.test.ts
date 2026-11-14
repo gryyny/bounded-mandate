@@ -143,7 +143,7 @@ describe("landing: the first screen", () => {
     // The README presents the same four paths, in the page's order.
     const paths = readme.slice(readme.indexOf("\n## Four paths"), readme.indexOf("\n## Three checkable facts"));
     expect([...paths.matchAll(/^\| \*\*([A-Za-z]+)\*\* \|/gm)].map((m) => (m[1] ?? "").toLowerCase())).toEqual([...PATH_KEYS]);
-    for (const command of ["`make lab`", "`make example`", "`make verify`", "gate COMPARE", "After an approved mainnet run: inspect its trade, key removal, rejection and recovery", "**No mainnet run yet**"]) expect(paths).toContain(command);
+    for (const command of ["`make lab`", "`make example`", "`make verify`", "gate COMPARE", "Inspect the real mainnet trade, the confirmed key removal, the rejection of the still-unexpired withheld order and the recovery", "node verify.mjs --mainnet"]) expect(paths).toContain(command);
   });
 
   it("never calls the agent keyless: it holds a function-call key, and no signing key", () => {
