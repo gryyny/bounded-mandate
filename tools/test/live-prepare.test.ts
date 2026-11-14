@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { z } from "zod";
 import { LiveManifest, loadManifest } from "../src/live/manifest.js";
-import { fillManifest, manifestBytes, placeholders, prepare, readPostSetup, setupProblems, specDeviations, type PostSetupState, type PrepareInput, type ReadOnlyChain } from "../src/live/prepare.js";
+import { PrepareInput, fillManifest, manifestBytes, placeholders, prepare, readPostSetup, setupProblems, specDeviations, type PostSetupState, type ReadOnlyChain } from "../src/live/prepare.js";
 import { ownerKeySnapshot } from "../src/live/preflight.js";
 import type { AccessKeyInfo, AccountInfo } from "../src/near/client.js";
 import { sandboxKey } from "../src/near/keys.js";
@@ -101,6 +101,7 @@ function matching(i: PrepareInput): PostSetupState {
     mandate_config: { ...live.mandate_config, owner_id: s.accounts.owner, agent_id: s.accounts.agent },
     grant: null,
     orders: [],
+    recovery: [],
     mandate_verifier_keys: [],
     filler_intents_key_registered: true,
     intents_balances: { mandate: { ...s.deposits.mandate }, filler: { ...s.deposits.filler } },
@@ -145,6 +146,63 @@ describe("R1: the post-setup state against the approved setup record", () => {
       expect(setupProblems(i, live, s, pins).join("\n")).toMatch(problem);
     });
   }
+
+  describe("a retry on the accounts of an earlier run (setup.reuse)", () => {
+    const REUSE = { previous_manifest_sha256: "a".repeat(64), previous_grant_epoch: 1, approved_reference: "retry approval (test)" };
+    const reused = (i: PrepareInput): PostSetupState => ({
+      ...matching(i),
+      grant: { epoch: 1, path: "mandate/v1/1", public_key: pk("grant"), status: "revoked", key_op_in_flight: false },
+      orders: [{ id: "0", epoch: 1, state: { state: "released", reason: "settled" } }, { id: "1", epoch: 1, state: { state: "released", reason: "revoked" } }],
+      recovery: [{ asset: "usdc", in_flight: false, attempts: 1, recovered: "4000000" }, { asset: "wnear", in_flight: false, attempts: 1, recovered: "1" }],
+    });
+    const reuseInput = (): PrepareInput => {
+      const i = input();
+      i.setup.reuse = { ...REUSE };
+      return i;
+    };
+
+    it("passes a revoked earlier grant with closed orders and finished recoveries", () => {
+      const i = reuseInput();
+      expect(setupProblems(i, live, reused(i), pins)).toEqual([]);
+    });
+
+    it("still refuses the same state without an approved reuse", () => {
+      const i = input();
+      const problems = setupProblems(i, live, reused(i), pins).join("\n");
+      expect(problems).toMatch(/has a grant/);
+      expect(problems).toMatch(/2 order record/);
+    });
+
+    const reuseCases: [string, (s: PostSetupState) => void, RegExp][] = [
+      ["an active earlier grant", (s) => (s.grant = { epoch: 1, status: "active", key_op_in_flight: false }), /not confirmed revoked/],
+      ["a revocation with its key removal in flight", (s) => (s.grant = { epoch: 1, status: "revoked", key_op_in_flight: true }), /not confirmed revoked/],
+      ["a grant of another epoch", (s) => (s.grant = { epoch: 2, status: "revoked", key_op_in_flight: false }), /epoch 2, not the approved earlier epoch 1/],
+      ["no earlier grant", (s) => (s.grant = null), /no readable earlier grant/],
+      ["the earlier grant key still on the verifier", (s) => (s.mandate_verifier_keys = [pk("grant")]), /already has verifier keys/],
+      ["an open order", (s) => s.orders?.push({ id: "2", epoch: 1, state: { state: "signed" } }), /order 2 is still open \(signed\)/],
+      ["unreadable orders", (s) => (s.orders = null), /could not be read/],
+      ["a recovery in flight", (s) => (s.recovery = [{ asset: "wnear", in_flight: true, attempts: 1, recovered: "0" }]), /wnear recovery is in flight/],
+      ["unreadable recovery", (s) => (s.recovery = null), /get_recovery could not be read/],
+      ["a deposit other than the approved redistribution", (s) => (s.intents_balances.mandate.usdc = "1"), /mandate Intents usdc balance/],
+      ["storage below the bound after the earlier records", (s) => (s.accounts.mandate = account((EXACT10 + 3_000n * 10n ** 19n - 1n).toString(), 313_100, pins.mandate_code_hash)), /below the funding rule for 10 records/],
+    ];
+    for (const [name, mutate, problem] of reuseCases) {
+      it(`refuses ${name}`, () => {
+        const i = reuseInput();
+        const s = reused(i);
+        mutate(s);
+        expect(setupProblems(i, live, s, pins).join("\n")).toMatch(problem);
+      });
+    }
+
+    it("reads get_recovery with the other view calls", async () => {
+      const i = reuseInput();
+      const want = reused(i);
+      const calls: string[] = [];
+      expect(await readPostSetup(fakeChain(i, want, calls), i, live)).toEqual(want);
+      expect(calls).toContain("mandate.lead.near get_recovery");
+    });
+  });
 
   it("derives the record bound from the grant step and holds the funding boundary to the yocto", () => {
     const i = input();
@@ -236,6 +294,16 @@ describe("R2-R3: the filled manifest and its hash", () => {
     expect(loadManifest({ MANDATE_LIVE: "1", MANDATE_LIVE_MANIFEST: path, MANDATE_LIVE_CONFIRM: sha256 }).sha256).toBe(sha256);
   });
 
+  it("puts an approved https RPC in the manifest and refuses any other scheme", () => {
+    const i = input();
+    i.runner.rpc_url = "https://near.drpc.org";
+    const m = fillManifest(live, i, matching(i)) as { network: { rpc_url: string; chain_id: string } };
+    expect(m.network).toMatchObject({ rpc_url: "https://near.drpc.org", chain_id: pins.chain_id });
+    const plain = structuredClone(input()) as PrepareInput & { runner: { rpc_url?: string } };
+    plain.runner.rpc_url = "http://near.drpc.org";
+    expect(() => PrepareInput.parse(plain)).toThrow();
+  });
+
   it("omits the external key when the owner signs external actions with the runner's key", () => {
     for (const ownerExternal of [null, pk("owner")]) {
       const i = input({ ownerExternal });
@@ -297,6 +365,7 @@ function fakeChain(i: PrepareInput, want: PostSetupState, calls: string[] = [], 
         get_config: want.mandate_config,
         get_grant: want.grant,
         list_orders: want.orders,
+        get_recovery: want.recovery,
         public_keys_of: want.mandate_verifier_keys,
         has_public_key: want.filler_intents_key_registered,
         mt_balance_of: want.intents_balances[holder][asset],

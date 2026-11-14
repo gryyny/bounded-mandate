@@ -231,7 +231,7 @@ node verify.mjs --root /tmp/bounded-mandate-original --bundle evidence/b480057 -
 
 Run the last command from the later reader's checkout. It must report the original list's **37 of 48** current cases, explicitly lacking the eleven added cases, while still checking the original spec, fixtures and deployment candidate. `--no-checkout` is an offline bundle-integrity option; it skips the candidate and cannot establish the historical replay.
 
-After an approved mainnet run, curate a **new**, hash-covered bundle at `evidence/mainnet/<run revision>/` containing that run's source identities, that revision's acceptance records and `live-mainnet.json`, and add its index entry without changing any existing bundle. Read it with a root that is a checkout of that same revision, select it with `--bundle`, and add `--mainnet`. Before such a run, `--mainnet` must exit nonzero because the mainnet record is absent. Synthetic RPC test cases exercise the replay rules, not a real run.
+After an approved mainnet run, curate a **new**, hash-covered bundle at `evidence/mainnet/attempt-<n>/<run revision>/` containing that run's source identities, byte-identical copies of that revision's acceptance records and `live-mainnet.json`, and add its index entry (status `mainnet-run`, naming its `certified_bundle` and `manifest_sha256`) without changing any existing bundle. The default reader still checks only the certified bundle; an incomplete run stays NOT VERIFIED. Read it with a root that is a checkout of that same revision, select it with `--bundle`, and add `--mainnet`. Before such a run, `--mainnet` must exit nonzero because the mainnet record is absent. Synthetic RPC test cases exercise the replay rules, not a real run.
 
 ## What the demo runs
 

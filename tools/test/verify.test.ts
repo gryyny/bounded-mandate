@@ -1,9 +1,10 @@
 // verify.mjs offline: the committed bundle, a SYNTHETIC certified repository and negative controls. No network.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { REQUIRED_CASES, SEPARATE_CASES } from "../src/evidence/required.js";
-import { REPO_ROOT, SYNTHETIC_BUNDLE, copyRealRepo, runVerify, syntheticRepo, tempDir } from "./fixtures/verify/synthetic.js";
+import { REPO_ROOT, SYNTHETIC_BUNDLE, copyRealRepo, runVerify, syntheticLiveEvidence, syntheticRepo, tempDir } from "./fixtures/verify/synthetic.js";
 
 const dirs: string[] = [];
 const temp = (): string => {
@@ -261,5 +262,98 @@ describe("verify.mjs on a SYNTHETIC certified repository", () => {
     expect((await runVerify(["--root", dir, "--bundle", "evidence/nope"])).code).toBe(2);
     renameSync(join(dir, "evidence/index.json"), join(dir, "evidence/index.moved"));
     expect((await runVerify(["--root", dir])).code).toBe(2);
+  });
+});
+
+describe("verify.mjs on a SYNTHETIC mainnet-run record bundle", () => {
+  const RUN_BUNDLE = "evidence/mainnet/attempt-1/5e5e5e5";
+  interface IndexEntry {
+    path: string;
+    revision: string;
+    status: string;
+    run: string;
+    certified_bundle?: string;
+    manifest_sha256?: string;
+  }
+  const bundlesOf = (v: Record<string, unknown>): IndexEntry[] => v.bundles as IndexEntry[];
+
+  /** The synthetic certified repository plus a mainnet-run bundle that copies its run.json, acceptance.json and tests/. */
+  const withRunBundle = async (): Promise<string> => {
+    const dir = await synthetic();
+    for (const part of ["run.json", "acceptance.json", "tests"]) cpSync(join(dir, SYNTHETIC_BUNDLE, part), join(dir, RUN_BUNDLE, part), { recursive: true });
+    writeFileSync(join(dir, RUN_BUNDLE, "live-mainnet.json"), `${JSON.stringify(syntheticLiveEvidence(), null, 2)}\n`);
+    expect((await runVerify(["--root", dir, "--write-manifest", RUN_BUNDLE])).code).toBe(0);
+    const certified = bundlesOf(JSON.parse(readFileSync(join(dir, "evidence/index.json"), "utf8")) as Record<string, unknown>)[0];
+    editJson(join(dir, "evidence/index.json"), (v) => {
+      bundlesOf(v).push({
+        path: RUN_BUNDLE,
+        revision: certified?.revision ?? "",
+        status: "mainnet-run",
+        run: `${RUN_BUNDLE}/run.json`,
+        certified_bundle: SYNTHETIC_BUNDLE,
+        manifest_sha256: createHash("sha256").update(readFileSync(join(dir, RUN_BUNDLE, "SHA256SUMS"))).digest("hex"),
+      });
+    });
+    return dir;
+  };
+  const editRunEntry = (dir: string, edit: (e: IndexEntry) => void): void => {
+    editJson(join(dir, "evidence/index.json"), (v) => {
+      bundlesOf(v).filter((b) => b.path === RUN_BUNDLE).forEach(edit);
+    });
+  };
+  const verifyRun = (dir: string): Promise<{ code: number; out: string }> => runVerify(["--root", dir, "--bundle", RUN_BUNDLE]);
+
+  it("passes bundle.index for a mainnet-run entry bound to the certified bundle of its revision", async () => {
+    const dir = await withRunBundle();
+    const r = await verifyRun(dir);
+    expect(lineOf(r.out, "bundle.index")).toMatch(new RegExp(`^PASS +bundle\\.index {2}${RUN_BUNDLE} is a mainnet run record of revision 5e5e5e5\\w+, bound to the certified bundle ${SYNTHETIC_BUNDLE} \\(run\\.json and acceptance\\.json byte-identical\\)$`));
+    expect(lineOf(r.out, "bundle.files")).toMatch(/^PASS /);
+    expect(lineOf(r.out, "acceptance.report")).toMatch(/^PASS /);
+  });
+
+  it("is never selected by default", async () => {
+    const dir = await withRunBundle();
+    const r = await runVerify(["--root", dir]);
+    expect(r.out).toContain(`Checking the committed evidence bundle ${SYNTHETIC_BUNDLE} `);
+    expect(r.out).not.toContain(RUN_BUNDLE);
+    expect(r.code).toBe(0);
+    // Without a certified entry there is no default, even though a mainnet-run entry exists.
+    editJson(join(dir, "evidence/index.json"), (v) => { v.bundles = bundlesOf(v).filter((b) => b.status !== "certified"); });
+    const none = await runVerify(["--root", dir]);
+    expect(none.out).toContain("lists 0 certified bundles; pass --bundle <path>");
+    expect(none.code).toBe(2);
+  });
+
+  const failures: [string, (dir: string) => void, string][] = [
+    ["no certified_bundle", (d) => { editRunEntry(d, (e) => { delete e.certified_bundle; }); }, `a mainnet-run entry must name its certified_bundle; ${RUN_BUNDLE} names null`],
+    ["a certified_bundle without an index entry", (d) => { editRunEntry(d, (e) => { e.certified_bundle = "evidence/nope"; }); }, "certified_bundle evidence/nope has no entry in evidence/index.json"],
+    ["a certified_bundle that is not certified", (d) => { editJson(join(d, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.status = "superseded"; }); }); }, `certified_bundle ${SYNTHETIC_BUNDLE} has status "superseded", not "certified"`],
+    ["a certified_bundle naming itself", (d) => { editRunEntry(d, (e) => { e.certified_bundle = RUN_BUNDLE; }); }, `certified_bundle ${RUN_BUNDLE} has status "mainnet-run", not "certified"`],
+    ["a certified_bundle of another revision", (d) => { editJson(join(d, "evidence/index.json"), (v) => { bundlesOf(v).filter((b) => b.path === SYNTHETIC_BUNDLE).forEach((b) => { b.revision = "5e5e5e5000000000000000000000000000000000"; }); }); }, `certified_bundle ${SYNTHETIC_BUNDLE} has revision 5e5e5e5000000000000000000000000000000000, not 5e5e5e5`],
+    ["run.json bytes that differ from the certified bundle", (d) => { appendFileSync(join(d, RUN_BUNDLE, "run.json"), "\n"); }, `${RUN_BUNDLE}/run.json sha256 `],
+    ["acceptance.json bytes that differ from the certified bundle", (d) => { appendFileSync(join(d, RUN_BUNDLE, "acceptance.json"), " "); }, `${RUN_BUNDLE}/acceptance.json sha256 `],
+    ["a missing manifest_sha256", (d) => { editRunEntry(d, (e) => { delete e.manifest_sha256; }); }, "index manifest_sha256 null is not 64 lowercase hex characters"],
+    ["an uppercase manifest_sha256", (d) => { editRunEntry(d, (e) => { e.manifest_sha256 = "A".repeat(64); }); }, `index manifest_sha256 "${"A".repeat(64)}" is not 64 lowercase hex characters`],
+    ["a short manifest_sha256", (d) => { editRunEntry(d, (e) => { e.manifest_sha256 = "a".repeat(63); }); }, "is not 64 lowercase hex characters"],
+    ["no live-mainnet.json", (d) => { rmSync(join(d, RUN_BUNDLE, "live-mainnet.json")); }, `a mainnet-run bundle must contain live-mainnet.json; ${RUN_BUNDLE}/live-mainnet.json is missing`],
+  ];
+  it.each(failures)("fails bundle.index on %s", async (_name, edit, reason) => {
+    const dir = await withRunBundle();
+    edit(dir);
+    expect((await runVerify(["--root", dir, "--write-manifest", RUN_BUNDLE])).code).toBe(0);
+    const r = await verifyRun(dir);
+    expect(lineOf(r.out, "bundle.index")).toMatch(/^FAIL /);
+    expect(r.out).toContain(reason);
+    expect(r.out).toMatch(/^NOT VERIFIED: /m);
+    expect(r.code).toBe(1);
+  });
+
+  it("still fails any other status for a selected bundle", async () => {
+    const dir = await withRunBundle();
+    editRunEntry(dir, (e) => { e.status = "mainnet"; });
+    const r = await verifyRun(dir);
+    expect(lineOf(r.out, "bundle.index")).toMatch(/^FAIL /);
+    expect(r.out).toContain('index status is "mainnet", not "certified"');
+    expect(r.code).toBe(1);
   });
 });

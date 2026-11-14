@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { NearClient, errorMessage, type AccessKeyInfo, type AccountInfo } from "../near/client.js";
-import { tokenId } from "../near/contracts.js";
+import { OPEN_ORDER_STATES, tokenId } from "../near/contracts.js";
 import { REPO_ROOT } from "../near/sandbox.js";
 import { canonical } from "./ledger.js";
 import { LiveManifest, isExternal, ownerKeyDeclarationProblems, sequenceProblems, type StepKind } from "./manifest.js";
@@ -57,6 +57,15 @@ export const PrepareInput = z
          * than the grant's bound (turnover cap / proposal charge). Without it, R1 requires the full bound.
          */
         storage_deviation: z.object({ records: z.number().int().positive(), approved_reference: z.string().min(1) }).strict().optional(),
+        /**
+         * Only for an approved retry on the accounts of an earlier run: that run's grant must be revoked and confirmed
+         * (no key operation in flight, no verifier key left), its orders closed and its recoveries finished. Without it,
+         * R1 requires a mandate that has never had a grant or an order.
+         */
+        reuse: z
+          .object({ previous_manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/, "64 lowercase hex"), previous_grant_epoch: z.number().int().positive(), approved_reference: z.string().min(1) })
+          .strict()
+          .optional(),
       })
       .strict(),
     runner: z
@@ -64,6 +73,8 @@ export const PrepareInput = z
         approval: Approval,
         grant_timing: z.object({ order_ttl_sec: z.number().int().min(1).max(3600), oracle_max_age_sec: z.number().int().min(1).max(3600) }).strict(),
         credentials: z.object({ owner: AbsolutePath, agent: AbsolutePath, filler: AbsolutePath, filler_intents: AbsolutePath }).strict(),
+        /** Replaces the template's network.rpc_url in the manifest (and is the RPC R1 reads, unless --rpc is given). */
+        rpc_url: z.url({ protocol: /^https$/ }).optional(),
         /** Only for a template with a model-sourced propose step (paid inference, approval C). */
         model: z.object({ id: z.string().min(1), timeout_ms: z.number().int(), max_tokens: z.number().int() }).strict().optional(),
       })
@@ -87,6 +98,8 @@ export interface PostSetupState {
   grant: unknown;
   /** null when list_orders could not be read. */
   orders: unknown[] | null;
+  /** get_recovery; null when it could not be read. */
+  recovery: unknown[] | null;
   mandate_verifier_keys: string[];
   filler_intents_key_registered: boolean;
   intents_balances: Record<"mandate" | "filler", { usdc: string; wnear: string }>;
@@ -169,6 +182,7 @@ export async function readPostSetup(chain: ReadOnlyChain, input: PrepareInput, t
     mandate_config: deployed ? await chain.view(a.mandate, "get_config", {}, z.unknown()).catch(() => null) : null,
     grant: deployed ? await chain.view(a.mandate, "get_grant", {}, z.unknown()).catch(() => "unreadable") : null,
     orders: deployed ? await chain.view(a.mandate, "list_orders", { from_index: "0", limit: 100 }, z.array(z.unknown())).catch(() => null) : [],
+    recovery: deployed ? await chain.view(a.mandate, "get_recovery", {}, z.array(z.unknown())).catch(() => null) : [],
     mandate_verifier_keys: await chain.view(verifier, "public_keys_of", { account_id: a.mandate }, z.array(z.string())),
     filler_intents_key_registered: await chain.view(verifier, "has_public_key", { account_id: a.filler, public_key: input.setup.keys.filler_intents }, z.boolean()),
     intents_balances: {
@@ -218,9 +232,13 @@ export function setupProblems(input: PrepareInput, templateJson: unknown, state:
   if (distinctExternal(input) && !externalSteps(t)) p.push("the setup record names a distinct external owner key, but the template has no external steps");
   if (!state.filler_intents_key_registered) p.push(`filler Intents key ${s.keys.filler_intents} is not registered on ${t.accounts.verifier}`);
   if (state.mandate_verifier_keys.length > 0) p.push(`the mandate already has verifier keys ${canonical(state.mandate_verifier_keys)}`);
-  if (state.grant !== null) p.push(`the mandate has a grant: ${canonical(state.grant)}`);
-  if (state.orders === null) p.push("the mandate's list_orders could not be read");
-  else if (state.orders.length > 0) p.push(`the mandate has ${state.orders.length} order record(s)`);
+  if (s.reuse === undefined) {
+    if (state.grant !== null) p.push(`the mandate has a grant: ${canonical(state.grant)}`);
+    if (state.orders === null) p.push("the mandate's list_orders could not be read");
+    else if (state.orders.length > 0) p.push(`the mandate has ${state.orders.length} order record(s)`);
+  } else {
+    p.push(...reuseProblems(s.reuse.previous_grant_epoch, state));
+  }
 
   for (const holder of ["mandate", "filler"] as const) {
     for (const asset of ["usdc", "wnear"] as const) {
@@ -242,6 +260,42 @@ export function setupProblems(input: PrepareInput, templateJson: unknown, state:
       p.push(
         `mandate free NEAR ${free.toString()} yocto is below the funding rule for ${bound.records} records: (${t.storage.grant_state_bytes} grant + ${bound.records} x ${bound.record_bytes} + ${MARGIN_BYTES}) bytes = ${need.toString()} yocto`,
       );
+    }
+  }
+  return p;
+}
+
+const RevokedGrant = z.object({ epoch: z.number().int(), status: z.string(), key_op_in_flight: z.boolean() }).loose();
+const ClosedOrder = z.object({ id: z.string(), state: z.object({ state: z.string() }).loose() }).loose();
+const Recovery = z.object({ asset: z.string(), in_flight: z.boolean() }).loose();
+
+/**
+ * R1 for a retry on reused accounts: the earlier grant is the approved epoch, revoked with no key operation in flight
+ * (its verifier key's absence is checked for every setup), every order is closed and no recovery is in flight, so the
+ * contract accepts a fresh grant and preflight finds no open order.
+ */
+function reuseProblems(epoch: number, state: PostSetupState): string[] {
+  const p: string[] = [];
+  const grant = RevokedGrant.safeParse(state.grant);
+  if (!grant.success) p.push(`reuse: the mandate has no readable earlier grant: ${canonical(state.grant)}`);
+  else {
+    if (grant.data.epoch !== epoch) p.push(`reuse: the mandate's grant is epoch ${grant.data.epoch}, not the approved earlier epoch ${epoch}`);
+    if (grant.data.status !== "revoked" || grant.data.key_op_in_flight) p.push(`reuse: the earlier grant is not confirmed revoked (status ${grant.data.status}, key operation in flight ${String(grant.data.key_op_in_flight)})`);
+  }
+  if (state.orders === null) p.push("the mandate's list_orders could not be read");
+  else {
+    for (const raw of state.orders) {
+      const o = ClosedOrder.safeParse(raw);
+      if (!o.success) p.push(`reuse: unreadable order record ${canonical(raw)}`);
+      else if (OPEN_ORDER_STATES.includes(o.data.state.state)) p.push(`reuse: order ${o.data.id} is still open (${o.data.state.state})`);
+    }
+  }
+  if (state.recovery === null) p.push("reuse: the mandate's get_recovery could not be read");
+  else {
+    for (const raw of state.recovery) {
+      const r = Recovery.safeParse(raw);
+      if (!r.success) p.push(`reuse: unreadable recovery record ${canonical(raw)}`);
+      else if (r.data.in_flight) p.push(`reuse: the ${r.data.asset} recovery is in flight`);
     }
   }
   return p;
@@ -336,6 +390,7 @@ export function fillManifest(templateJson: unknown, input: PrepareInput, state: 
   const filled: Record<string, unknown> = {
     ...raw,
     approval: r.approval,
+    ...(r.rpc_url === undefined ? {} : { network: { ...(raw.network as object), rpc_url: r.rpc_url } }),
     accounts: { ...raw.accounts, mandate: s.accounts.mandate, owner: s.accounts.owner, agent: s.accounts.agent, filler: s.accounts.filler },
     mandate_config: { ...raw.mandate_config, owner_id: s.accounts.owner, agent_id: s.accounts.agent },
     keys,
@@ -407,7 +462,7 @@ export async function prepare(args: PrepareArgs, deps: PrepareDeps): Promise<Pre
     .object({ network: z.object({ chain_id: z.string(), genesis_hash: z.string(), rpc_url: z.url() }).loose(), code_hashes: z.object({ mandate: z.string() }).loose() })
     .loose()
     .parse(templateJson);
-  const rpcUrl = args.rpc ?? pins.network.rpc_url;
+  const rpcUrl = args.rpc ?? input.runner.rpc_url ?? pins.network.rpc_url;
   const state = await readPostSetup(deps.chainFor(rpcUrl), input, templateJson);
   const problems = setupProblems(input, templateJson, state, { chain_id: pins.network.chain_id, genesis_hash: pins.network.genesis_hash, mandate_code_hash: pins.code_hashes.mandate });
   const deviations = specDeviations(input, templateJson);

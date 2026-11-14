@@ -257,6 +257,33 @@ function recordedRegistry(acc) {
   return out;
 }
 
+/**
+ * A "mainnet-run" index entry is never a certification of its own: it must name the certified bundle of the same
+ * revision whose run.json and acceptance.json it carries byte for byte, a manifest hash, and its live-mainnet.json.
+ */
+function mainnetRunProblems(root, bundleDir, bundle, entry, indexed) {
+  const out = [];
+  if (!HEX64.test(String(entry.manifest_sha256))) out.push(`index manifest_sha256 ${JSON.stringify(entry.manifest_sha256 ?? null)} is not 64 lowercase hex characters`);
+  if (!existsSync(join(bundleDir, LIVE_FILE))) out.push(`a mainnet-run bundle must contain ${LIVE_FILE}; ${bundle}/${LIVE_FILE} is missing`);
+  const certifiedPath = entry.certified_bundle;
+  if (typeof certifiedPath !== "string" || certifiedPath === "") {
+    out.push(`a mainnet-run entry must name its certified_bundle; ${bundle} names ${JSON.stringify(certifiedPath ?? null)}`);
+    return out;
+  }
+  const certified = indexed.find((b) => isObject(b) && b.path === certifiedPath);
+  if (certified === undefined) out.push(`certified_bundle ${certifiedPath} has no entry in evidence/index.json`);
+  else {
+    if (certified.status !== "certified") out.push(`certified_bundle ${certifiedPath} has status ${JSON.stringify(certified.status)}, not "certified"`);
+    if (certified.revision !== entry.revision) out.push(`certified_bundle ${certifiedPath} has revision ${certified.revision}, not ${entry.revision}`);
+  }
+  for (const file of ["run.json", "acceptance.json"]) {
+    const theirs = join(root, certifiedPath, file);
+    if (!existsSync(theirs)) out.push(`${certifiedPath}/${file} is missing, so ${bundle}/${file} cannot be bound to it`);
+    else if (existsSync(join(bundleDir, file)) && sha256File(join(bundleDir, file)) !== sha256File(theirs)) out.push(`${bundle}/${file} sha256 ${sha256File(join(bundleDir, file))} != ${certifiedPath}/${file} ${sha256File(theirs)}`);
+  }
+  return out;
+}
+
 function checkEvidence(r, root, bundleDir, bundle, rules) {
   const problems = [];
   const run = loadJson(join(bundleDir, "run.json"), problems, "run.json");
@@ -268,16 +295,25 @@ function checkEvidence(r, root, bundleDir, bundle, rules) {
     return null;
   }
 
-  const entry = (Array.isArray(index?.bundles) ? index.bundles : []).find((b) => isObject(b) && b.path === bundle);
+  const indexed = Array.isArray(index?.bundles) ? index.bundles : [];
+  const entry = indexed.find((b) => isObject(b) && b.path === bundle);
   const indexProblems = [];
+  const mainnetRun = entry?.status === "mainnet-run";
   if (entry === undefined) indexProblems.push(`evidence/index.json has no entry for ${bundle}`);
   else {
     if (entry.revision !== run.revision) indexProblems.push(`index revision ${entry.revision} != run.json ${run.revision}`);
     if (entry.run !== `${bundle}/run.json`) indexProblems.push(`index run ${entry.run} != ${bundle}/run.json`);
-    if (entry.status !== "certified") indexProblems.push(`index status is ${JSON.stringify(entry.status)}, not "certified"`);
+    if (mainnetRun) indexProblems.push(...mainnetRunProblems(root, bundleDir, bundle, entry, indexed));
+    else if (entry.status !== "certified") indexProblems.push(`index status is ${JSON.stringify(entry.status)}, not "certified"`);
   }
   if (typeof run.revision !== "string" || !run.revision.startsWith(basename(bundle))) indexProblems.push(`directory ${basename(bundle)} is not a prefix of revision ${run.revision}`);
-  r.check("bundle.index", indexProblems, `${bundle} is the certified entry for revision ${run.revision}`);
+  r.check(
+    "bundle.index",
+    indexProblems,
+    mainnetRun
+      ? `${bundle} is a mainnet run record of revision ${run.revision}, bound to the certified bundle ${entry.certified_bundle} (run.json and acceptance.json byte-identical)`
+      : `${bundle} is the certified entry for revision ${run.revision}`,
+  );
 
   const accProblems = [];
   if (run.schema !== "bounded-mandate/run/1") accProblems.push(`run.json schema ${JSON.stringify(run.schema)}`);

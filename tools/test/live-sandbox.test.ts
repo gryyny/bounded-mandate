@@ -16,6 +16,7 @@ import { AGENT_ALLOWANCE, balances, fillerKey, mintAndDeposit, postPrices, setup
 import { Ledger, canonical } from "../src/live/ledger.js";
 import { runLive, type LiveDeps, type LiveResult } from "../src/live/main.js";
 import { LiveManifest } from "../src/live/manifest.js";
+import { readOnlyChain, readPostSetup, setupProblems, type PrepareInput } from "../src/live/prepare.js";
 import { runVerdict } from "../src/page/mainnet.js";
 import { totals } from "../src/live/budget.js";
 import { worstFee } from "../src/live/preflight.js";
@@ -542,6 +543,34 @@ describe("withheld-order revocation on the exact deployment binary (fixtures/dep
     expect(ledger.ofKind("reconciled").map((e) => e.data.step)).toEqual([9]);
     expect(await balances(world, cand.accounts.mandate)).toEqual({ usdc: 0n, wnear: 0n });
   }, 300_000);
+
+  it("after a finished run, R1 accepts the same accounts only as an approved reuse of the revoked grant's epoch", async () => {
+    const grant = await mandateOf().grant();
+    if (grant === null) throw new Error("the previous test leaves a grant");
+    const reuseInput = (reuse: PrepareInput["setup"]["reuse"]): PrepareInput => ({
+      schema: "bounded-mandate/prepare-input@1",
+      setup: {
+        approval: { approved_by: "Test Lead", reference: "setup (sandbox reuse)" },
+        accounts: { owner: cand.accounts.owner, mandate: cand.accounts.mandate, agent: cand.accounts.agent, filler: cand.accounts.filler },
+        keys: { owner: cand.keys.owner.public_key, agent: cand.keys.agent.public_key, filler: cand.keys.filler.public_key, filler_intents: cand.keys.filler.intents_public_key, mandate_full_access: [] },
+        agent_allowance_yocto: AGENT_ALLOWANCE.toString(),
+        deposits: { mandate: { usdc: "0", wnear: "0" }, filler: { usdc: "0", wnear: "0" } },
+        ...(reuse === undefined ? {} : { reuse }),
+      },
+      runner: { approval: { approved_by: "Test Lead", reference: "runner (sandbox reuse)" }, grant_timing: { order_ttl_sec: 120, oracle_max_age_sec: 120 }, credentials: cand.credentials },
+    });
+    const template = { ...(JSON.parse(readFileSync(join(import.meta.dirname, "../src/live/manifest.example.json"), "utf8")) as Record<string, unknown>), accounts: cand.accounts, mandate_config: cand.mandate_config };
+    const chain = readOnlyChain(new NearClient(world.client.rpcUrl));
+    const lifecycle = /^reuse:|has a grant|order record|verifier keys|list_orders/;
+    const approved = reuseInput({ previous_manifest_sha256: "0".repeat(64), previous_grant_epoch: grant.epoch, approved_reference: "sandbox reuse" });
+    const state = await readPostSetup(chain, approved, template);
+    expect(state.recovery).toEqual([expect.objectContaining({ asset: "usdc", in_flight: false }), expect.objectContaining({ asset: "wnear", in_flight: false })]);
+    const pins = { chain_id: state.chain.chain_id, genesis_hash: state.chain.genesis_hash, mandate_code_hash: cand.code_hashes.mandate };
+    expect(setupProblems(approved, template, state, pins).filter((x) => lifecycle.test(x))).toEqual([]);
+    expect(setupProblems(reuseInput(undefined), template, state, pins).join("\n")).toMatch(/has a grant/);
+    const wrongEpoch = reuseInput({ previous_manifest_sha256: "0".repeat(64), previous_grant_epoch: grant.epoch + 1, approved_reference: "sandbox reuse" });
+    expect(setupProblems(wrongEpoch, template, state, pins).join("\n")).toMatch(/not the approved earlier epoch/);
+  }, 120_000);
 
   it("an order too close to its deadline is not relayed: inconclusive, never a pass; recovery still runs", async () => {
     await fund();
