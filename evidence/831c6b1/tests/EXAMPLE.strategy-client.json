@@ -1,0 +1,329 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "EXAMPLE",
+  "case": "strategy-client",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261114T110909353Z-4a25414a2c51",
+  "source": {
+    "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+    "defuse-0.4.5": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794654935,
+  "data": {
+    "checks": [
+      {
+        "name": "independent-client",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "accepted",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "refused",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "revoked",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "sandbox-labelled",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "mismatches-detected",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "result": {
+      "schema": "bounded-mandate/example/1",
+      "label": "SANDBOX WITH TEST DOUBLES (PREBUILT, UNCERTIFIED)",
+      "statement": "SANDBOX WITH TEST DOUBLES (PREBUILT, UNCERTIFIED): make example ran the independent strategy client (examples/strategy-client/client.js) against a local sandbox with the deployment candidate fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, the pinned verifier and prebuilt test doubles for the MPC signer, the oracle and both tokens (fixtures/prebuilt/provenance.json, built at revision b089162e3b39). No public network, funds or model credential are involved; this is not a mainnet result and is not bound to an acceptance run.",
+      "mode": "sandbox",
+      "command": "vitest run test/example.test.ts",
+      "generated_at": "2026-11-14T11:15:35.527Z",
+      "source": {
+        "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+        "dirty": false
+      },
+      "wasm": {
+        "mandate": {
+          "path": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+          "sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30"
+        },
+        "verifier": {
+          "path": "fixtures/verifier/defuse-0.4.5.wasm",
+          "sha256": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547"
+        },
+        "ft": {
+          "path": "fixtures/prebuilt/mock_ft.wasm",
+          "sha256": "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89"
+        },
+        "oracle": {
+          "path": "fixtures/prebuilt/mock_oracle.wasm",
+          "sha256": "672e95e0e5c6daaa31b62a77e86c7c7e48f375469339ada758ebc71773ecfa8c"
+        },
+        "mpc": {
+          "path": "fixtures/prebuilt/mock_mpc.wasm",
+          "sha256": "ada6f78437be156625696480b4a209a9d8d92b8931791a10712bed7b22dd5694"
+        }
+      },
+      "prebuilt_provenance_sha256": "134c722a5aacfb3f863a6eb3c41820c868a7c6142cbde53314762f5b7f826a0b",
+      "accounts": {
+        "mandate": "mandate.sandbox",
+        "agent": "agent.sandbox",
+        "owner": "owner.sandbox",
+        "verifier": "intents.sandbox"
+      },
+      "client": {
+        "entry": "examples/strategy-client/client.js",
+        "sha256": "b2322dc729c506c38092a7eea6235b27365116744e629fc32733527521a10221",
+        "near_api_js": "7.3.1",
+        "inputs": [
+          "--rpc",
+          "http://127.0.0.1:60496",
+          "--mandate",
+          "mandate.sandbox",
+          "--agent",
+          "agent.sandbox",
+          "--key-file",
+          "<owner-only key file under the ignored output directory, deleted after the run>"
+        ],
+        "exit_code": 0,
+        "lines": [
+          {
+            "observation": "accepted",
+            "order_id": "0",
+            "tx_hash": "9WdvSi5sHS8AXCRg65tT52dV8kbpSKb52z6hW9xBMWeT",
+            "proposal": {
+              "sell": "usdc",
+              "sell_amount": "38003600",
+              "max_concession_bps": 25
+            },
+            "state": "signed",
+            "buy": "wnear",
+            "buy_amount": "12633669760600000000000000"
+          },
+          {
+            "observation": "refused",
+            "tx_hash": "8PGTVmkHr2cKNjKZPjr8qbBwuAHUiBypoxHBnrqn6y8Z",
+            "proposal": {
+              "sell": "usdc",
+              "sell_amount": "760072014",
+              "max_concession_bps": 25
+            },
+            "reason": "per-order cap exceeded"
+          },
+          {
+            "observation": "revoked",
+            "grant_status": "revoked",
+            "epoch": 1,
+            "tx_hash": "HvvCYkq91ogt4HAeQFkPoWKR2sU76oA7auJ6y7sWNPHq",
+            "proposal": {
+              "sell": "usdc",
+              "sell_amount": "38003600",
+              "max_concession_bps": 25
+            },
+            "reason": "grant is not active"
+          }
+        ],
+        "stderr": ""
+      },
+      "checks": [
+        {
+          "id": "accepted",
+          "description": "the client's allowed proposal is the agent's own propose_order, signed by the mandate and filled for exactly the signed amounts on the pinned verifier",
+          "passed": true,
+          "problems": [],
+          "client": {
+            "observation": "accepted",
+            "order_id": "0",
+            "tx_hash": "9WdvSi5sHS8AXCRg65tT52dV8kbpSKb52z6hW9xBMWeT",
+            "proposal": {
+              "sell": "usdc",
+              "sell_amount": "38003600",
+              "max_concession_bps": 25
+            },
+            "state": "signed",
+            "buy": "wnear",
+            "buy_amount": "12633669760600000000000000"
+          },
+          "chain": {
+            "tx": {
+              "tx_hash": "9WdvSi5sHS8AXCRg65tT52dV8kbpSKb52z6hW9xBMWeT",
+              "signer_id": "agent.sandbox",
+              "public_key": "ed25519:8CHpRmN5DDGgpudfmx781SZcNYHF8XxxMBd8VbEchMct",
+              "receiver_id": "mandate.sandbox",
+              "proposal": {
+                "sell": "usdc",
+                "sell_amount": "38003600",
+                "max_concession_bps": 25
+              },
+              "success": true,
+              "return_value": "0",
+              "mandate_error": null,
+              "block_height": 108
+            },
+            "fill": {
+              "order": {
+                "id": "0",
+                "epoch": 1,
+                "sell": "usdc",
+                "sell_amount": "38003600",
+                "buy": "wnear",
+                "buy_amount": "12633669760600000000000000",
+                "concession_bps": 25,
+                "reserved_value": "37995999280000",
+                "deadline_ns": "1794654991000000000",
+                "reference": {
+                  "usdc": {
+                    "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+                    "price": "99980000",
+                    "conf": "20000",
+                    "expo": -8,
+                    "publish_time_sec": "1794654931"
+                  },
+                  "wnear": {
+                    "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+                    "price": "300000000",
+                    "conf": "450000",
+                    "expo": -8,
+                    "publish_time_sec": "1794654931"
+                  },
+                  "observed_at_ns": "1794654932726722000"
+                },
+                "payload": {
+                  "message": "{\"signer_id\":\"mandate.sandbox\",\"deadline\":\"2026-11-14T11:16:31Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:usdc.sandbox\":\"-38003600\",\"nep141:wnear.sandbox\":\"12633669760600000000000000\"}}]}",
+                  "nonce": "Vij2xgANra5ZANbvsDTl5xgCw2YNxeC/B5G2RrAQ+qg=",
+                  "recipient": "intents.sandbox"
+                },
+                "payload_hash": "d2819503a0fbb9e6c2144d4f900ded707c90c35fd14e8d767a6f8b88ad3ebe71",
+                "signature": "ed25519:dXjYJqFV9KM3mcgSmPof82uUoWEyoU9AiGTUWT1AfoFhHGZJjN7Tv8jjZ1hBTMAMJsuQFVeVeo4E27ytuBfV4vL",
+                "state": {
+                  "state": "signed"
+                },
+                "created_at_ns": "1794654932469655000",
+                "sign_requested_at_ns": "1794654932726722000",
+                "signed_at_ns": "1794654933216134000"
+              },
+              "fill_state": "filled",
+              "fill_tx_hash": "4zU9YG7ZZVLvg1boDQFc2Brph7H6th3ifAFNkEom28W8",
+              "before": {
+                "usdc": "1000000000",
+                "wnear": "300000000000000000000000000"
+              },
+              "after": {
+                "usdc": "961996400",
+                "wnear": "312633669760600000000000000"
+              },
+              "settle_success": true,
+              "final_state": {
+                "state": "released",
+                "reason": "settled"
+              }
+            }
+          }
+        },
+        {
+          "id": "refused",
+          "description": "the client's proposal outside the limits was refused by the mandate contract, under the live grant, for the reason the client reported, and left no order",
+          "passed": true,
+          "problems": [],
+          "client": {
+            "observation": "refused",
+            "tx_hash": "8PGTVmkHr2cKNjKZPjr8qbBwuAHUiBypoxHBnrqn6y8Z",
+            "proposal": {
+              "sell": "usdc",
+              "sell_amount": "760072014",
+              "max_concession_bps": 25
+            },
+            "reason": "per-order cap exceeded"
+          },
+          "chain": {
+            "tx": {
+              "tx_hash": "8PGTVmkHr2cKNjKZPjr8qbBwuAHUiBypoxHBnrqn6y8Z",
+              "signer_id": "agent.sandbox",
+              "public_key": "ed25519:8CHpRmN5DDGgpudfmx781SZcNYHF8XxxMBd8VbEchMct",
+              "receiver_id": "mandate.sandbox",
+              "proposal": {
+                "sell": "usdc",
+                "sell_amount": "760072014",
+                "max_concession_bps": 25
+              },
+              "success": false,
+              "mandate_error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: per-order cap exceeded\"}}}}",
+              "block_height": 117
+            },
+            "orders": [
+              "0"
+            ]
+          }
+        },
+        {
+          "id": "revoked",
+          "description": "the client saw the grant revoked as the chain shows it (grant key removed from the verifier), and its further proposal was refused by the mandate contract",
+          "passed": true,
+          "problems": [],
+          "client": {
+            "observation": "revoked",
+            "grant_status": "revoked",
+            "epoch": 1,
+            "tx_hash": "HvvCYkq91ogt4HAeQFkPoWKR2sU76oA7auJ6y7sWNPHq",
+            "proposal": {
+              "sell": "usdc",
+              "sell_amount": "38003600",
+              "max_concession_bps": 25
+            },
+            "reason": "grant is not active"
+          },
+          "chain": {
+            "tx": {
+              "tx_hash": "HvvCYkq91ogt4HAeQFkPoWKR2sU76oA7auJ6y7sWNPHq",
+              "signer_id": "agent.sandbox",
+              "public_key": "ed25519:8CHpRmN5DDGgpudfmx781SZcNYHF8XxxMBd8VbEchMct",
+              "receiver_id": "mandate.sandbox",
+              "proposal": {
+                "sell": "usdc",
+                "sell_amount": "38003600",
+                "max_concession_bps": 25
+              },
+              "success": false,
+              "mandate_error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: grant is not active\"}}}}",
+              "block_height": 131
+            },
+            "revoke": {
+              "success": true,
+              "tx_hash": "8o8CFAv3tgiwVdvMjkMV4ansYS3e2C4MzCHfDNkusmhr",
+              "block_height": 125,
+              "error": null
+            },
+            "grant_status": "revoked",
+            "grant_epoch": 1,
+            "grant_key_registered": false,
+            "orders": [
+              "0"
+            ]
+          }
+        }
+      ],
+      "problems": [],
+      "passed": true
+    }
+  }
+}

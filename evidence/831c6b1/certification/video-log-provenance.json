@@ -1,0 +1,7 @@
+{
+  "source": "831c6b1e6734779ec16169401b5718c02083a68d",
+  "original_command": "make demo",
+  "original_sha256": "af2de1a4395d68e5bf463e7543800638b07cff0ab6b3ca7a6db9965438553b31",
+  "video_input_sha256": "f3b5eb00b35f70beafc7a45cb9e75bd4a917c14d02a8115cc2354d5694307bd8",
+  "transformation": "The clone path was replaced by <clone> and the home directory by $HOME; story output and all results unchanged. This derivative log (certification/demo-video.log) is the exact input hashed in video.json."
+}

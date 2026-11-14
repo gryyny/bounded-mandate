@@ -1,8 +1,0 @@
-{
-  "source": "66fe9635f4dc0dd200f6a5e9ad1bee03f144964d",
-  "command": "make page after make test && make demo",
-  "before_sha256": "fc1a2d8801ee43bed9c59bfb8a4fedc4904cc142ffc0f0a92426ed93b48ee388",
-  "after_sha256": "fc1a2d8801ee43bed9c59bfb8a4fedc4904cc142ffc0f0a92426ed93b48ee388",
-  "byte_identical": true,
-  "exit_code": 0
-}

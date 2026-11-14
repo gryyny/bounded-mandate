@@ -1,0 +1,46 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "HANDOFF",
+  "case": "lost-response-resume",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261114T110909353Z-4a25414a2c51",
+  "source": {
+    "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794654826,
+  "data": {
+    "checks": [
+      {
+        "name": "import-lookup-lost",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "import-crash-after-handoff",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "runner-withdrawal-lost",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "deployment_binary": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "signing": "SANDBOX LOCAL SIGNING ADAPTER (test double)",
+    "tokens": "mock-ft test double"
+  }
+}

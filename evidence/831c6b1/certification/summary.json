@@ -1,0 +1,46 @@
+{
+  "source": "831c6b1e6734779ec16169401b5718c02083a68d",
+  "checkout": "fresh local clone of the product repository at this revision, empty target directory, cached registry and tool downloads",
+  "credential_environment": "allowlisted environment variables only: HOME, PATH, SHELL, TMPDIR, USER; no model, public-network or GitHub credentials passed",
+  "platform": "Darwin arm64, v24.22.1, cargo-nextest 0.9.150 (d225b1daf 2026-10-26)",
+  "steps": [
+    {
+      "command": "make test",
+      "started_at": "2026-11-14T11:09:05Z",
+      "finished_at": "2026-11-14T11:26:50Z",
+      "elapsed_s": 1065,
+      "exit_code": 0
+    },
+    {
+      "command": "make demo",
+      "started_at": "2026-11-14T11:26:50Z",
+      "finished_at": "2026-11-14T11:27:55Z",
+      "elapsed_s": 65,
+      "exit_code": 0
+    },
+    {
+      "command": "make page",
+      "started_at": "2026-11-14T11:27:55Z",
+      "finished_at": "2026-11-14T11:27:56Z",
+      "elapsed_s": 1,
+      "exit_code": 0
+    },
+    {
+      "command": "make quick",
+      "started_at": "2026-11-14T11:27:56Z",
+      "finished_at": "2026-11-14T11:28:38Z",
+      "elapsed_s": 42,
+      "exit_code": 0
+    },
+    {
+      "command": "make example",
+      "started_at": "2026-11-14T11:28:38Z",
+      "finished_at": "2026-11-14T11:29:06Z",
+      "elapsed_s": 28,
+      "exit_code": 0
+    }
+  ],
+  "parallel_suites": "make test ran the Rust tests with cargo-nextest (4 at a time) beside the TypeScript suite (4 workers)",
+  "dirty_after": "",
+  "ci": "GitHub Actions now runs only fast checks (lint, types, make quick, make example, verify.mjs). Its run for this revision (43588631709) was not started by GitHub: the account's Actions spending limit or payment blocked private-repository jobs. The same checks ran in this fresh clone."
+}

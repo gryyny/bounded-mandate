@@ -1,0 +1,878 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "LAB",
+  "case": "owner-alternatives",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261114T110909353Z-4a25414a2c51",
+  "source": {
+    "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "defuse-0.4.5": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794654848,
+  "data": {
+    "checks": [
+      {
+        "name": "equal-starting-conditions",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "relays-are-chain-transactions",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "outcomes-follow-verifier-checks",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "wait",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "cancel-complete",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "cancel-incomplete",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "cancel-signer-unavailable",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "remove-fresh-key",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "remove-same-key",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "concurrent-scopes-isolated",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "account_key": "TEST key standing in for the account's signer",
+    "token_double_sha256": "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89",
+    "scopes": [
+      "lab-one",
+      "lab-two"
+    ],
+    "outcomes": [
+      {
+        "scope": "lab-one",
+        "id": "wait",
+        "account_key_signatures": 0,
+        "owner_transactions": [],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "DjmBjfSRViJvtRejpC4xQGoSCJ1NChhZyhi5ZVCBhPMp",
+            "error": null
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "4ydnPoEmukaeuhqfsSVnTQ1hnQv2ikFm9g2PXaUXzo4y",
+            "error": null
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "AxjShfrpkj2Q2nJdZhhtX9gkkJs6sEDgt763GuPiJwce",
+            "error": null
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (not recorded, 10 s lifetime, held until its deadline had passed)",
+            "phase": "after the order's deadline had passed",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": false,
+            "executed": false,
+            "relay_tx_hash": "DEUWdY98bVtoRXxyEFnpVNifjntpEwkozsPvxLNbVFr8",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: deadline has expired\"}}}}"
+          }
+        ],
+        "setup_ms": 7381,
+        "duration_ms": 19352
+      },
+      {
+        "scope": "lab-one",
+        "id": "cancel_complete",
+        "account_key_signatures": 3,
+        "owner_transactions": [
+          {
+            "label": "owner cancels every outstanding nonce",
+            "tx_hash": "geSMaV2zX1y7ww794NApxtRgE1FTbb8dNvpmtDSE5bw",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "CEkr1MHTomXaz18e2J1Lw2KB65WCmPqQkPi8NSxzPfXK",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "6HuAjzMAdsm8nDV8XKKUj21Ms5GckudK1bq8VCNNG1tC",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "88eXE68uTnQnAdBG6a5myqbeMAZ91k9AbD1jUu48uxQ6",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (signed with the same key after the cancellation)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "HWkNjSaozGecfEed4WCWSUmDS4KDLsV35t7zxGgzZDLe",
+            "error": null
+          }
+        ],
+        "setup_ms": 7503,
+        "duration_ms": 9412
+      },
+      {
+        "scope": "lab-one",
+        "id": "cancel_incomplete",
+        "account_key_signatures": 2,
+        "owner_transactions": [
+          {
+            "label": "owner cancels the recorded nonces",
+            "tx_hash": "9St5MSNurb7TabmXNDXPhi3P2m3CK4HbfQP8KA4Ed7Ch",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "7FQS5f1A7aQ9G4W9r69zbqC4t2st1WQ2GQXiwHNNmiaK",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "HrMsaEKM1XHSeV13R4oPHqc3tDYEJqSJVncw3CLmRiS",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "J6jgNbPMUmN4BmFscAA1o1qo6vp89mtoVwkU2z3HjcRC",
+            "error": null
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (signed with the same key after the cancellation)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "G1TpKFbQJogW4vUu7b5TKqFdbkXrd7eAjJJJtuqpr1vX",
+            "error": null
+          }
+        ],
+        "setup_ms": 7379,
+        "duration_ms": 9293
+      },
+      {
+        "scope": "lab-one",
+        "id": "cancel_signer_unavailable",
+        "account_key_signatures": 0,
+        "owner_transactions": [
+          {
+            "label": "owner submits cancellations not signed by the account's key",
+            "tx_hash": "DMCAAVtRxbQMUXWNA7mamw4eG4LaUL2he66w5ecNt2oR",
+            "success": false,
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:5EhWcYNUDzkfPrHubfEuJiewu27K84SwKPtjuB4WP1ea' doesn't exist for account 'treasury.lab-one-no-signer.sandbox'\"}}}}"
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "D2wzUnoUmbUMzC6Zmkwr7W8dpUWzxFKz7FuzRfD4ZK1o",
+            "error": null
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "FJzSoKqWdt9BQ3JGikhFyFvdA2cyDAmV8EcEAdkUZi6D",
+            "error": null
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "B7KxbdSHqpcaAP2djWwXF8zb9YQM2kdCzYxJgntWjhy8",
+            "error": null
+          }
+        ],
+        "other_relays": [],
+        "setup_ms": 7269,
+        "duration_ms": 8794
+      },
+      {
+        "scope": "lab-one",
+        "id": "remove_fresh_key",
+        "account_key_signatures": 0,
+        "owner_transactions": [
+          {
+            "label": "owner removes the account's key",
+            "tx_hash": "4ghhwPi9MzxcF6x76Bh2rq6dWNPL2mBzZD2WxBp5mNhe",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "CYLh3esbTLhzeuo7nGnrxXGpQEadL2Dr4bZ9k81zVjsH",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:6F9M3gybuVsvTzEcKwRfProAk2GX1GyJ5gST5avby3pc' doesn't exist for account 'treasury.lab-one-fresh-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "H1ShMyUfL76xRLfkcoPKNgLovdihe6ByE4dBye5adXKf",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:6F9M3gybuVsvTzEcKwRfProAk2GX1GyJ5gST5avby3pc' doesn't exist for account 'treasury.lab-one-fresh-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "CYhj5aX1VNj8cvB53M29zoDF5rmxoQtKsLiLGReQ2kxP",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:6F9M3gybuVsvTzEcKwRfProAk2GX1GyJ5gST5avby3pc' doesn't exist for account 'treasury.lab-one-fresh-key.sandbox'\"}}}}"
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (signed with the fresh key)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "54LNjCQS3Cq8JsCD8WN4xpdYjH99rxrrDtgCjs7JTQzE",
+            "error": null
+          },
+          {
+            "label": "O1 (recorded)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "GncMzKhVHUEyRW8n1MR6PeR7B7W8fwdirqiWHYNcLE7J",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:6F9M3gybuVsvTzEcKwRfProAk2GX1GyJ5gST5avby3pc' doesn't exist for account 'treasury.lab-one-fresh-key.sandbox'\"}}}}"
+          }
+        ],
+        "setup_ms": 7638,
+        "duration_ms": 10289
+      },
+      {
+        "scope": "lab-one",
+        "id": "remove_same_key",
+        "account_key_signatures": 0,
+        "owner_transactions": [
+          {
+            "label": "owner removes the account's key",
+            "tx_hash": "7WLZR9VgS4AdVwNF9DXDeXRBks6tZJ3dYurj6K9y9ytM",
+            "success": true,
+            "error": null
+          },
+          {
+            "label": "owner re-adds the same key",
+            "tx_hash": "DV3GFAuhnVr9yEx9cn2ZRMYyybagFvD73cMDCpnjd7PB",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "5Yp2JKsdgkMDdYeL9kYa48y3NkMtZYGUdoTrK5aDKMPv",
+            "error": null
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "DcFomyFxoTwyhFsmM79NFYCVBKejzpDrYyG8xxK9W7ak",
+            "error": null
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "CXiW22hoWLfQHXhZKdru7BYXTFzNjQ6EZpKWy7JCcAzB",
+            "error": null
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "while the key was removed",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "F2yf2roywAqFFLHAVFipXRo3vj5Za4rJ1K6f56cjYrS",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:DXAnh9fbFZosQq6vVp266LaakMGenGDJosSbdSeHS8tx' doesn't exist for account 'treasury.lab-one-same-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "while the key was removed",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "BNHMiZcyNnvxDLRnL57JAhXb74bhb9a8bjWp9vkT7fmK",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:DXAnh9fbFZosQq6vVp266LaakMGenGDJosSbdSeHS8tx' doesn't exist for account 'treasury.lab-one-same-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "while the key was removed",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "CU39Fa14Ys7iFHLmB63cnMVHCZbjkjN6et9gPXwbqUGa",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:DXAnh9fbFZosQq6vVp266LaakMGenGDJosSbdSeHS8tx' doesn't exist for account 'treasury.lab-one-same-key.sandbox'\"}}}}"
+          }
+        ],
+        "setup_ms": 7268,
+        "duration_ms": 10288
+      },
+      {
+        "scope": "lab-two",
+        "id": "wait",
+        "account_key_signatures": 0,
+        "owner_transactions": [],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "3RCE9p2Zazg9u3LA9JB2SFtGVXWCESyAMKNvcRZssnKF",
+            "error": null
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "AUEvUfXeK6rnc4JfUrrpgtGysfaebs6b1mDUbiuhkoUL",
+            "error": null
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "JidyTsDWVH8qmivHgP3CYFeBtkbJp92C22DU5uPSS4Y",
+            "error": null
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (not recorded, 10 s lifetime, held until its deadline had passed)",
+            "phase": "after the order's deadline had passed",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": false,
+            "executed": false,
+            "relay_tx_hash": "F55yjhVbNW2gTiZNmreZyQLFNNebQkMrwhAnTbVaDDiv",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: deadline has expired\"}}}}"
+          }
+        ],
+        "setup_ms": 8052,
+        "duration_ms": 19998
+      },
+      {
+        "scope": "lab-two",
+        "id": "cancel_complete",
+        "account_key_signatures": 3,
+        "owner_transactions": [
+          {
+            "label": "owner cancels every outstanding nonce",
+            "tx_hash": "5tthwBJrcB1d7Thrtowdf4XwEs8kz61g9TQmiqSW3QPX",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "52zEVaaa7S1mEhhWqC6zFRdp3CtjRNqzXpZgkakh1qu7",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "13BiefPyEKgGJSKAeThndtGox5ovKi45vHrsd15kU1oc",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "7AVSpmAjUM3Uou69CR2Ugq5fnUBeUrmZe24PjJdZDFF7",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (signed with the same key after the cancellation)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "7gTkikPjQjHDxmMWyshidLimotCC5h82HXEpoZZ9ex6N",
+            "error": null
+          }
+        ],
+        "setup_ms": 7377,
+        "duration_ms": 9291
+      },
+      {
+        "scope": "lab-two",
+        "id": "cancel_incomplete",
+        "account_key_signatures": 2,
+        "owner_transactions": [
+          {
+            "label": "owner cancels the recorded nonces",
+            "tx_hash": "6B8WXTxbqRL6459rLeW86Vbajo9bwxYKrVYyt1Br26HC",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "8HLLj3Pju3yRtgMPTJt6DM7uzAgfknzcizWYtXgaDau7",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": true,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "A2DaEGH5NKw5NJgcURfk9vKLWnwkiXonje6XP5XWAoW3",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: nonce was already used\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "DqeGMqrftSf7HEpYLYMGHuPHhMSQykRSFJq6RGrG6acB",
+            "error": null
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (signed with the same key after the cancellation)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "6H8ji2wuy6mPHf29PY8VSczYkgqDzW1z2U65r645vBgn",
+            "error": null
+          }
+        ],
+        "setup_ms": 7765,
+        "duration_ms": 9659
+      },
+      {
+        "scope": "lab-two",
+        "id": "cancel_signer_unavailable",
+        "account_key_signatures": 0,
+        "owner_transactions": [
+          {
+            "label": "owner submits cancellations not signed by the account's key",
+            "tx_hash": "6RrWqGKuyW5t7q1N1YYPKxPmy9xDPJmR6tAtjEkc5CEo",
+            "success": false,
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:32UHpoQTsxm5NJFZHvGEeLuY6FfowdhrUEaCjxHVdaaS' doesn't exist for account 'treasury.lab-two-no-signer.sandbox'\"}}}}"
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "Db2FxurwT6VpRARsxzN3WLzFnmqN751y5FnerG6BSLkf",
+            "error": null
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "6S9981F2FGFFJ5v1M3goaU9BZ2qsLdwiBCA9aKviHixt",
+            "error": null
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "8DS69pPPR1tcAruYTocKQzXyHddLzxjMfZhPubSdV4C2",
+            "error": null
+          }
+        ],
+        "other_relays": [],
+        "setup_ms": 7267,
+        "duration_ms": 8792
+      },
+      {
+        "scope": "lab-two",
+        "id": "remove_fresh_key",
+        "account_key_signatures": 0,
+        "owner_transactions": [
+          {
+            "label": "owner removes the account's key",
+            "tx_hash": "Ajup3SabjPwhbxaDkNX64g55bQZx8fUXNRJtzGuBYkY5",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "Dtk8t1aBgH9JbPfQtq7brLqXiYrFDDiZ41hVF13TtzCR",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:AYvXMBpb59KvsdHsUvRszWmLSPtfzKrQmz4yqTU8k5PF' doesn't exist for account 'treasury.lab-two-fresh-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "EztZkhLGSLUxTj1rD7NR1q34krhzBLviXGRXsgEFREWE",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:AYvXMBpb59KvsdHsUvRszWmLSPtfzKrQmz4yqTU8k5PF' doesn't exist for account 'treasury.lab-two-fresh-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "ArUKKfZzKH6Y5vPrYq8gkccVUru7wbqoxykQcoa7VJhd",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:AYvXMBpb59KvsdHsUvRszWmLSPtfzKrQmz4yqTU8k5PF' doesn't exist for account 'treasury.lab-two-fresh-key.sandbox'\"}}}}"
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O4 (signed with the fresh key)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "5TjUVcoSbgdSgTPDQZX1ZDpVRMU2VZ3x5cxH6PSYcJpp",
+            "error": null
+          },
+          {
+            "label": "O1 (recorded)",
+            "phase": "after resuming",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "21RVs1zoKJ3kjncXubWHmyfoCCzrp1Y3fC3opPxjYq5k",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:AYvXMBpb59KvsdHsUvRszWmLSPtfzKrQmz4yqTU8k5PF' doesn't exist for account 'treasury.lab-two-fresh-key.sandbox'\"}}}}"
+          }
+        ],
+        "setup_ms": 7889,
+        "duration_ms": 10540
+      },
+      {
+        "scope": "lab-two",
+        "id": "remove_same_key",
+        "account_key_signatures": 0,
+        "owner_transactions": [
+          {
+            "label": "owner removes the account's key",
+            "tx_hash": "2qLqiTPn9Jwq8XLRUQn4JQiCcBxbPQxZVo14rY3GZ8r2",
+            "success": true,
+            "error": null
+          },
+          {
+            "label": "owner re-adds the same key",
+            "tx_hash": "AopPC7LsV5MdKMciWWJ2hx3vJd3XXcK8J2iXsS96woGE",
+            "success": true,
+            "error": null
+          }
+        ],
+        "orders": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "dqMZ16rssSeYRGZ4oCJD9pT6WKdwCejMWKzzd49Lwgz",
+            "error": null
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "HtYqv2KC2hA81xV68s7yahPNBZKQKVtud87PM5sCYyQg",
+            "error": null
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "after the owner's action, before the deadline",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": true,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": true,
+            "relay_tx_hash": "FAwTant18iFrPoCbhSffr8kjczAgkFCBmmDJ8dqwwS2D",
+            "error": null
+          }
+        ],
+        "other_relays": [
+          {
+            "label": "O1 (recorded)",
+            "phase": "while the key was removed",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "DEcXANvLNtX2rFAuv4kT3BxVE6ZTdeHmBhEQd1cBswU6",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:FyPYymeVwKkEGj8gt1vZ9TY6pMpZ8tWc8jfkoTeGFdE4' doesn't exist for account 'treasury.lab-two-same-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O2 (recorded)",
+            "phase": "while the key was removed",
+            "recorded_by_owner": true,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "A23UqoD8pXQCjxEUQoU71ZznThsmpeekMagHbZB3F688",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:FyPYymeVwKkEGj8gt1vZ9TY6pMpZ8tWc8jfkoTeGFdE4' doesn't exist for account 'treasury.lab-two-same-key.sandbox'\"}}}}"
+          },
+          {
+            "label": "O3 (not recorded)",
+            "phase": "while the key was removed",
+            "recorded_by_owner": false,
+            "key_registered_before_relay": false,
+            "nonce_used_before_relay": false,
+            "relayed_before_deadline": true,
+            "executed": false,
+            "relay_tx_hash": "3ZmGCyAKcG6EwBD74M2kdv4GDjgwK6UAdW7fdC49XWxR",
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:FyPYymeVwKkEGj8gt1vZ9TY6pMpZ8tWc8jfkoTeGFdE4' doesn't exist for account 'treasury.lab-two-same-key.sandbox'\"}}}}"
+          }
+        ],
+        "setup_ms": 7635,
+        "duration_ms": 10688
+      }
+    ]
+  }
+}

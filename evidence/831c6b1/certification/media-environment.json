@@ -1,0 +1,10 @@
+{
+  "source_revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+  "renderer_node": "v24.22.1",
+  "browser": "Google Chrome 157.0.8103.78",
+  "platform": "Darwin",
+  "arch": "arm64",
+  "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "ffprobe": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers",
+  "note": "Records the locally rendered artifacts; byte-for-byte MP4 reproducibility on another browser/font/encoder environment is not claimed."
+}

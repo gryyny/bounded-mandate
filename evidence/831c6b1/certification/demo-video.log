@@ -1,0 +1,333 @@
+cd tools && npm ci --no-audit --no-fund --ignore-scripts
+
+added 256 packages in 2s
+cd tools && npx --no-install playwright install chromium >/dev/null
+for crate in contract stubs/mock-ft stubs/mock-mpc stubs/mock-oracle baseline/claw-guard-adapted; do cargo near build non-reproducible-wasm --locked --manifest-path "$crate/Cargo.toml" >/dev/null; done
+• Collecting cargo project metadata...
+• done
+
+• Checking rustc version...
+• done
+
+• Checking the host environment...
+• done
+
+• Generating ABI
+ │     Finished `dev` profile [unoptimized] target(s) in 0.18s
+• Extracting ABI...
+• done
+
+• Compressing ABI to be embedded..
+• done
+
+• Building contract
+ │    Compiling near-sdk-macros v5.29.1
+ │    Compiling near-sdk v5.29.1
+ │    Compiling bounded-mandate v0.1.0 (<clone>/contract)
+ │     Finished `release` profile [optimized] target(s) in 4.72s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+• done
+
+✓ Contract successfully built! (in CARGO_NEAR_BUILD_ENVIRONMENT=host)
+     -                Binary: <clone>/target/near/bounded_mandate/bounded_mandate.wasm
+     -                  Size: 309.1 KB (309141 bytes)
+     - SHA-256 checksum hex : 8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5
+     - SHA-256 checksum bs58: ANuGV12g5UPFaj11QbckqmhU8K2JLNNcxWe8RcF3Z2Di
+     -                   ABI: <clone>/target/near/bounded_mandate/bounded_mandate_abi.json
+     -          Embedded ABI: <clone>/target/near/bounded_mandate/bounded_mandate_abi.zst
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --manifest-path contract/Cargo.toml
+
+cargo-near has a new update available 0.22.0 → 0.23.0
+To update run: $HOME/.cargo/bin/cargo-near near self-update
+• Collecting cargo project metadata...
+• done
+
+• Checking rustc version...
+• done
+
+• Checking the host environment...
+• done
+
+• Generating ABI
+ │     Finished `dev` profile [unoptimized] target(s) in 0.14s
+• Extracting ABI...
+• done
+
+• Compressing ABI to be embedded..
+• done
+
+• Building contract
+ │    Compiling near-sdk-macros v5.29.1
+ │    Compiling near-sdk v5.29.1
+ │    Compiling near-contract-standards v5.29.1
+ │    Compiling mock-ft v0.1.0 (<clone>/stubs/mock-ft)
+ │     Finished `release` profile [optimized] target(s) in 2.87s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+• done
+
+✓ Contract successfully built! (in CARGO_NEAR_BUILD_ENVIRONMENT=host)
+     -                Binary: <clone>/target/near/mock_ft/mock_ft.wasm
+     -                  Size: 156.4 KB (156415 bytes)
+     - SHA-256 checksum hex : eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0
+     - SHA-256 checksum bs58: H4tukyDUb4pEjV6HdGPx4a11yrGpSNG4bCv7o3D3ZeM5
+     -                   ABI: <clone>/target/near/mock_ft/mock_ft_abi.json
+     -          Embedded ABI: <clone>/target/near/mock_ft/mock_ft_abi.zst
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-ft/Cargo.toml
+
+cargo-near has a new update available 0.22.0 → 0.23.0
+To update run: $HOME/.cargo/bin/cargo-near near self-update
+• Collecting cargo project metadata...
+• done
+
+• Checking rustc version...
+• done
+
+• Checking the host environment...
+• done
+
+• Generating ABI
+ │     Finished `dev` profile [unoptimized] target(s) in 0.12s
+• Extracting ABI...
+• done
+
+• Compressing ABI to be embedded..
+• done
+
+• Building contract
+ │    Compiling near-sdk-macros v5.29.1
+ │    Compiling near-sdk v5.29.1
+ │    Compiling mock-mpc v0.1.0 (<clone>/stubs/mock-mpc)
+ │     Finished `release` profile [optimized] target(s) in 2.41s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+• done
+
+✓ Contract successfully built! (in CARGO_NEAR_BUILD_ENVIRONMENT=host)
+     -                Binary: <clone>/target/near/mock_mpc/mock_mpc.wasm
+     -                  Size: 237.5 KB (237504 bytes)
+     - SHA-256 checksum hex : b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e
+     - SHA-256 checksum bs58: D4scgRYWuLk3aossCp3EmVRELza7Wy1RCcS4dJUs616u
+     -                   ABI: <clone>/target/near/mock_mpc/mock_mpc_abi.json
+     -          Embedded ABI: <clone>/target/near/mock_mpc/mock_mpc_abi.zst
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-mpc/Cargo.toml
+
+cargo-near has a new update available 0.22.0 → 0.23.0
+To update run: $HOME/.cargo/bin/cargo-near near self-update
+• Collecting cargo project metadata...
+• done
+
+• Checking rustc version...
+• done
+
+• Checking the host environment...
+• done
+
+• Generating ABI
+ │     Finished `dev` profile [unoptimized] target(s) in 0.10s
+• Extracting ABI...
+• done
+
+• Compressing ABI to be embedded..
+• done
+
+• Building contract
+ │    Compiling near-sdk-macros v5.29.1
+ │    Compiling near-sdk v5.29.1
+ │    Compiling mock-oracle v0.1.0 (<clone>/stubs/mock-oracle)
+ │     Finished `release` profile [optimized] target(s) in 2.06s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+• done
+
+✓ Contract successfully built! (in CARGO_NEAR_BUILD_ENVIRONMENT=host)
+     -                Binary: <clone>/target/near/mock_oracle/mock_oracle.wasm
+     -                  Size: 126.4 KB (126377 bytes)
+     - SHA-256 checksum hex : 2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6
+     - SHA-256 checksum bs58: 4AMmZEHYEem2WLapDVrUwWMRXogby9LM3BBCPD873o25
+     -                   ABI: <clone>/target/near/mock_oracle/mock_oracle_abi.json
+     -          Embedded ABI: <clone>/target/near/mock_oracle/mock_oracle_abi.zst
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --manifest-path stubs/mock-oracle/Cargo.toml
+
+cargo-near has a new update available 0.22.0 → 0.23.0
+To update run: $HOME/.cargo/bin/cargo-near near self-update
+• Collecting cargo project metadata...
+• done
+
+• Checking rustc version...
+• done
+
+• Checking the host environment...
+• done
+
+• Generating ABI
+ │     Finished `dev` profile [unoptimized] target(s) in 0.13s
+• Extracting ABI...
+• done
+
+• Compressing ABI to be embedded..
+• done
+
+• Building contract
+ │    Compiling near-sdk-macros v5.29.1
+ │    Compiling near-sdk v5.29.1
+ │    Compiling claw-guard-adapted v0.1.0 (<clone>/baseline/claw-guard-adapted)
+ │     Finished `release` profile [optimized] target(s) in 2.62s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+• done
+
+✓ Contract successfully built! (in CARGO_NEAR_BUILD_ENVIRONMENT=host)
+     -                Binary: <clone>/target/near/claw_guard_adapted/claw_guard_adapted.wasm
+     -                  Size: 203.0 KB (203038 bytes)
+     - SHA-256 checksum hex : 92504db0a732b8e5570d7d86a5373c3289bef39ff5a1f7b80d301d3966a6681c
+     - SHA-256 checksum bs58: Ar9YbHeN6gU7dnkhYxECHqPNFLtkq2yLSXmncKM3zSzf
+     -                   ABI: <clone>/target/near/claw_guard_adapted/claw_guard_adapted_abi.json
+     -          Embedded ABI: <clone>/target/near/claw_guard_adapted/claw_guard_adapted_abi.zst
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --manifest-path baseline/claw-guard-adapted/Cargo.toml
+
+cargo-near has a new update available 0.22.0 → 0.23.0
+To update run: $HOME/.cargo/bin/cargo-near near self-update
+cargo near build non-reproducible-wasm --locked --manifest-path contract/Cargo.toml --features fault-injection --no-abi --out-dir target/near/bounded_mandate_fault >/dev/null
+• Collecting cargo project metadata...
+• done
+
+• Checking rustc version...
+• done
+
+• Checking the host environment...
+• done
+
+• Building contract
+ │    Compiling bounded-mandate v0.1.0 (<clone>/contract)
+ │     Finished `release` profile [optimized] target(s) in 2.05s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+• done
+
+✓ Contract successfully built! (in CARGO_NEAR_BUILD_ENVIRONMENT=host)
+     -                Binary: <clone>/target/near/bounded_mandate_fault/bounded_mandate.wasm
+     -                  Size: 306.9 KB (306940 bytes)
+     - SHA-256 checksum hex : f6b33658d1c03bbe791d227fb09770d0fc231ff1b284b9157a1d0e8eae8106a8
+     - SHA-256 checksum bs58: Hc1npFpcpLJzZf6VokYiMEtP2cGZ3QyHisVvKfoEXvij
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --no-abi --out-dir target/near/bounded_mandate_fault --manifest-path contract/Cargo.toml --features fault-injection
+
+cargo-near has a new update available 0.22.0 → 0.23.0
+To update run: $HOME/.cargo/bin/cargo-near near self-update
+mv target/near/bounded_mandate_fault/bounded_mandate.wasm target/near/bounded_mandate_fault/bounded_mandate_fault.wasm
+cd tools && npx --no-install tsx src/demo/main.ts
+bounded-mandate demo (sandbox; test doubles for MPC, oracle and tokens; no model-provider calls)
+setup (sandbox start, deploy, fund): 16343 ms
+browser start (headless Chromium, console served by the local sandbox test signer): 735 ms
+
+== Grant and limits
+  ok   [T1] grant is active and its derived key is registered on the verifier
+  ok   [T3] initial reference value equals deposits x posted prices (independent derivation)
+
+== Mandate reviewed in the console
+  ok   [BOUNDARY] mandate account has no access key; only its contract acts for it
+  ok   [BOUNDARY] agent's only key is a function-call key for propose_order on the mandate
+  ok   [DEMO] the owner console in headless Chromium shows the grant's status, limits, key on the verifier, the fixed accounts and the mandate's balances exactly as the chain views read them
+
+== Bounded agent proposal -> propose_order
+  ok   [MODEL] a recorded genuine model proposal (prompt hash bound to chain state) reached propose_order and was signed
+  ok   [T2] TypeScript NEP-413 prehash equals the contract's payload_hash
+
+== Filler fills the first order (actual trade on the pinned verifier)
+  ok   [T3] fill executed: mandate balances moved by exactly the signed amounts (fees borne by the filler)
+  ok   [T2] settle_order released the reservation on the verifier's nonce evidence
+
+== Hostile requests refused
+  ok   [BOUNDARY] proposal with extra recipient -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] proposal with raw signing payload -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] proposal choosing an MPC derivation path -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] proposal naming a public key -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] asset given as raw Intents token id -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] forbidden asset usdt -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] negative amount -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] concession beyond u16 -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] injected model output requesting a withdrawal to evil.near -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] free text instead of JSON -> stopped by adapter-schema (injected-request)
+  ok   [BOUNDARY] agent key sends proposal with extra recipient -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] agent key sends proposal with raw payload -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] agent key sends proposal with public key -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] agent key sends raw token id as asset -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] agent key sends forbidden asset usdt -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] agent key sends negative amount -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] amount 2^128 (passes the adapter's digit check) -> stopped by contract-schema (scripted-direct)
+  ok   [BOUNDARY] amount 2^128-1 -> stopped by contract-policy (scripted-direct)
+  ok   [BOUNDARY] zero amount -> stopped by contract-policy (scripted-direct)
+  ok   [BOUNDARY] 400 USDC, above the 20% per-order cap -> stopped by contract-policy (scripted-direct)
+  ok   [BOUNDARY] 51 bps concession, above the 50 bps policy -> stopped by contract-policy (scripted-direct)
+  ok   [BOUNDARY] agent key attaches a deposit to propose_order -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls owner method revoke -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls owner method grant -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls owner method recover -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls callback on_signed -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls a non-propose method -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls verifier mt_transfer -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key calls verifier add_public_key -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key sends a 1 yocto NEAR transfer -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] agent key adds a full-access key to its account -> stopped by near-access-key (scripted-direct)
+  ok   [BOUNDARY] another account calls propose_order -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] another account calls revoke -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] another account calls grant -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] another account calls recover -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] another account calls callback on_signed -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] another account calls callback on_key_removed -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] another account calls callback on_recovery_transferred -> stopped by contract-role (scripted-direct)
+  ok   [BOUNDARY] relayer submits a transfer-to-evil intent claiming signer=mandate, signed by an unregistered key -> stopped by verifier (injected-request)
+  ok   [BOUNDARY] genuine model output to an injected prompt leaves the adapter only as a strict Proposal or a decline (no withdrawal expressible)
+
+== Second signed order withheld
+  ok   [T1] withheld order is executable before revocation (simulate_intents accepts the bundle with no invariant violation)
+
+== Owner revokes in the console; removal confirmed
+  ok   [DEMO] the owner revoked with the console's Revoke control after its exact preview, one sign request, final on chain (owner controls via the local sandbox test signer (not a wallet))
+  ok   [T1] grant revoked and the grant key is no longer registered on the verifier (read over RPC)
+  ok   [T1] withheld order's reservation released only by confirmed key removal
+
+== Withheld order relayed from another account
+  ok   [T1] relayed withheld order failed with the verifier's error naming the removed grant key and the mandate, in a block before its deadline, with no balance change
+
+== Agent, oracle and MPC disabled
+  ok   [T4] agent proposal after revocation is rejected by the contract; the agent takes no further part
+
+== Recovery to the owner's Intents account
+  ok   [T4] all mandate units moved to the owner's Intents account with oracle failing and MPC on hold
+
+== Owner withdrawal to its NEAR account (outside recovery)
+  ok   [WITHDRAWAL] the owner withdrew both assets from its Intents account to its NEAR account with ft_withdraw, registering storage only where needed (owner action, not part of recovery)
+
+== Final balances
+{
+  "mandate": {
+    "usdc": "0",
+    "wnear": "0"
+  },
+  "owner_intents": {
+    "usdc": "0",
+    "wnear": "0"
+  },
+  "owner_near": {
+    "usdc": "950100000",
+    "wnear": "316546856633333333333333334"
+  },
+  "filler": {
+    "usdc": "5049899950",
+    "wnear": "1983453126819793486460153126"
+  },
+  "fee_collector": {
+    "usdc": "50",
+    "wnear": "16546873180206513540"
+  }
+}
+  ok   [DEMO] final balances (recorded, not a check)
+  ok   [DEMO] timed story (after setup and browser start) completed in under 60 s
+console: out/console/index.html
+
+evidence: out/evidence/demo.json
+page: rendered <clone>/out/page/index.html
+
+setup 16343 ms | story 20089 ms | 59/59 assertions passed | browser start 735 ms (not in setup or story)
