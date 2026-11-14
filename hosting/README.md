@@ -1,6 +1,6 @@
 # Hosting (prepared, not enabled)
 
-Nothing here publishes. [pages.yml.disabled](pages.yml.disabled) is a GitHub Pages workflow kept outside `.github/workflows/`, so GitHub never runs it. Pages hosting needs the lead's separate approval, after the repository is public. The sandbox lab proposal below is separate and does not require making its source public.
+The GitHub Pages workflow is [.github/workflows/pages.yml](../.github/workflows/pages.yml), enabled on 14 November 2026 with the lead's approval. It runs only by hand (workflow_dispatch) with the certified revision, and checks the assembled site before deploying it. The sandbox lab proposal below is separate and does not require making its source public.
 
 ## Sandbox lab proposal (12 November 2026; not deployed)
 

@@ -1,18 +1,7 @@
-# DISABLED. GitHub Pages deployment for the certified evidence page, owner console and the two video cuts.
-#
-# This file is deliberately outside .github/workflows/, so GitHub never runs it. Enabling it publishes the
-# site and needs the lead's separate approval (see hosting/README.md). To enable after approval:
-#   1. make the repository public (lead), and set Settings > Pages > Source to "GitHub Actions" (lead);
-#   2. git mv hosting/pages.yml.disabled .github/workflows/pages.yml in a reviewed commit;
-#   3. run it by hand (workflow_dispatch) with the certified revision; it has no push or schedule trigger.
-#
-# It serves the committed, certified bytes unchanged: nothing is built or edited here. It fails before
-# upload if the local routing/CSP check fails or the bytes differ from the certified evidence.
-#
-# The evidence page links to console/ and to video/bounded-mandate-short.mp4 and video/bounded-mandate-demo.mp4
-# relative to the site root, so the bundle must hold the console and both cuts. The cuts are committed under
-# evidence/<revision>/video/ before the bundle's SHA256SUMS is written, so the sums and `node verify.mjs` cover
-# the same files that are served here.
+# GitHub Pages deployment for the certified evidence page, owner console, the two certified cuts and the
+# presentation layer (overview and narrated pitch). Enabled on 14 November 2026 with the lead's approval.
+# It runs only by hand (workflow_dispatch) with the certified revision; it has no push or schedule trigger.
+
 name: pages
 
 on:
