@@ -58,6 +58,13 @@ describe("integration example: the independent strategy client", () => {
     expect(source).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
     expect(source.split("\n").length).toBeLessThan(200);
 
+    // The client's gas, prepaid at mainnet's minimum purchase price (1e9 yocto/gas), fits the agent key allowance the
+    // scripted template provisions; 300 TGas did not.
+    const gas = BigInt((/^const GAS = ([\d_]+)n;$/m.exec(source)?.[1] ?? "0").replaceAll("_", ""));
+    const template = JSON.parse(readFileSync(join(REPO_ROOT, "tools/src/live/manifest.example.json"), "utf8")) as { gas_tgas: { propose: number }; keys: { agent: { max_allowance_yocto: string } } };
+    expect(gas).toBe(BigInt(template.gas_tgas.propose) * 1_000_000_000_000n);
+    expect((gas + 5_000_000_000_000n) * 1_000_000_000n <= BigInt(template.keys.agent.max_allowance_yocto)).toBe(true);
+
     const pkg = json(`${CLIENT_DIR}/package.json`) as { private?: boolean; type?: string; dependencies?: Record<string, string>; devDependencies?: unknown };
     const tools = json("tools/package.json") as { dependencies: Record<string, string> };
     expect(pkg.private).toBe(true);

@@ -31,8 +31,9 @@ if (credential.account_id !== agentId) throw new Error(`the key file is for ${cr
 const provider = new JsonRpcProvider({ url: rpcUrl });
 const agent = new Account(agentId, provider, KeyPairSigner.fromSecretKey(credential.private_key));
 
-// propose_order pays for its oracle reads and the signing chain out of the attached gas, so attach the maximum.
-const GAS = 300_000_000_000_000n;
+// propose_order pays for its oracle reads and the signing chain out of the attached gas. 150 TGas is the live runner's
+// tested budget; more would not fit a provisioned agent key, whose allowance must prepay the gas at the purchase price.
+const GAS = 150_000_000_000_000n;
 const view = (method, args = {}) => provider.callFunction({ contractId: mandate, method, args, blockQuery: { finality: "optimistic" } });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const report = (observation, fields) => console.log(JSON.stringify({ observation, ...fields }));
