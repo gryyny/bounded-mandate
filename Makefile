@@ -1,8 +1,8 @@
-# Public targets: test, demo, quick, lab, example, page, live, challenge, verify. Everything else is an implementation detail.
+# Public targets: test, check, demo, quick, lab, example, page, live, challenge, verify. Everything else is an implementation detail.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := test
-.PHONY: test demo quick lab example page live challenge verify
+.PHONY: test test-rust test-ts check demo quick lab example page live challenge verify
 
 CONTRACT_CRATES := $(patsubst %/Cargo.toml,%,$(wildcard contract/Cargo.toml stubs/*/Cargo.toml baseline/*/Cargo.toml))
 NPM_CI := cd tools && npm ci --no-audit --no-fund --ignore-scripts
@@ -34,9 +34,9 @@ test:
 	cargo clippy -p bounded-mandate --all-targets --locked --features fault-injection -- -D warnings
 	$(call build_wasm)
 	$(TSX) src/checks/run.ts wasm
-	$(RUN_ID) cargo test --workspace --locked
-	$(RUN_ID) cargo test -p bounded-mandate --lib --locked --features fault-injection
-	cd tools && npm run lint && npm run typecheck && npm run build && $(RUN_ID) npm test
+	cd tools && npm run lint && npm run typecheck && npm run build
+	# The Rust and TypeScript suites run at the same time; each starts its own sandboxes.
+	$(RUN_ID) $(MAKE) --no-print-directory -j2 test-rust test-ts
 	$(TSX) src/release/main.ts links
 	$(TSX) src/release/main.ts secrets
 	$(TSX) src/release/main.ts licenses
@@ -44,6 +44,25 @@ test:
 	node verify.mjs --no-checkout --rules bundle
 	$(TSX) src/checks/gates.ts
 	$(TSX) src/checks/acceptance.ts
+
+# With cargo-nextest installed every Rust test runs in its own process, in parallel (the workspace has no doctests);
+# without it, cargo test runs the test binaries one after another and is several times slower.
+test-rust:
+	if cargo nextest --version >/dev/null 2>&1; then cargo nextest run --workspace --locked --no-fail-fast --status-level fail --final-status-level slow; else cargo test --workspace --locked; fi
+	cargo test -p bounded-mandate --lib --locked --features fault-injection
+
+test-ts:
+	cd tools && npm test
+
+# Fast checks while editing (about a minute): formatting, lint, types, the contract's unit tests and the TypeScript tests
+# that need no sandbox or browser. Not an acceptance run; make test is.
+QUICK_TS_EXCLUDE := live-sandbox live-handoff live-challenge lab-workflow lab-isolation lab-page lab-alternatives console-wallet-sandbox console-access-controls console-browser-sandbox verify-mainnet attacks-boundary example filler-sandbox model-gate checks-acceptance page-layout
+check:
+	$(NPM_CI)
+	cargo fmt --all --check
+	cd tools && npm run lint && npm run typecheck
+	cargo test -p bounded-mandate --lib --locked
+	cd tools && npx --no-install vitest run $(foreach t,$(QUICK_TS_EXCLUDE),--exclude test/$(t).test.ts)
 
 demo:
 	$(NPM_CI)

@@ -143,10 +143,13 @@ It is not a mainnet result and is not bound to an acceptance run; its acceptance
 
 `make test` records a run id, clears earlier results and ends with `tools/src/checks/acceptance.ts`. That step writes `out/evidence/acceptance.json` and fails unless every required case of every gate passed in this run, bound to the revision and the spec, fixture and WASM hashes. A run from a tree with uncommitted changes is never certified. Demo checks are story checks, not acceptance results.
 
+While editing, `make check` (about a minute) runs formatting, lint, types, the contract's unit tests and the TypeScript tests that need no sandbox or browser. It is not an acceptance run.
+
 ## Platform needs
 
 - Rust via rustup; the toolchain (1.97.1, with the `wasm32-unknown-unknown` target) is pinned in `rust-toolchain.toml` and installs on first use.
 - `cargo-near` 0.22.0: `cargo install cargo-near --version 0.22.0 --locked`. On Linux install `libudev-dev` and `pkg-config` first.
+- Optional, recommended: `cargo-nextest` (`cargo install cargo-nextest --locked`). `make test` then runs every Rust test in its own process in parallel, alongside the TypeScript suite; without it, `cargo test` runs the test binaries one after another and the gate takes several times longer.
 - Node.js 24 and npm.
 - Network access on the first run: crates, npm packages, the NEAR sandbox binary and Playwright's pinned headless Chromium, which both targets download once and reuse. No funds, model key or private repository access.
 - On Linux, Chromium's system libraries once: `cd tools && npm ci --ignore-scripts && npx --no-install playwright install --with-deps chromium` (as in CI; installing system packages needs root). This applies to `make quick` as well as `make test` and `make demo`.
