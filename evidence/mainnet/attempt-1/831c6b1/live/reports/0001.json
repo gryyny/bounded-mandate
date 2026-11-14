@@ -1,0 +1,1562 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-14T14:47:53.704Z",
+  "mode": "mainnet",
+  "source": {
+    "product_commit": "831c6b1e6734779ec16169401b5718c02083a68d",
+    "dirty": false,
+    "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+    "spec_commit": "3cd0c6bf341897b0b10016f4e5ede82b0232a64d",
+    "contract_wasm_sha256": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "fixtures": {
+      "deploy/bounded_mandate-163ccfa-reproducible.wasm": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+      "model/injection.json": "4695a317476d74b6bef1ea04f67b7cc411a51b18b0261c427a9290d487561b4c",
+      "model/normal.json": "8b7571e37cc7cd25604fdbb402aa3a21246541cab9218a1523fad5acd79f8094",
+      "prebuilt/mock_ft.wasm": "20602d14448eb476c8c67c8a5d3078fe3b7847d57373aad4d9989cc538563b89",
+      "prebuilt/mock_mpc.wasm": "ada6f78437be156625696480b4a209a9d8d92b8931791a10712bed7b22dd5694",
+      "prebuilt/mock_oracle.wasm": "672e95e0e5c6daaa31b62a77e86c7c7e48f375469339ada758ebc71773ecfa8c",
+      "prebuilt/provenance.json": "134c722a5aacfb3f863a6eb3c41820c868a7c6142cbde53314762f5b7f826a0b",
+      "signer/v1-signer-eddsa-sign.json": "f68890e8eb21c0eb98d1da08d089b3e6f4e9d681f99fb0b2fbbdbfe998e835e4",
+      "signer/v1-signer-eddsa-sign.provenance.json": "eeef5a1ac5cae07aceb54da5834fa2bbb719b5c22ad7766b236c2e462248fe40",
+      "sputnik/sputnikdao2-2.3.1.provenance.json": "6f34318f2f678821a60a10ac44221799d802f95aea330f9ed1b3d4aba2100a7d",
+      "sputnik/sputnikdao2-2.3.1.wasm": "bf6f951ee5e45968e3367fa857bebf8bc80badec183998c2239c487237e0d7f6",
+      "vectors/nep413.json": "9608d19d0f6544d7c8ed7ab6f084161dc65faa538ab3beed8fb42dca89ed1e70",
+      "vectors/oracle.json": "245c251319d2861eb70bd32bda466d941e87cf19dc425bacdf1a890b53f14218",
+      "verifier/defuse-0.4.5.wasm": "a1afab98916d9f213746544dcf8e4e6bdb22c0be6bc5dfbd8ea8814c9922b547",
+      "wallets/near-connect.json": "187b32d729deae3b8ef5c5a3b3dd59720bbaf9d0d23510984b4629222e56aece"
+    },
+    "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8"
+  },
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "darwin-arm64",
+    "near-api-js": "7.3.1",
+    "near-sandbox (npm)": "0.3.4",
+    "rpc_url": "https://free.rpc.fastnear.com",
+    "chain_id": "mainnet",
+    "manifest_sha256": "a79870a8b8f4bd8c9a8f19051abfd1f56d5413c1706e3b936cf05c933fd6447e",
+    "manifest_steps": "check,grant,refused_proposal,propose,fill,settle,propose,withhold,revoke,relay_withheld,recover,recover,check",
+    "ledger": "/private/tmp/claude-501/-Users-gryyny--claude-spares-spare-3z8IjB/8548ea3a-c903-4151-bb65-4c0bcbf1e434/scratchpad/fresh-831c6b1e6734779ec16169401b5718c02083a68d/out/live/a79870a8b8f4bd8c9a8f19051abfd1f56d5413c1706e3b936cf05c933fd6447e"
+  },
+  "command": "MANDATE_LIVE=1 make live",
+  "identifiers": {
+    "mandate": "mandate.bmandate.near",
+    "owner": "bmandate.near",
+    "agent": "agent.bmandate.near",
+    "filler": "filler.bmandate.near",
+    "verifier": "intents.near",
+    "signer": "v1.signer",
+    "oracle": "aggregate-oracle.near",
+    "mandate_code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "approval": "gryyny (repository owner): runner approval B, 2026-11-14, by manifest sha256"
+  },
+  "receipts": [
+    {
+      "label": "step 2 grant",
+      "tx_hash": "J5AfTLyo3yLeZVfvziiGV8q6Y8GUNdxWWwsjoWTsqiV1",
+      "block_height": 224528579,
+      "outcome": "success",
+      "detail": {
+        "signer_id": "bmandate.near",
+        "receiver_id": "mandate.bmandate.near",
+        "method": "grant",
+        "submitted": true,
+        "ambiguous": false,
+        "final": true,
+        "any_receipt_failed": false,
+        "fee_yocto": "2647908511894400000000",
+        "deposit_yocto": "0",
+        "events": [
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "grant_requested",
+            "data": {
+              "epoch": 1,
+              "path": "mandate/v1/1",
+              "policy": {
+                "per_order_cap_bps": 2000,
+                "outstanding_cap_bps": 2000,
+                "max_concession_bps": 50,
+                "oracle_max_age_sec": 120,
+                "max_confidence_bps": 50,
+                "breaker_drawdown_bps": 200,
+                "turnover_cap_bps": 10000,
+                "order_ttl_sec": 120,
+                "min_remaining_sec": 15,
+                "max_pricing_delay_sec": 30,
+                "proposal_charge_bps": 1000
+              }
+            }
+          },
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "grant_key_registering",
+            "data": {
+              "epoch": 1,
+              "public_key": "ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn",
+              "initial_reference": {
+                "usdc": {
+                  "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+                  "price": "99990908",
+                  "conf": "62425",
+                  "expo": -8,
+                  "publish_time_sec": "1794667620"
+                },
+                "wnear": {
+                  "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+                  "price": "324369177",
+                  "conf": "230823",
+                  "expo": -8,
+                  "publish_time_sec": "1794667620"
+                },
+                "observed_at_ns": "1794667635055297263"
+              },
+              "initial_value": "5323914577000"
+            }
+          },
+          {
+            "emitter": "intents.near",
+            "event": "public_key_added",
+            "data": {
+              "account_id": "mandate.bmandate.near",
+              "public_key": "ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn"
+            }
+          },
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "grant_activated",
+            "data": {
+              "epoch": 1,
+              "public_key": "ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn"
+            }
+          }
+        ],
+        "receipts": [
+          {
+            "id": "J5AfTLyo3yLeZVfvziiGV8q6Y8GUNdxWWwsjoWTsqiV1",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "8bkWJQRCiSqKizWbLZoruVCn91f4gEjyjZCm6qogitu6",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "3j3k1i4mtqWYgKLWRB6nTvwWuBpVspRnW95VwCsgku3o",
+            "executor_id": "v1.signer",
+            "success": true
+          },
+          {
+            "id": "5T6ThoUArK6UupLSPGSAatUn6WqTSLQpo8EJ9u34RHf6",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "EbQR2DzLxpKRtk74vssBgj5hYazhXnnWs4pwKfmURz95",
+            "executor_id": "aggregate-oracle.near",
+            "success": true
+          },
+          {
+            "id": "FpW9WgfqkYFS1xFdhbRoYSjAJdLkqcLdETmRGQCqhYRP",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "3WczWwP4NHvfTXSXzkjSduKciKdV9PhnYES6eoi6aqzx",
+            "executor_id": "aggregate-oracle.near",
+            "success": true
+          },
+          {
+            "id": "Fki1QJt8gqnSQXQ5bJjAuyVRj9Cxy9GN7D5bXSQRnkBe",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "E2EUpH5hZi99UCquLfxSizCzssJZgbRfzQ8mJdbR55to",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "5hHvBJGW6oUM5sRmjxBdQgnXNrkon1stezaeb9Fegy79",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "9LQQwd6JjzQUWtq1mD5tcDCmqNFSko6oesYgV1eg4ygU",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "6PdxYu8kDXNok6DQQ5QWUxJuMJeYoQzxQ6SQJXhG9bzJ",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "7mMpq1S8yzc7c929q6YcZzdaAkNe4RErnw24QXXvFpv",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "F2sbdmGjXiy8u24uaZHePmZvJVhsyBy3tKaP9j4m1hhf",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "HbXMxwA5kJrEQitXifCfYziGRZJ4BV959RtzUZN2sFFd",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "12ipvTD2S7RUVYca8sBB9kgNPmTm9MvfgWtas8jpZYMq",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "F7w9Bsfq4D5ZpPxF3J7trWFdXvUDt9Rs18SqFy1vGVVK",
+            "executor_id": "bmandate.near",
+            "success": true
+          }
+        ],
+        "step": 2
+      }
+    },
+    {
+      "label": "step 3 refused_proposal",
+      "tx_hash": "496e3Aj2mTk3qHkYxRBUnZbPkFnswjr9Jkun1m4at717",
+      "block_height": 224528591,
+      "outcome": "failure",
+      "detail": {
+        "signer_id": "agent.bmandate.near",
+        "receiver_id": "mandate.bmandate.near",
+        "method": "propose_order",
+        "submitted": true,
+        "ambiguous": false,
+        "final": true,
+        "any_receipt_failed": true,
+        "fee_yocto": "170003232667700000000",
+        "deposit_yocto": "0",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: concession above policy maximum\"}}}}",
+        "events": [],
+        "receipts": [
+          {
+            "id": "496e3Aj2mTk3qHkYxRBUnZbPkFnswjr9Jkun1m4at717",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "AvDfYHPE5hPohfTbMjJguBpmCEegKZ9AeRJ43NYZ4EBA",
+            "executor_id": "mandate.bmandate.near",
+            "success": false,
+            "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: concession above policy maximum\"}}}}"
+          },
+          {
+            "id": "5XRJhQDHB67pXHNw4cQvx2EtV2BLp6nG2Uu4JHRXbGn",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          }
+        ],
+        "step": 3,
+        "source": "manifest",
+        "expected_error": "concession above policy maximum"
+      }
+    },
+    {
+      "label": "step 4 propose",
+      "tx_hash": "5dfJS1YNYkwVfRhCvUzaoBSDviGsdj1DasUY6RgpNbUF",
+      "block_height": 224528598,
+      "outcome": "success",
+      "detail": {
+        "signer_id": "agent.bmandate.near",
+        "receiver_id": "mandate.bmandate.near",
+        "method": "propose_order",
+        "submitted": true,
+        "ambiguous": false,
+        "final": true,
+        "any_receipt_failed": false,
+        "fee_yocto": "3061811654098300000000",
+        "deposit_yocto": "0",
+        "events": [
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_proposed",
+            "data": {
+              "order": {
+                "id": "0",
+                "epoch": 1,
+                "sell": "usdc",
+                "sell_amount": "1000000",
+                "buy": "wnear",
+                "buy_amount": null,
+                "concession_bps": 30,
+                "reserved_value": "999909080000",
+                "deadline_ns": null,
+                "reference": null,
+                "payload": null,
+                "payload_hash": null,
+                "signature": null,
+                "state": {
+                  "state": "pricing"
+                },
+                "created_at_ns": "1794667644449246685",
+                "sign_requested_at_ns": null,
+                "signed_at_ns": null
+              }
+            }
+          },
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_sign_requested",
+            "data": {
+              "order": {
+                "id": "0",
+                "epoch": 1,
+                "sell": "usdc",
+                "sell_amount": "1000000",
+                "buy": "wnear",
+                "buy_amount": "307337880245014772164990",
+                "concession_bps": 30,
+                "reserved_value": "999909080000",
+                "deadline_ns": "1794667740000000000",
+                "reference": {
+                  "usdc": {
+                    "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+                    "price": "99990908",
+                    "conf": "62425",
+                    "expo": -8,
+                    "publish_time_sec": "1794667620"
+                  },
+                  "wnear": {
+                    "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+                    "price": "324369177",
+                    "conf": "230823",
+                    "expo": -8,
+                    "publish_time_sec": "1794667620"
+                  },
+                  "observed_at_ns": "1794667645486519546"
+                },
+                "payload": {
+                  "message": "{\"signer_id\":\"mandate.bmandate.near\",\"deadline\":\"2026-11-14T14:49:00Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"-1000000\",\"nep141:wrap.near\":\"307337880245014772164990\"}}]}",
+                  "nonce": "Vij2xgAlKBKzAJiNDM3w5xiaCOV1JgjYyuH7b1Htmwo=",
+                  "recipient": "intents.near"
+                },
+                "payload_hash": "214da6a81e2ff18cbab4eb72145904a73aa3718d1f22102106eb845a6ed298ce",
+                "signature": null,
+                "state": {
+                  "state": "signing"
+                },
+                "created_at_ns": "1794667644449246685",
+                "sign_requested_at_ns": "1794667645486519546",
+                "signed_at_ns": null
+              }
+            }
+          },
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_signed",
+            "data": {
+              "order_id": "0",
+              "epoch": 1,
+              "signature": "ed25519:2QrrgntyC2Y3tq6e5GxHTqc9MskqqKqLk45jazmbVmAbqVM6DkvBGjStDfzDAFoEChEthRs9sbBk4Bn3QnbBT6Rt",
+              "multi_payload": "{\"standard\":\"nep413\",\"payload\":{\"message\":\"{\\\"signer_id\\\":\\\"mandate.bmandate.near\\\",\\\"deadline\\\":\\\"2026-11-14T14:49:00Z\\\",\\\"intents\\\":[{\\\"intent\\\":\\\"token_diff\\\",\\\"diff\\\":{\\\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\\\":\\\"-1000000\\\",\\\"nep141:wrap.near\\\":\\\"307337880245014772164990\\\"}}]}\",\"nonce\":\"Vij2xgAlKBKzAJiNDM3w5xiaCOV1JgjYyuH7b1Htmwo=\",\"recipient\":\"intents.near\"},\"public_key\":\"ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn\",\"signature\":\"ed25519:2QrrgntyC2Y3tq6e5GxHTqc9MskqqKqLk45jazmbVmAbqVM6DkvBGjStDfzDAFoEChEthRs9sbBk4Bn3QnbBT6Rt\"}"
+            }
+          }
+        ],
+        "receipts": [
+          {
+            "id": "5dfJS1YNYkwVfRhCvUzaoBSDviGsdj1DasUY6RgpNbUF",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "H7dHCA84DqbiMQeKvQftCbh6jgtrrq2bXhNy2jnmaoTQ",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "6FmvL1yotkhn2SquyFg9a6zCN1uCbXzPhCQyQT2zR5Bf",
+            "executor_id": "aggregate-oracle.near",
+            "success": true
+          },
+          {
+            "id": "DQ7BarcwbEYV752tVMWhhGsQJayKzR9nd4Jn3XFJY6gL",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "Hf5Dm4ZVZhJERLctVuDbRSvJChspPTcFzF8PEDcpEK6p",
+            "executor_id": "aggregate-oracle.near",
+            "success": true
+          },
+          {
+            "id": "23jcaaPdjP12T62V2nxAgtiwC8oGQeteH9PthirK3k13",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "8EHDcjixJkhvnaG6MQDcz26BF7mTUfpcRSug6UKW4HAf",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "3C1BdFuEATpNwWdySVR7A8XihqdRWgT71xEjBqiVvueb",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "E98xcZiRHjaEESEHhW1ivPEYxzUhSP3fQV4o3h6Bm9Lo",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "3w1Au9PcmpozHggRcrhQJo7iXN6fK8pTkZzo8wtBoQkJ",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "CmSFWwkHAM9gf6gqY2Pmg6GUK2jBUbHqWZUPnaohxvL8",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "BxT9AuzgmUP1ULxc695HrgiUZMCJZfxKefEb5sNDV8UT",
+            "executor_id": "v1.signer",
+            "success": true
+          },
+          {
+            "id": "4hcPmVXXE8GJgdw45ssNLsAEUMhxVkexoehFyT9So8Qb",
+            "executor_id": "v1.signer",
+            "success": true
+          },
+          {
+            "id": "VzNfYMbjPCpgonK8sNr8Ve5KM1VPHpVMUqn4vGEzM7N",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "58K9PvLhbRo5T15Vzr9P6FCqKmUyaFoRurnatBnsMvKe",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "GTzDNheMEc3CvkPvDxS5BYa5khQKUT41c69N6b2Tf8Mf",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "42WPnhYrvJoYMk7y1riyJX7tt9aR7PFNGBbZyKheGcQn",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "6QeBPAyiTJj1rTfkUtNPJU3mPSgs7fpzuFuAr7vigDnz",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "TSJo1vbtsje9FLLif4wxmBqoWqw4Nv3ZsWgSS26WfEM",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          }
+        ],
+        "step": 4,
+        "source": "manifest"
+      }
+    },
+    {
+      "label": "step 5 fill",
+      "tx_hash": "9bBhQFEwN5TjugzFLKwPfXfthixp2F26649BWFSGyn9e",
+      "block_height": 224528618,
+      "outcome": "success",
+      "detail": {
+        "signer_id": "filler.bmandate.near",
+        "receiver_id": "intents.near",
+        "method": "execute_intents",
+        "submitted": true,
+        "ambiguous": false,
+        "final": true,
+        "any_receipt_failed": false,
+        "fee_yocto": "857591647376000000000",
+        "deposit_yocto": "0",
+        "events": [
+          {
+            "emitter": "intents.near",
+            "event": "token_diff",
+            "data": [
+              {
+                "intent_hash": "3F18UqwDxpEFXnzotuMGgkB58RC1rhhQ8PgZhmCn2cv9",
+                "account_id": "mandate.bmandate.near",
+                "diff": {
+                  "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": "-1000000",
+                  "nep141:wrap.near": "307337880245014772164990"
+                },
+                "fees_collected": {
+                  "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": "1"
+                }
+              }
+            ]
+          },
+          {
+            "emitter": "intents.near",
+            "event": "token_diff",
+            "data": [
+              {
+                "intent_hash": "8Q84useiphg5LTPCTyZC6J1HnnbXJUvHLHQh1V3evsvY",
+                "account_id": "filler.bmandate.near",
+                "diff": {
+                  "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": "999999",
+                  "nep141:wrap.near": "-307338187583202355367346"
+                },
+                "fees_collected": {
+                  "nep141:wrap.near": "307338187583202356"
+                }
+              }
+            ]
+          },
+          {
+            "emitter": "intents.near",
+            "event": "intents_executed",
+            "data": [
+              {
+                "intent_hash": "3F18UqwDxpEFXnzotuMGgkB58RC1rhhQ8PgZhmCn2cv9",
+                "account_id": "mandate.bmandate.near",
+                "nonce": "Vij2xgAlKBKzAJiNDM3w5xiaCOV1JgjYyuH7b1Htmwo="
+              },
+              {
+                "intent_hash": "8Q84useiphg5LTPCTyZC6J1HnnbXJUvHLHQh1V3evsvY",
+                "account_id": "filler.bmandate.near",
+                "nonce": "Vij2xgAlKBKzgC04QtTw5xjPL2y/042sMgzu6iA2aUw="
+              }
+            ]
+          },
+          {
+            "emitter": "intents.near",
+            "event": "mt_transfer",
+            "data": [
+              {
+                "old_owner_id": "mandate.bmandate.near",
+                "new_owner_id": "7066024d3f20f94de601c003163367873cca78507eeca4df66d9be645f197f05",
+                "token_ids": [
+                  "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+                ],
+                "amounts": [
+                  "1"
+                ]
+              },
+              {
+                "old_owner_id": "mandate.bmandate.near",
+                "new_owner_id": "filler.bmandate.near",
+                "token_ids": [
+                  "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+                ],
+                "amounts": [
+                  "999999"
+                ]
+              },
+              {
+                "old_owner_id": "filler.bmandate.near",
+                "new_owner_id": "mandate.bmandate.near",
+                "token_ids": [
+                  "nep141:wrap.near"
+                ],
+                "amounts": [
+                  "307337880245014772164990"
+                ]
+              },
+              {
+                "old_owner_id": "filler.bmandate.near",
+                "new_owner_id": "7066024d3f20f94de601c003163367873cca78507eeca4df66d9be645f197f05",
+                "token_ids": [
+                  "nep141:wrap.near"
+                ],
+                "amounts": [
+                  "307338187583202356"
+                ]
+              }
+            ]
+          }
+        ],
+        "receipts": [
+          {
+            "id": "9bBhQFEwN5TjugzFLKwPfXfthixp2F26649BWFSGyn9e",
+            "executor_id": "filler.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "3EkMXoSz5Sr67b995z3gu8w9F7KjE9WDWo15qgmKeZeL",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "GfdRqk1LwiCNby5QiTPidePBiYCf9HwWZhD6tnTMb7BQ",
+            "executor_id": "filler.bmandate.near",
+            "success": true
+          }
+        ],
+        "step": 5,
+        "order_id": "0",
+        "preexisting": false,
+        "counter_diff": {
+          "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": "999999",
+          "nep141:wrap.near": "-307338187583202355367346"
+        }
+      }
+    },
+    {
+      "label": "step 6 settle",
+      "tx_hash": "AJNdZGV4ZNgnhtBbnTDjjngznYZ87bVo1Fhbe7C33ukw",
+      "block_height": 224528626,
+      "outcome": "success",
+      "detail": {
+        "signer_id": "bmandate.near",
+        "receiver_id": "mandate.bmandate.near",
+        "method": "settle_order",
+        "submitted": true,
+        "ambiguous": false,
+        "final": true,
+        "any_receipt_failed": false,
+        "fee_yocto": "728374935889800000000",
+        "deposit_yocto": "0",
+        "events": [
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_released",
+            "data": {
+              "order_id": "0",
+              "epoch": 1,
+              "reason": "settled",
+              "reserved_value": "999909080000"
+            }
+          }
+        ],
+        "receipts": [
+          {
+            "id": "AJNdZGV4ZNgnhtBbnTDjjngznYZ87bVo1Fhbe7C33ukw",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "3ncun3kTVghgehfVWNkVXW837Sfa6xu7hXvbA2snW1bc",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "dkskpCzwHV9ku6RspwpxCqktwKhFuEimH7ANdMQbEUn",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "4uPLANdSoawamUZ3SupiXecsf1fD8y5PcVoVJcWuSxfD",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "432aRZu936b4jjDTPgV8igie4nQ3k5G7BnRwBNqfNyTa",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "CgvQ8VAE9eQStmP9mFVK6WukY9WSwcNdMsHywLfSPRd",
+            "executor_id": "bmandate.near",
+            "success": true
+          },
+          {
+            "id": "GbM5D58eHPu3Ys6d9bsbofu2dNsmGKWzzdgX2kQTyqwg",
+            "executor_id": "bmandate.near",
+            "success": true
+          }
+        ],
+        "step": 6,
+        "order_id": "0"
+      }
+    },
+    {
+      "label": "step 7 propose",
+      "tx_hash": "52mirZFQ41a7HBrPD9Dfh6tyjPMgqsbgNTRewUsYcHHj",
+      "block_height": 224528636,
+      "outcome": "success",
+      "detail": {
+        "signer_id": "agent.bmandate.near",
+        "receiver_id": "mandate.bmandate.near",
+        "method": "propose_order",
+        "submitted": true,
+        "ambiguous": false,
+        "final": true,
+        "any_receipt_failed": false,
+        "fee_yocto": "3063742474327900000000",
+        "deposit_yocto": "0",
+        "events": [
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_proposed",
+            "data": {
+              "order": {
+                "id": "1",
+                "epoch": 1,
+                "sell": "usdc",
+                "sell_amount": "500000",
+                "buy": "wnear",
+                "buy_amount": null,
+                "concession_bps": 30,
+                "reserved_value": "499954540000",
+                "deadline_ns": null,
+                "reference": null,
+                "payload": null,
+                "payload_hash": null,
+                "signature": null,
+                "state": {
+                  "state": "pricing"
+                },
+                "created_at_ns": "1794667665182264729",
+                "sign_requested_at_ns": null,
+                "signed_at_ns": null
+              }
+            }
+          },
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_sign_requested",
+            "data": {
+              "order": {
+                "id": "1",
+                "epoch": 1,
+                "sell": "usdc",
+                "sell_amount": "500000",
+                "buy": "wnear",
+                "buy_amount": "153770250946270611434941",
+                "concession_bps": 30,
+                "reserved_value": "499959360000",
+                "deadline_ns": "1794667758000000000",
+                "reference": {
+                  "usdc": {
+                    "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+                    "price": "99991872",
+                    "conf": "61461",
+                    "expo": -8,
+                    "publish_time_sec": "1794667638"
+                  },
+                  "wnear": {
+                    "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+                    "price": "324158593",
+                    "conf": "296407",
+                    "expo": -8,
+                    "publish_time_sec": "1794667638"
+                  },
+                  "observed_at_ns": "1794667666259239296"
+                },
+                "payload": {
+                  "message": "{\"signer_id\":\"mandate.bmandate.near\",\"deadline\":\"2026-11-14T14:49:18Z\",\"intents\":[{\"intent\":\"token_diff\",\"diff\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"-500000\",\"nep141:wrap.near\":\"153770250946270611434941\"}}]}",
+                  "nonce": "Vij2xgAlKBKzAMxvPdHw5xjrANc6wig3Pnc7AEtg3fs=",
+                  "recipient": "intents.near"
+                },
+                "payload_hash": "f0c180a01a66ddba7897cd2812ed1c2adaf8f3fc4bdccf29f42d587eed68ebf0",
+                "signature": null,
+                "state": {
+                  "state": "signing"
+                },
+                "created_at_ns": "1794667665182264729",
+                "sign_requested_at_ns": "1794667666259239296",
+                "signed_at_ns": null
+              }
+            }
+          },
+          {
+            "emitter": "mandate.bmandate.near",
+            "event": "order_signed",
+            "data": {
+              "order_id": "1",
+              "epoch": 1,
+              "signature": "ed25519:5jzXRjpBnT4Q5Bqgdg5cr6iNahMXYzuGU16WfniFzroFu6BpJizA3N1es63yZZVXenViDaJSibRhY3g63QGYD1ck",
+              "multi_payload": "{\"standard\":\"nep413\",\"payload\":{\"message\":\"{\\\"signer_id\\\":\\\"mandate.bmandate.near\\\",\\\"deadline\\\":\\\"2026-11-14T14:49:18Z\\\",\\\"intents\\\":[{\\\"intent\\\":\\\"token_diff\\\",\\\"diff\\\":{\\\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\\\":\\\"-500000\\\",\\\"nep141:wrap.near\\\":\\\"153770250946270611434941\\\"}}]}\",\"nonce\":\"Vij2xgAlKBKzAMxvPdHw5xjrANc6wig3Pnc7AEtg3fs=\",\"recipient\":\"intents.near\"},\"public_key\":\"ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn\",\"signature\":\"ed25519:5jzXRjpBnT4Q5Bqgdg5cr6iNahMXYzuGU16WfniFzroFu6BpJizA3N1es63yZZVXenViDaJSibRhY3g63QGYD1ck\"}"
+            }
+          }
+        ],
+        "receipts": [
+          {
+            "id": "52mirZFQ41a7HBrPD9Dfh6tyjPMgqsbgNTRewUsYcHHj",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "HtoeU141Wghc7rjnXEbFdDyfv7QMW1CUmb2nj5mQoD4i",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "73at16YuSDYJE6UZRCG44NkoMk7eWCWPyCYvoqS4x5j7",
+            "executor_id": "aggregate-oracle.near",
+            "success": true
+          },
+          {
+            "id": "AniNYbR7pQw5YSNCoEmKC2rtcdbVm4WQAwUeDmHLAt9o",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "7JLaBSG8WgiA5n8aBG7Sxku4JBmDa5BpGrdc5yKV2PvL",
+            "executor_id": "aggregate-oracle.near",
+            "success": true
+          },
+          {
+            "id": "EePLykSKMhknKtDBGf2jocxgdtLNKRK1wxHgPjJR5VLL",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "EWirdLdvmHYqUCmWbTTzBLrsmqXx1rjKMue8Yv9Xq1BZ",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "9ThANE6oxgf1BxQcNcmqfJEEVsv7ZLWjXoWpcaKVnoKr",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "G2X8BPHmw3mwgyq8Gr6aSuY3F45ezDgFyc3qhVF2at3e",
+            "executor_id": "intents.near",
+            "success": true
+          },
+          {
+            "id": "FVZ6KANcfi9oTLLMktkKRAmHqBB8WydJyxnyFgo2t9jH",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "Hy1yeCSnNrFZ1VmDj22VvBCC6y7BdMMbhdkUC6uUu5uc",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "2Qtvy9kPSkygTGKYCMdBWexCw46uiHLb2BJQXhaTrNbR",
+            "executor_id": "v1.signer",
+            "success": true
+          },
+          {
+            "id": "zpG66sY1NbPeqLyZRNsYssc6S9nMRqk1uFHcSheE49o",
+            "executor_id": "v1.signer",
+            "success": true
+          },
+          {
+            "id": "DrN824ABtbsij5sm8ZJejrSDETQFYGkcWwkP4ZLp8zuQ",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "35hNzUyTdGmkHwraeP4uBRS3ZuripEsxKwLXiEvgR2o9",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "7LB4Rmdv1uad3J2A6rtXWgVSVtdA3q57XS6F6qEXszot",
+            "executor_id": "mandate.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "FkrMpXuaj3dZ3p4urSUxcX157xTkvt9ZKm5yCiquWNvF",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "HpNRvkbysoXu6bBxGHczqqJDqGiCV8e9VQ3DkU4y3KKC",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          },
+          {
+            "id": "5A8F4kj6CskPmTZ9QZE1WCy8Ki5hqyMxfcLAJrg8GGQd",
+            "executor_id": "agent.bmandate.near",
+            "success": true
+          }
+        ],
+        "step": 7,
+        "source": "manifest"
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "id": "preflight-network.chain_id",
+      "gate": "LIVE",
+      "description": "preflight network.chain_id",
+      "passed": true,
+      "observed": {
+        "chain": "mainnet",
+        "manifest": "mainnet"
+      }
+    },
+    {
+      "id": "preflight-network.genesis_hash",
+      "gate": "LIVE",
+      "description": "preflight network.genesis_hash",
+      "passed": true,
+      "observed": {
+        "chain": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
+        "manifest": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H"
+      }
+    },
+    {
+      "id": "preflight-code_hash.mandate",
+      "gate": "LIVE",
+      "description": "preflight code_hash.mandate",
+      "passed": true,
+      "observed": {
+        "account": "mandate.bmandate.near",
+        "chain": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+        "manifest": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV"
+      }
+    },
+    {
+      "id": "preflight-code_hash.verifier",
+      "gate": "LIVE",
+      "description": "preflight code_hash.verifier",
+      "passed": true,
+      "observed": {
+        "account": "intents.near",
+        "chain": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
+        "manifest": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk"
+      }
+    },
+    {
+      "id": "preflight-code_hash.signer",
+      "gate": "LIVE",
+      "description": "preflight code_hash.signer",
+      "passed": true,
+      "observed": {
+        "account": "v1.signer",
+        "chain": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
+        "manifest": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ"
+      }
+    },
+    {
+      "id": "preflight-code_hash.oracle",
+      "gate": "LIVE",
+      "description": "preflight code_hash.oracle",
+      "passed": true,
+      "observed": {
+        "account": "aggregate-oracle.near",
+        "chain": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+        "manifest": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg"
+      }
+    },
+    {
+      "id": "preflight-code_hash.usdc",
+      "gate": "LIVE",
+      "description": "preflight code_hash.usdc",
+      "passed": true,
+      "observed": {
+        "account": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "chain": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+        "manifest": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q"
+      }
+    },
+    {
+      "id": "preflight-code_hash.wnear",
+      "gate": "LIVE",
+      "description": "preflight code_hash.wnear",
+      "passed": true,
+      "observed": {
+        "account": "wrap.near",
+        "chain": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1",
+        "manifest": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
+      }
+    },
+    {
+      "id": "preflight-version.verifier",
+      "gate": "LIVE",
+      "description": "preflight version.verifier",
+      "passed": true,
+      "observed": {
+        "chain": "0.4.5",
+        "manifest": "0.4.5"
+      }
+    },
+    {
+      "id": "preflight-version.signer",
+      "gate": "LIVE",
+      "description": "preflight version.signer",
+      "passed": true,
+      "observed": {
+        "chain": "3.18.0",
+        "manifest": "3.18.0"
+      }
+    },
+    {
+      "id": "preflight-version.oracle",
+      "gate": "LIVE",
+      "description": "preflight version.oracle",
+      "passed": true,
+      "observed": {
+        "chain": "0.4.1",
+        "manifest": "0.4.1"
+      }
+    },
+    {
+      "id": "preflight-verifier.fee_pips",
+      "gate": "LIVE",
+      "description": "preflight verifier.fee_pips",
+      "passed": true,
+      "observed": {
+        "chain": "1",
+        "manifest": 1
+      }
+    },
+    {
+      "id": "preflight-mandate.config",
+      "gate": "LIVE",
+      "description": "preflight mandate.config",
+      "passed": true,
+      "observed": {
+        "chain": {
+          "owner_id": "bmandate.near",
+          "agent_id": "agent.bmandate.near",
+          "verifier_id": "intents.near",
+          "signer_id": "v1.signer",
+          "oracle_id": "aggregate-oracle.near",
+          "usdc": {
+            "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "decimals": 6,
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+          },
+          "wnear": {
+            "token": "wrap.near",
+            "decimals": 24,
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750"
+          }
+        },
+        "manifest": {
+          "owner_id": "bmandate.near",
+          "agent_id": "agent.bmandate.near",
+          "verifier_id": "intents.near",
+          "signer_id": "v1.signer",
+          "oracle_id": "aggregate-oracle.near",
+          "usdc": {
+            "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "decimals": 6,
+            "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+          },
+          "wnear": {
+            "token": "wrap.near",
+            "decimals": 24,
+            "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750"
+          }
+        }
+      }
+    },
+    {
+      "id": "preflight-mandate.config.accounts",
+      "gate": "LIVE",
+      "description": "preflight mandate.config.accounts",
+      "passed": true,
+      "observed": {
+        "config_roles": [
+          "bmandate.near",
+          "agent.bmandate.near",
+          "intents.near",
+          "v1.signer",
+          "aggregate-oracle.near"
+        ]
+      }
+    },
+    {
+      "id": "preflight-mandate.exports.grant",
+      "gate": "LIVE",
+      "description": "preflight mandate.exports.grant",
+      "passed": true,
+      "observed": {
+        "method": "grant",
+        "present": true
+      }
+    },
+    {
+      "id": "preflight-mandate.exports.propose_order",
+      "gate": "LIVE",
+      "description": "preflight mandate.exports.propose_order",
+      "passed": true,
+      "observed": {
+        "method": "propose_order",
+        "present": true
+      }
+    },
+    {
+      "id": "preflight-mandate.exports.settle_order",
+      "gate": "LIVE",
+      "description": "preflight mandate.exports.settle_order",
+      "passed": true,
+      "observed": {
+        "method": "settle_order",
+        "present": true
+      }
+    },
+    {
+      "id": "preflight-mandate.exports.revoke",
+      "gate": "LIVE",
+      "description": "preflight mandate.exports.revoke",
+      "passed": true,
+      "observed": {
+        "method": "revoke",
+        "present": true
+      }
+    },
+    {
+      "id": "preflight-mandate.exports.recover",
+      "gate": "LIVE",
+      "description": "preflight mandate.exports.recover",
+      "passed": true,
+      "observed": {
+        "method": "recover",
+        "present": true
+      }
+    },
+    {
+      "id": "preflight-keys.mandate_policy",
+      "gate": "LIVE",
+      "description": "preflight keys.mandate_policy",
+      "passed": true,
+      "observed": {
+        "chain": [],
+        "manifest_full_access": []
+      }
+    },
+    {
+      "id": "preflight-keys.agent_single_propose_key",
+      "gate": "LIVE",
+      "description": "preflight keys.agent_single_propose_key",
+      "passed": true,
+      "observed": {
+        "keys": [
+          {
+            "public_key": "ed25519:6tpfEXKYrjBqFJYwBg5TANhQw3cQofkct8SpNvn4ScKU",
+            "permission": {
+              "kind": "function_call",
+              "receiver_id": "mandate.bmandate.near",
+              "method_names": [
+                "propose_order"
+              ],
+              "allowance": "200000000000000000000000"
+            }
+          }
+        ],
+        "manifest": "ed25519:6tpfEXKYrjBqFJYwBg5TANhQw3cQofkct8SpNvn4ScKU",
+        "problems": []
+      }
+    },
+    {
+      "id": "preflight-keys.agent_allowance_cap",
+      "gate": "LIVE",
+      "description": "preflight keys.agent_allowance_cap",
+      "passed": true,
+      "observed": {
+        "chain": "200000000000000000000000",
+        "cap": "250000000000000000000000"
+      }
+    },
+    {
+      "id": "preflight-keys.owner",
+      "gate": "LIVE",
+      "description": "preflight keys.owner",
+      "passed": true,
+      "observed": {
+        "manifest": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+        "credential": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN"
+      }
+    },
+    {
+      "id": "preflight-keys.filler",
+      "gate": "LIVE",
+      "description": "preflight keys.filler",
+      "passed": true,
+      "observed": {
+        "manifest": "ed25519:7DZsKpJjvvRhmyQ5EjtMxo6bxtVTtLb83PwajJxAhFM7",
+        "credential": "ed25519:7DZsKpJjvvRhmyQ5EjtMxo6bxtVTtLb83PwajJxAhFM7"
+      }
+    },
+    {
+      "id": "preflight-keys.filler_intents_registered",
+      "gate": "LIVE",
+      "description": "preflight keys.filler_intents_registered",
+      "passed": true,
+      "observed": {
+        "registered": true,
+        "manifest": "ed25519:56j6PAY24VonjYunhPFPxHXQXFsQ1sirynRNbf6GMoq7",
+        "credential": "ed25519:56j6PAY24VonjYunhPFPxHXQXFsQ1sirynRNbf6GMoq7"
+      }
+    },
+    {
+      "id": "preflight-keys.unused_since_approval",
+      "gate": "LIVE",
+      "description": "preflight keys.unused_since_approval",
+      "passed": true,
+      "observed": {
+        "chain": {
+          "owner": "224525328000008",
+          "agent": "224527739000000",
+          "filler": "224527750000004"
+        },
+        "manifest": {
+          "owner": "224525328000008",
+          "agent": "224527739000000",
+          "filler": "224527750000004"
+        }
+      }
+    },
+    {
+      "id": "preflight-keys.owner_key_set_since_approval",
+      "gate": "LIVE",
+      "description": "preflight keys.owner_key_set_since_approval",
+      "passed": true,
+      "observed": {
+        "changes": [],
+        "chain": [
+          {
+            "public_key": "ed25519:H7n3RoPMDHt76BwprqRYhiC1AGnoidi2LLn9vuh3rKiM",
+            "permission": "full_access",
+            "nonce": "224524899000001"
+          },
+          {
+            "public_key": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+            "permission": "full_access",
+            "nonce": "224525328000008"
+          }
+        ],
+        "manifest": [
+          {
+            "public_key": "ed25519:H7n3RoPMDHt76BwprqRYhiC1AGnoidi2LLn9vuh3rKiM",
+            "permission": "full_access",
+            "nonce": "224524899000001"
+          },
+          {
+            "public_key": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+            "permission": "full_access",
+            "nonce": "224525328000008"
+          }
+        ]
+      }
+    },
+    {
+      "id": "preflight-mandate.no_active_grant",
+      "gate": "LIVE",
+      "description": "preflight mandate.no_active_grant",
+      "passed": true,
+      "observed": {
+        "status": null,
+        "key_op_in_flight": null
+      }
+    },
+    {
+      "id": "preflight-orders.no_unlisted_open",
+      "gate": "LIVE",
+      "description": "preflight orders.no_unlisted_open",
+      "passed": true,
+      "observed": {
+        "open": [],
+        "unlisted": []
+      }
+    },
+    {
+      "id": "preflight-oracle.usdc_fresh_and_confident",
+      "gate": "LIVE",
+      "description": "preflight oracle.usdc_fresh_and_confident",
+      "passed": true,
+      "observed": {
+        "price": {
+          "price": "99994394",
+          "conf": "58939",
+          "expo": -8,
+          "publish_time": 1794667596
+        },
+        "max_age_sec": 120,
+        "max_confidence_bps": 50
+      }
+    },
+    {
+      "id": "preflight-oracle.wnear_fresh_and_confident",
+      "gate": "LIVE",
+      "description": "preflight oracle.wnear_fresh_and_confident",
+      "passed": true,
+      "observed": {
+        "price": {
+          "price": "324915450",
+          "conf": "119550",
+          "expo": -8,
+          "publish_time": 1794667596
+        },
+        "max_age_sec": 120,
+        "max_confidence_bps": 50
+      }
+    },
+    {
+      "id": "preflight-mpc.derived_public_key",
+      "gate": "LIVE",
+      "description": "preflight mpc.derived_public_key",
+      "passed": true,
+      "observed": {
+        "path": "mandate/v1/1",
+        "result": "ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn"
+      }
+    },
+    {
+      "id": "preflight-budget.owner_inventory.usdc",
+      "gate": "LIVE",
+      "description": "preflight budget.owner_inventory.usdc",
+      "passed": true,
+      "observed": {
+        "mandate": "5000000",
+        "cap": "5000000"
+      }
+    },
+    {
+      "id": "preflight-budget.owner_inventory.wnear",
+      "gate": "LIVE",
+      "description": "preflight budget.owner_inventory.wnear",
+      "passed": true,
+      "observed": {
+        "mandate": "100000000000000000000000",
+        "cap": "1250000000000000000000000"
+      }
+    },
+    {
+      "id": "preflight-balance.mandate_usdc_covers_proposals",
+      "gate": "LIVE",
+      "description": "preflight balance.mandate_usdc_covers_proposals",
+      "passed": true,
+      "observed": {
+        "mandate": "5000000",
+        "proposed": "1500000"
+      }
+    },
+    {
+      "id": "preflight-balance.filler_inventory",
+      "gate": "LIVE",
+      "description": "preflight balance.filler_inventory",
+      "passed": true,
+      "observed": {
+        "filler": {
+          "usdc": "0",
+          "wnear": "500000000000000000000000"
+        }
+      }
+    },
+    {
+      "id": "preflight-balance.filler_covers_spend_cap.wnear",
+      "gate": "LIVE",
+      "description": "preflight balance.filler_covers_spend_cap.wnear",
+      "passed": true,
+      "observed": {
+        "filler": "500000000000000000000000",
+        "remaining_cap": "500000000000000000000000"
+      }
+    },
+    {
+      "id": "preflight-budget.fees_worst_case_at_live_gas_price",
+      "gate": "LIVE",
+      "description": "preflight budget.fees_worst_case_at_live_gas_price",
+      "passed": true,
+      "observed": {
+        "spent_or_reserved": "0",
+        "worst_case_pending": "131000000000000000000000",
+        "cap": "150000000000000000000000",
+        "gas_price": "100000000"
+      }
+    },
+    {
+      "id": "preflight-balance.owner_recovery_reserve",
+      "gate": "LIVE",
+      "description": "preflight balance.owner_recovery_reserve",
+      "passed": true,
+      "observed": {
+        "free": "1079799616468536499999998",
+        "worst_case_fees": "63500000000000000000000",
+        "reserve": "500000000000000000000000"
+      }
+    },
+    {
+      "id": "preflight-balance.filler_near_for_fees",
+      "gate": "LIVE",
+      "description": "preflight balance.filler_near_for_fees",
+      "passed": true,
+      "observed": {
+        "free": "155378161334116499999998",
+        "worst_case_fees": "21000000000000000000000"
+      }
+    },
+    {
+      "id": "preflight-balance.agent_allowance_for_fees",
+      "gate": "LIVE",
+      "description": "preflight balance.agent_allowance_for_fees",
+      "passed": true,
+      "observed": {
+        "allowance": "200000000000000000000000",
+        "worst_case_fees": "46500000000000000000000"
+      }
+    },
+    {
+      "id": "preflight-float.agent_allowance",
+      "gate": "LIVE",
+      "description": "preflight float.agent_allowance",
+      "passed": true,
+      "observed": {
+        "have": "200000000000000000000000",
+        "need": "186000000000000000000000",
+        "gas_price": "100000000",
+        "purchase_price": "1000000000"
+      }
+    },
+    {
+      "id": "preflight-float.agent_balance",
+      "gate": "LIVE",
+      "description": "preflight float.agent_balance",
+      "passed": true,
+      "observed": {
+        "have": "217550000000000000000000",
+        "need": "186000000000000000000000",
+        "gas_price": "100000000",
+        "purchase_price": "1000000000"
+      }
+    },
+    {
+      "id": "preflight-float.filler_balance",
+      "gate": "LIVE",
+      "description": "preflight float.filler_balance",
+      "passed": true,
+      "observed": {
+        "have": "155378161334116499999998",
+        "need": "115500000000000000000000",
+        "gas_price": "100000000",
+        "purchase_price": "1000000000"
+      }
+    },
+    {
+      "id": "preflight-float.owner_balance",
+      "gate": "LIVE",
+      "description": "preflight float.owner_balance",
+      "passed": true,
+      "observed": {
+        "have": "1079799616468536499999998",
+        "need": "255000000000000000000000",
+        "gas_price": "100000000",
+        "purchase_price": "1000000000"
+      }
+    },
+    {
+      "id": "preflight-balance.mandate_storage",
+      "gate": "LIVE",
+      "description": "preflight balance.mandate_storage",
+      "passed": true,
+      "observed": {
+        "free": "198150000000000000000000",
+        "expected_bytes": "4000",
+        "needed": "40000000000000000000000"
+      }
+    },
+    {
+      "id": "step-1-check",
+      "gate": "LIVE",
+      "description": "read-only state check",
+      "passed": true,
+      "observed": {
+        "grant": null,
+        "mandate": {
+          "usdc": "5000000",
+          "wnear": "100000000000000000000000"
+        },
+        "filler": {
+          "usdc": "0",
+          "wnear": "500000000000000000000000"
+        }
+      }
+    },
+    {
+      "id": "step-2-grant",
+      "gate": "LIVE",
+      "description": "grant: terminal verification",
+      "passed": true,
+      "observed": {
+        "epoch": 1,
+        "path": "mandate/v1/1",
+        "public_key": "ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn",
+        "verifier_keys": [
+          "ed25519:AF9JCnhar3JmqCU1amVgdBdye832JSt3ya1atbbKTZfn"
+        ],
+        "initial_value": "5323914577000",
+        "problems": []
+      }
+    },
+    {
+      "id": "step-3-refused_proposal",
+      "gate": "LIVE",
+      "description": "refused_proposal: terminal verification",
+      "passed": true,
+      "observed": {
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: concession above policy maximum\"}}}}",
+        "outstanding": "0",
+        "turnover_used": "0",
+        "orders": 0,
+        "problems": []
+      }
+    },
+    {
+      "id": "step-4-propose",
+      "gate": "LIVE",
+      "description": "propose: terminal verification",
+      "passed": true,
+      "observed": {
+        "order_id": "0",
+        "state": {
+          "state": "signed"
+        },
+        "reserved_value": "999909080000",
+        "outstanding_before": "0",
+        "outstanding_after": "999909080000",
+        "buy_amount": "307337880245014772164990",
+        "deadline_ns": "1794667740000000000",
+        "problems": []
+      }
+    },
+    {
+      "id": "step-5-fill",
+      "gate": "LIVE",
+      "description": "fill: terminal verification",
+      "passed": true,
+      "observed": {
+        "mandate_before": {
+          "usdc": "5000000",
+          "wnear": "100000000000000000000000"
+        },
+        "mandate_after": {
+          "usdc": "4000000",
+          "wnear": "407337880245014772164990"
+        },
+        "filler_before": {
+          "usdc": "0",
+          "wnear": "500000000000000000000000"
+        },
+        "filler_after": {
+          "usdc": "999999",
+          "wnear": "192661812416797644632654"
+        },
+        "filler_delta": {
+          "usdc": "999999",
+          "wnear": "-307338187583202355367346"
+        },
+        "problems": []
+      }
+    },
+    {
+      "id": "step-6-settle",
+      "gate": "LIVE",
+      "description": "settle: terminal verification",
+      "passed": true,
+      "observed": {
+        "order_id": "0",
+        "state": {
+          "state": "released",
+          "reason": "settled"
+        },
+        "problems": []
+      }
+    }
+  ],
+  "unknowns": [
+    "run stopped: {\"jsonrpc\": \"2.0\", \"error\": {\"code\": -429, \"message\": \"Rate limits exceeded. For higher rate limits get a subscription at https://fastnear.com\"}, \"id\": \"1\"}"
+  ]
+}

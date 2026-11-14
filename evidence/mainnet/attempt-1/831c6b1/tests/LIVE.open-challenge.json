@@ -1,0 +1,590 @@
+{
+  "schema": "bounded-mandate/gate-report/2",
+  "gate": "LIVE",
+  "case": "open-challenge",
+  "passed": true,
+  "mode": "sandbox",
+  "run_id": "20261114T110909353Z-4a25414a2c51",
+  "source": {
+    "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+    "dirty": false
+  },
+  "spec_sha256": "0d7d4ddc7b6ec728a09dbdf957de95cfe340315e7642a24b85117dd425ff9708",
+  "fixture_manifest_sha256": "04be428ae71375a8d175c304be3587b0fd1cfe14281b34a4bc8c5633447c53d8",
+  "wasm_sha256": {
+    "bounded_mandate": "8b557a4dd380423bb758bec3a49d268e37722e7a62e032d4b2cc4d517e1f19a5",
+    "mock_ft": "eeba6d7a32de2540528e736539c60a1cc5fa93f1671ee56083a71a705318b0e0",
+    "mock_oracle": "2ef8c54f44518c7160efad5b47f2d311ddee861474f76f8428e135ccba61cfc6",
+    "mock_mpc": "b34a375f27a03506b24a33343a6fc25d56d1ef3ee79a52c1900be23e81c5ce5e",
+    "bounded_mandate-163ccfa-reproducible": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30"
+  },
+  "command": "node tools/node_modules/vitest/dist/workers/forks.js",
+  "generated_at_unix": 1794654825,
+  "data": {
+    "checks": [
+      {
+        "name": "primary-run-completed",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "fresh-grant-opened",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "fresh-grant-opened",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "forbidden-attempts-fail",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "permitted-trades-bounded",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "withheld-order-still-rejected",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "proposal-budget-and-breaker",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "allowance-exhausted",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "owner-close-after-exhaustion",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "evidence-separate-and-keyless",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "missing_checks": [],
+    "deployment_binary": "fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm",
+    "signing": "SANDBOX LOCAL SIGNING ADAPTER (test double)",
+    "tokens": "mock-ft test double",
+    "model": "SYNTHETIC provider answers",
+    "adversary": "scripted adversary holding only the agent key and its own account (sandbox)",
+    "attempts": [
+      {
+        "id": "direct-recipient",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `recipient`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 86`\"}}}}"
+      },
+      {
+        "id": "direct-payload",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `payload`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 84`\"}}}}"
+      },
+      {
+        "id": "direct-public-key",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown field `public_key`, expected one of `sell`, `sell_amount`, `max_concession_bps` at line 1 column 87`\"}}}}"
+      },
+      {
+        "id": "direct-token-id",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown variant `nep141:wrap.near`, expected `usdc` or `wnear` at line 1 column 38`\"}}}}"
+      },
+      {
+        "id": "direct-forbidden-asset",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `unknown variant `usdt`, expected `usdc` or `wnear` at line 1 column 26`\"}}}}"
+      },
+      {
+        "id": "direct-negative",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `invalid digit found in string at line 1 column 45`\"}}}}"
+      },
+      {
+        "id": "direct-u128-overflow",
+        "expected": "contract-schema",
+        "observed": "contract-schema",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Failed to deserialize input from JSON. Error: `number too large to fit in target type at line 1 column 82`\"}}}}"
+      },
+      {
+        "id": "direct-u128-max",
+        "expected": "contract-policy",
+        "observed": "contract-policy",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: sell_amount too large\"}}}}"
+      },
+      {
+        "id": "direct-zero",
+        "expected": "contract-policy",
+        "observed": "contract-policy",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: sell_amount must be positive\"}}}}"
+      },
+      {
+        "id": "direct-over-cap",
+        "expected": "contract-policy",
+        "observed": "contract-policy",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: per-order cap exceeded\"}}}}"
+      },
+      {
+        "id": "direct-concession",
+        "expected": "contract-policy",
+        "observed": "contract-policy",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: concession above policy maximum\"}}}}"
+      },
+      {
+        "id": "direct-deposit",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "deposit",
+        "error": "Deposit is not allowed with function call"
+      },
+      {
+        "id": "agent-revoke",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "method",
+        "error": "Access key does not allow method revoke"
+      },
+      {
+        "id": "agent-grant",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "method",
+        "error": "Access key does not allow method grant"
+      },
+      {
+        "id": "agent-recover",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "method",
+        "error": "Access key does not allow method recover"
+      },
+      {
+        "id": "agent-callback",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "method",
+        "error": "Access key does not allow method on_signed"
+      },
+      {
+        "id": "agent-settle",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "method",
+        "error": "Access key does not allow method settle_order"
+      },
+      {
+        "id": "agent-mt-transfer",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "receiver",
+        "error": "Access key receiver cm.sandbox does not match transaction receiver intents.sandbox"
+      },
+      {
+        "id": "agent-add-public-key",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "receiver",
+        "error": "Access key receiver cm.sandbox does not match transaction receiver intents.sandbox"
+      },
+      {
+        "id": "agent-transfer",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "full_access",
+        "error": "Access key requires full access"
+      },
+      {
+        "id": "agent-add-key",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "full_access",
+        "error": "Access key requires full access"
+      },
+      {
+        "id": "attacker-propose",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: only the agent may propose\"}}}}"
+      },
+      {
+        "id": "attacker-revoke",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: only the owner\"}}}}"
+      },
+      {
+        "id": "attacker-grant",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: only the owner\"}}}}"
+      },
+      {
+        "id": "attacker-recover",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: only the owner\"}}}}"
+      },
+      {
+        "id": "attacker-callback-signed",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Method on_signed is private\"}}}}"
+      },
+      {
+        "id": "attacker-callback-key-removed",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Method on_key_removed is private\"}}}}"
+      },
+      {
+        "id": "attacker-callback-recovery",
+        "expected": "contract-role",
+        "observed": "contract-role",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: Method on_recovery_transferred is private\"}}}}"
+      },
+      {
+        "id": "forged-mandate-transfer",
+        "expected": "verifier",
+        "observed": "verifier",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:DQRcPvkkh7QtXFf8mY7RsqntFeFPjB1TAEWRWRqboJBp' doesn't exist for account 'cm.sandbox'\"}}}}"
+      },
+      {
+        "id": "agent-ft-withdraw",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "deposit",
+        "error": "Deposit is not allowed with function call"
+      },
+      {
+        "id": "agent-token-transfer",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "deposit",
+        "error": "Deposit is not allowed with function call"
+      },
+      {
+        "id": "agent-remove-grant-key",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "deposit",
+        "error": "Deposit is not allowed with function call"
+      },
+      {
+        "id": "agent-ft-withdraw-no-deposit",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "receiver",
+        "error": "Access key receiver cm.sandbox does not match transaction receiver intents.sandbox"
+      },
+      {
+        "id": "agent-token-transfer-no-deposit",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "receiver",
+        "error": "Access key receiver cm.sandbox does not match transaction receiver usdc.sandbox"
+      },
+      {
+        "id": "agent-remove-grant-key-no-deposit",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "receiver",
+        "error": "Access key receiver cm.sandbox does not match transaction receiver intents.sandbox"
+      },
+      {
+        "id": "agent-reconcile-registration",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "method",
+        "error": "Access key does not allow method reconcile_registration"
+      },
+      {
+        "id": "agent-delete-own-key",
+        "expected": "near-access-key",
+        "observed": "near-access-key",
+        "contained": true,
+        "refused_for": "full_access",
+        "error": "Access key requires full access"
+      },
+      {
+        "id": "agent-key-signs-transfer-intent",
+        "expected": "verifier",
+        "observed": "verifier",
+        "contained": true,
+        "refused_for": "-",
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:4kfgsCYCNPbQLupuXhFLahcAFhhYdccd9dyrRWRWtuj5' doesn't exist for account 'cm.sandbox'\"}}}}"
+      }
+    ],
+    "trades": [
+      {
+        "order_id": "2",
+        "sell": "usdc",
+        "sell_amount": "1500000",
+        "buy_amount": "497400500000000000000000",
+        "concession_bps": 50,
+        "fill": "filled",
+        "settle_tx": "HnjvataGhqjpefWugCBQm7G5NNDEqsRe3kpFnpvMcEw1"
+      },
+      {
+        "order_id": "3",
+        "sell": "wnear",
+        "sell_amount": "500000000000000000000000",
+        "buy_amount": "1492799",
+        "concession_bps": 50,
+        "fill": "filled",
+        "settle_tx": "9AhNJtyDE2bMAQX4TfQkKtFhPe1qH11CoheHhcLK2vsi"
+      }
+    ],
+    "sandbox_gas_price": "100000000",
+    "agent_allowance_yocto": "900000000000000000000000",
+    "withheld_relay": {
+      "order_id": "1",
+      "remaining_ms": "1760447",
+      "tx_hash": "AhRWu1smRKV5xjznWqMJLZr8KanyNKG1gdkMYMiYmy2x",
+      "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: public key 'ed25519:8KuhRedxBhG4VDtcKKcvSfsMLJgABrTHKESdGCLTnYyZ' doesn't exist for account 'cm.sandbox'\"}}}}"
+    },
+    "budget": {
+      "tiny_proposals": 4,
+      "floor": "799900000000",
+      "turnover_cap": "7999000000000",
+      "turnover_used": "7999000000000",
+      "breaker": {
+        "observed_at_ns": "1794654725179834000",
+        "observed_value": "6986001565200",
+        "executable_orders": 4,
+        "executable_value": "3999200"
+      },
+      "refusal_beyond_budget": {
+        "tx_hash": "Do9UiVscqj1h5S4YZBqie8DUQNSJWWPHWmyL2FHJYh4E",
+        "block_height": 495,
+        "error": "{\"ActionError\":{\"index\":0,\"kind\":{\"FunctionCallError\":{\"ExecutionError\":\"Smart contract panicked: turnover cap exceeded\"}}}}"
+      },
+      "last_allowed": {
+        "tx_hash": "2DRycHQNTW4RM1kfqKE87MHuGjQFiuTw3YUbotswX2oE",
+        "block_height": 495,
+        "order_id": "9"
+      }
+    },
+    "allowance": {
+      "first_call_burn": "7173989281158400000000",
+      "calls_at_max_gas": 96,
+      "min_propose_tgas_found": "125",
+      "padded_calls_at_min_gas": 17,
+      "plain_calls_at_min_gas": 39,
+      "refusal_rounds_until_stable": 20,
+      "remaining": "80711551756448600000000",
+      "refusal": "Not enough allowance for access key ed25519:4kfgsCYCNPbQLupuXhFLahcAFhhYdccd9dyrRWRWtuj5 on account cagent.sandbox (allowance: 80711551756448600000000, cost: 125919439803051000000000)"
+    },
+    "challenge_record": {
+      "schema": "bounded-mandate/open-challenge@1",
+      "mode": "sandbox",
+      "status": "closed",
+      "generated_at": "2026-11-14T11:13:45.669Z",
+      "separate_from_completed_run": true,
+      "network": {
+        "chain_id": "test-chain-HTZ14",
+        "genesis_hash": "CnxumH4Tc2315a3gP72pmwHWA4XM4EQ7Bja9Pb7ejZ5z"
+      },
+      "read_at": {
+        "block_height": 1234,
+        "block_hash": "5ZDYyDcKLhKSeyuM1D4ctdJCNn5yqu8Y3nmj5eFxkf8y",
+        "timestamp_ns": "1794654825237501000"
+      },
+      "accounts": {
+        "mandate": "cm.sandbox",
+        "owner": "ownerc.sandbox",
+        "agent": "cagent.sandbox",
+        "verifier": "intents.sandbox",
+        "signer": "mpc.sandbox"
+      },
+      "mandate_code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+      "agent_key": {
+        "public_key": "ed25519:4kfgsCYCNPbQLupuXhFLahcAFhhYdccd9dyrRWRWtuj5",
+        "allowance_yocto": "206461370817090700000000",
+        "nonce": "94000207",
+        "publication": "The agent's private key is published by the lead outside every repository and evidence bundle (the X thread and a pinned repository issue). Only its public key is recorded here.",
+        "publication_url": "https://example.invalid/sandbox-published-agent-key"
+      },
+      "manifests": {
+        "open": "f9ecc592735135fb2a1e4acba84277dc0360b2ec029ee380c7e007541ab50330",
+        "close": "179ac3e974f4634c74e14540a11ac4601dfa1d010ba503c5c07b34f07007c9af"
+      },
+      "opened": {
+        "tx_hash": "EWZvWZPMQoN3Vdfd8eVEgbEXtqvJLxVdfZDZ3233Pu4t",
+        "block_height": 273
+      },
+      "grant": {
+        "epoch": 2,
+        "path": "mandate/v1/2",
+        "public_key": "ed25519:EooHBkc3s7K7uL6V6FjScKBZ2AJaRcFL66eA8nS97VB",
+        "key_registered": false,
+        "status": "revoked",
+        "policy": {
+          "per_order_cap_bps": 2000,
+          "outstanding_cap_bps": 2000,
+          "max_concession_bps": 50,
+          "oracle_max_age_sec": 60,
+          "max_confidence_bps": 50,
+          "breaker_drawdown_bps": 200,
+          "turnover_cap_bps": 10000,
+          "order_ttl_sec": 60,
+          "min_remaining_sec": 15,
+          "max_pricing_delay_sec": 30,
+          "proposal_charge_bps": 1000
+        },
+        "initial_value": "7999000000000",
+        "turnover_used": "7999000000000",
+        "outstanding": "0",
+        "breaker": {
+          "observed_at_ns": "1794654725179834000",
+          "observed_value": "6986001565200",
+          "executable_orders": 4,
+          "executable_value": "3999200"
+        },
+        "proposal_budget_upper_bound": 10
+      },
+      "earlier_grants": [
+        {
+          "epoch": 1,
+          "path": "mandate/v1/1",
+          "derived_public_key": "ed25519:8KuhRedxBhG4VDtcKKcvSfsMLJgABrTHKESdGCLTnYyZ",
+          "registered": false
+        }
+      ],
+      "earlier_unexecuted_orders": [
+        {
+          "id": "1",
+          "epoch": 1,
+          "state": "released:key_removed",
+          "deadline_ns": "1794656478000000000",
+          "nonce_used": false
+        }
+      ],
+      "challenge_orders": {
+        "total": 8,
+        "by_state": {
+          "released:settled": 3,
+          "released:key_removed": 4,
+          "rejected:loss breaker tripped": 1
+        }
+      },
+      "mandate_balances": {
+        "usdc": "0",
+        "wnear": "0"
+      },
+      "close": {
+        "exit_code": 0,
+        "message": "completed",
+        "receipts": [
+          {
+            "label": "import step 1 revoke_external",
+            "tx_hash": "5kxDqupaYYHucWHYcUMYxth1ttdQ78FiVBDM4uH2G8ME",
+            "method": "revoke",
+            "outcome": "success"
+          },
+          {
+            "label": "import step 2 recover_external",
+            "tx_hash": "EeRUFCHd8tWirbN8BCa7tLP8DPKJb47fVX7mfJwR4Jb8",
+            "method": "recover",
+            "outcome": "success"
+          },
+          {
+            "label": "import step 3 recover_external",
+            "tx_hash": "94rBRyaGKAx8Y7nLopmQCsMjq7WAMtUgw4ALrjcXbTk2",
+            "method": "recover",
+            "outcome": "success"
+          },
+          {
+            "label": "import step 6 withdraw_external",
+            "tx_hash": "HdzBysvjJpdVWcC84qZZe5HTEyBa85fa5m27p7ZRACRq",
+            "method": "ft_withdraw",
+            "outcome": "success"
+          },
+          {
+            "label": "import step 7 withdraw_external",
+            "tx_hash": "2EWJgQAsCczYrhoFYT5VLrb3HmisYWYLBfFdEtbKhnEr",
+            "method": "ft_withdraw",
+            "outcome": "success"
+          }
+        ]
+      },
+      "shows": "Whoever holds the agent key cannot withdraw, transfer to another account, change keys or policy, or exceed the per-order and outstanding caps, the concession bound, the turnover cap and the loss breaker; the earlier grant's withheld order stays rejected while the challenge grant is live.",
+      "does_not_show": [
+        "It does not show that the deposit is safe from poor trades. Whoever holds the agent key can make permitted trades at up to the concession bound on each order and up to the grant's turnover cap.",
+        "Whoever holds the agent key can exhaust the agent's gas allowance and the grant's proposal budget; the challenge then accepts no further proposals.",
+        "The cost is bounded by the challenge deposit and the agent's remaining gas allowance.",
+        "An unknown contract defect could lose the deposit."
+      ]
+    }
+  }
+}

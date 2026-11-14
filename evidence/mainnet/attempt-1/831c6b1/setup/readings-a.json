@@ -1,0 +1,140 @@
+{
+ "block": {
+  "height": 224526578,
+  "hash": "6X4Xyc9HaxXX89TDMHAsSByytxUc4NAv1bDEP6jCwQTD",
+  "time_ns": "1794666505786048138",
+  "gas_price": "100000000"
+ },
+ "chain": {
+  "chain_id": "mainnet",
+  "genesis": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
+  "protocol_version": 88,
+  "node": "2.14.1"
+ },
+ "protocol": {
+  "storage_amount_per_byte": "10000000000000000000",
+  "min_gas_purchase_price": "1000000000",
+  "account_creation_charge": "7000000000000000000000"
+ },
+ "unknown_accounts": {
+  "mandate.bmandate.near": {
+   "error": {
+    "info": {
+     "block_hash": "6X4Xyc9HaxXX89TDMHAsSByytxUc4NAv1bDEP6jCwQTD",
+     "block_height": 224526578,
+     "requested_account_id": "mandate.bmandate.near"
+    },
+    "name": "UNKNOWN_ACCOUNT"
+   }
+  },
+  "agent.bmandate.near": {
+   "error": {
+    "info": {
+     "block_hash": "6X4Xyc9HaxXX89TDMHAsSByytxUc4NAv1bDEP6jCwQTD",
+     "block_height": 224526578,
+     "requested_account_id": "agent.bmandate.near"
+    },
+    "name": "UNKNOWN_ACCOUNT"
+   }
+  },
+  "filler.bmandate.near": {
+   "error": {
+    "info": {
+     "block_hash": "6X4Xyc9HaxXX89TDMHAsSByytxUc4NAv1bDEP6jCwQTD",
+     "block_height": 224526578,
+     "requested_account_id": "filler.bmandate.near"
+    },
+    "name": "UNKNOWN_ACCOUNT"
+   }
+  }
+ },
+ "owner": {
+  "account": {
+   "amount": "5298472007766355900000000",
+   "locked": "0",
+   "code_hash": "11111111111111111111111111111111",
+   "storage_usage": 264
+  },
+  "keys": [
+   [
+    "ed25519:H7n3RoPMDHt76BwprqRYhiC1AGnoidi2LLn9vuh3rKiM",
+    224524899000001,
+    "FullAccess"
+   ],
+   [
+    "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+    224525328000001,
+    "FullAccess"
+   ]
+  ],
+  "usdc_balance": "5000000",
+  "wnear_balance": "0",
+  "usdc_storage": {
+   "total": "1250000000000000000000",
+   "available": "0"
+  },
+  "wnear_storage": null
+ },
+ "funding": {
+  "amount": "92555829541062600000000",
+  "locked": "0",
+  "code_hash": "11111111111111111111111111111111",
+  "storage_usage": 182
+ },
+ "code_hashes": {
+  "intents.near": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
+  "v1.signer": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
+  "aggregate-oracle.near": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+  "wrap.near": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1",
+  "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q"
+ },
+ "versions": {
+  "intents.near": "0.4.5",
+  "v1.signer": "3.18.0",
+  "aggregate-oracle.near": "0.4.1"
+ },
+ "verifier_fee": 1,
+ "tokens": {
+  "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": {
+   "decimals": 6,
+   "bounds": {
+    "min": "1250000000000000000000",
+    "max": "1250000000000000000000"
+   },
+   "intents_storage": {
+    "total": "1250000000000000000000",
+    "available": "0"
+   }
+  },
+  "wrap.near": {
+   "decimals": 24,
+   "bounds": {
+    "min": "1250000000000000000000",
+    "max": "1250000000000000000000"
+   },
+   "intents_storage": {
+    "total": "1250000000000000000000",
+    "available": "0"
+   }
+  }
+ },
+ "oracle": {
+  "usdc": {
+   "price": "99975215",
+   "conf": "77785",
+   "expo": -8,
+   "publish_time": 1794666472
+  },
+  "wnear": {
+   "price": "323102637",
+   "conf": "133470",
+   "expo": -8,
+   "publish_time": 1794666472
+  }
+ },
+ "wasm": {
+  "bytes": 309663,
+  "sha256": "629fc90fee6506413aa428e2cb5fae61faf98f77d419f2c3bd1ab4d6d8319a30",
+  "code_hash": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV"
+ }
+}

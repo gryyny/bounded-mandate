@@ -1,0 +1,222 @@
+{
+  "schema_version": 2,
+  "notes": [
+    "REQUIRED PROOF TEMPLATE for the first mainnet run (scripted fixed proposal, runner-signed owner actions, no owner withdrawals): unapproved until the owner authorizes it; manifest.live-agent.example.json is the optional live-agent template, which needs its own approval and budget. Every value starting with REPLACE_ME must be filled in; the runner refuses the template as is.",
+    "Pinned by read-only mainnet RPC on 2026-11-03: chain_id/genesis_hash (status); code hashes at blocks 222940261-222940273 (view_account; token code hashes re-read at blocks 223023189-223023195 on 2026-11-04); versions from contract_source_metadata. All re-read through https://free.rpc.fastnear.com on 2026-11-04 (block ~223070360): unchanged. Signer re-pinned on 2026-11-13: v1.signer was upgraded on mainnet on 2026-11-09 (first block with the new code: 223809121, 19:17:59 UTC) from 3.17.0 (code hash DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9) to 3.18.0; its code hash and version here were read at blocks 224358597-224358728, where the other code hashes and versions were re-read unchanged.",
+    "RPC: https://free.rpc.fastnear.com (listed in the NEAR RPC provider directory). The rpc.mainnet.near.org endpoint is deprecated and heavily rate-limited. For reconciling older transactions, https://archival-rpc.mainnet.fastnear.com is FastNEAR's archival endpoint.",
+    "Sequence: grant; one deliberately forbidden proposal (concession 51 bps > 50 bps policy maximum) that the mandate must refuse; one valid trade of 1 USDC, filled and settled; a second signed order of 0.5 USDC that is withheld (bundle simulated, not sent); revoke; relay of the withheld bundle, which passes only if the verifier rejects it for the removed key before its deadline with both nonces unused and balances unchanged; recovery of both assets to the owner's Intents account.",
+    "Grant policy: PROPOSED, pending the owner's policy decision; not adopted. SPEC.md requires an oracle maximum age of 60 seconds and proposes a deadline no later than 60 seconds after authorization; Policy::DEMO uses 60/60. This template proposes order_ttl_sec 120 and oracle_max_age_sec 120 for the mainnet run only, as an explicit deviation the owner must accept in the approval; otherwise set both to 60. An order's deadline is min(now + order_ttl, oldest price publish time + oracle_max_age); 60 s leaves too little time on mainnet for MPC signing, revocation to FINAL and the relay, so the revocation test would likely be inconclusive. Trade-off: prices up to 120 s old are accepted and a signed order stays executable up to 120 s while revocation is pending. The proposal charge is 1000 bps instead of the spec's proposed 50 bps default (Policy::DEMO, 200 records per grant), so the record bound fits the funded storage; it consumes authorization capacity only, at least 10% of the initial value per proposal, and the run's three proposals fit within the turnover cap. Every cap is unchanged.",
+    "Budget caps: owner inventory <= 5 USDC + 1.25 wNEAR (about $10 at NEAR ~= $4.0 on 2026-11-04); single order <= 1 USDC; mandate sales <= 2 USDC in total (the refused 0.5 USDC is counted conservatively); filler pays <= 0.5 wNEAR in total (the withheld relay is counted conservatively). Recompute the wNEAR units from the price on the approval day.",
+    "Deployment, storage and all funding are done separately by the owner under the approved setup record; this runner never funds, deposits or deploys. The grant's proposal_charge_bps 1000 bounds one grant to turnover_cap_bps / proposal_charge_bps = 10 order records (SPEC.md rule 9), so at the template's 1000-byte order records the mandate meets the per-grant storage rule with about 3.3 NEAR and no storage deviation (R1 checks the exact rule against the real storage_usage).",
+    "The worst-case fee of the steps below at gas price 1e8 yocto is (sum over transaction steps of the step's gas_tgas + 5) x 1e12 x 1e8 = 1310 TGas = 0.131 NEAR; max_fee_yocto is 0.15 NEAR. Preflight refuses if the live gas price makes the worst case exceed it.",
+    "Run: MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<this file> MANDATE_LIVE_CONFIRM=<sha256 of this file> make live. Resume after a stop: add MANDATE_LIVE_RESUME=1 (reconciles the ledger in out/live/<sha256>/ first).",
+    "Mandate code hash 7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV is the reproducible build of 163ccfa (fixtures/deploy/bounded_mandate-163ccfa-reproducible.wasm, sha256 629fc90f...); a mainnet manifest must name a pinned fixtures/deploy build.",
+    "Preflight also requires: verifier fee 1 pip, both oracle prices fresh and within confidence, MPC derived_public_key for the next grant path, agent allowance <= 0.25 NEAR, owner free NEAR >= worst-case fees + 0.5 NEAR reserve, mandate free NEAR >= expected storage, no active grant (expect_existing_grant false) and no unlisted open orders.",
+    "Owner key list (expected_owner_keys, required on mainnet): every access key of accounts.owner as returned by view_access_key_list at approval time, one entry per key with its permission (\"full_access\", or {receiver_id, method_names}) and nonce. A fresh start refuses any difference. During the run and on every resume, any added or removed key, changed permission, or nonce change of a key the ledger does not track (any key other than keys.owner) stops the run; before every runner-signed transaction the signing key's nonce must equal the ledger's expectation, so an owner transaction the ledger does not record is never absorbed."
+  ],
+  "network": {
+    "name": "mainnet",
+    "chain_id": "mainnet",
+    "genesis_hash": "EPnLgE7iEq9s7yTkos96M3cWymH5avBAPm3qx3NXqR8H",
+    "rpc_url": "https://free.rpc.fastnear.com"
+  },
+  "approval": {
+    "approved_by": "gryyny (repository owner)",
+    "reference": "runner approval B, 2026-11-14, by manifest sha256"
+  },
+  "accounts": {
+    "mandate": "mandate.bmandate.near",
+    "owner": "bmandate.near",
+    "agent": "agent.bmandate.near",
+    "filler": "filler.bmandate.near",
+    "verifier": "intents.near",
+    "signer": "v1.signer",
+    "oracle": "aggregate-oracle.near"
+  },
+  "code_hashes": {
+    "mandate": "7dzGdFk3UaY9m3eQedMaiN2tjnxcp1awe1gdo5MH4ywV",
+    "verifier": "BtA1BEFNS619KkvXFsgcpQ21Tb5yMm32aaUkn7xNothk",
+    "signer": "CpGX8ywXJwvWPgZFDDCTCuPJBHF7BATT51gSfc3APERJ",
+    "oracle": "9vafnXzrPYQ4ErDqt2triRkQJHdxtG7tfkyb24t5Ttrg",
+    "usdc": "DVJx7F3dHEHJYwpYPwXHu8K9Uo7h4kXFcALucY5oNX8q",
+    "wnear": "DL2f5xmZ44cQRP6vBMt94rvseH5d5KKnAGis2WkTAsh1"
+  },
+  "versions": {
+    "verifier": "0.4.5",
+    "signer": "3.18.0",
+    "oracle": "0.4.1"
+  },
+  "verifier_fee_pips": 1,
+  "mandate_config": {
+    "owner_id": "bmandate.near",
+    "agent_id": "agent.bmandate.near",
+    "verifier_id": "intents.near",
+    "signer_id": "v1.signer",
+    "oracle_id": "aggregate-oracle.near",
+    "usdc": {
+      "token": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "decimals": 6,
+      "price_id": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    },
+    "wnear": {
+      "token": "wrap.near",
+      "decimals": 24,
+      "price_id": "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750"
+    }
+  },
+  "keys": {
+    "mandate_full_access": [],
+    "agent": {
+      "public_key": "ed25519:6tpfEXKYrjBqFJYwBg5TANhQw3cQofkct8SpNvn4ScKU",
+      "max_allowance_yocto": "250000000000000000000000"
+    },
+    "owner": {
+      "public_key": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN"
+    },
+    "filler": {
+      "public_key": "ed25519:7DZsKpJjvvRhmyQ5EjtMxo6bxtVTtLb83PwajJxAhFM7",
+      "intents_public_key": "ed25519:56j6PAY24VonjYunhPFPxHXQXFsQ1sirynRNbf6GMoq7"
+    }
+  },
+  "credentials": {
+    "owner": "$HOME/.config/bounded-mandate-keys/owner.json",
+    "agent": "$HOME/.config/bounded-mandate-keys/agent.json",
+    "filler": "$HOME/.config/bounded-mandate-keys/filler.json",
+    "filler_intents": "$HOME/.config/bounded-mandate-keys/filler-intents.json"
+  },
+  "budget": {
+    "max_fee_yocto": "150000000000000000000000",
+    "max_deposit_yocto": "0",
+    "max_transactions": 10,
+    "owner_inventory_max": {
+      "usdc": "5000000",
+      "wnear": "1250000000000000000000000"
+    },
+    "max_order_sell": {
+      "usdc": "1000000",
+      "wnear": "0"
+    },
+    "max_total_sell": {
+      "usdc": "2000000",
+      "wnear": "0"
+    },
+    "filler_spend_max": {
+      "usdc": "0",
+      "wnear": "500000000000000000000000"
+    },
+    "owner_recovery_reserve_yocto": "500000000000000000000000"
+  },
+  "gas_tgas": {
+    "grant": 250,
+    "propose": 150,
+    "fill": 100,
+    "settle": 50,
+    "revoke": 150,
+    "reconcile_registration": 200,
+    "recover": 80
+  },
+  "storage": {
+    "order_record_bytes": 1000,
+    "grant_state_bytes": 2000
+  },
+  "expect_existing_grant": false,
+  "fillable_preexisting_orders": [],
+  "expected_nonces": {
+    "owner": "224525328000008",
+    "agent": "224527739000000",
+    "filler": "224527750000004"
+  },
+  "expected_owner_keys": [
+    {
+      "public_key": "ed25519:H7n3RoPMDHt76BwprqRYhiC1AGnoidi2LLn9vuh3rKiM",
+      "permission": "full_access",
+      "nonce": "224524899000001"
+    },
+    {
+      "public_key": "ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN",
+      "permission": "full_access",
+      "nonce": "224525328000008"
+    }
+  ],
+  "steps": [
+    {
+      "kind": "check"
+    },
+    {
+      "kind": "grant",
+      "policy": {
+        "per_order_cap_bps": 2000,
+        "outstanding_cap_bps": 2000,
+        "max_concession_bps": 50,
+        "oracle_max_age_sec": 120,
+        "max_confidence_bps": 50,
+        "breaker_drawdown_bps": 200,
+        "turnover_cap_bps": 10000,
+        "order_ttl_sec": 120,
+        "min_remaining_sec": 15,
+        "max_pricing_delay_sec": 30,
+        "proposal_charge_bps": 1000
+      }
+    },
+    {
+      "kind": "refused_proposal",
+      "proposal": {
+        "sell": "usdc",
+        "sell_amount": "500000",
+        "max_concession_bps": 51
+      },
+      "error": "concession above policy maximum"
+    },
+    {
+      "kind": "propose",
+      "source": {
+        "from": "manifest",
+        "proposal": {
+          "sell": "usdc",
+          "sell_amount": "1000000",
+          "max_concession_bps": 30
+        }
+      },
+      "expect": "signed"
+    },
+    {
+      "kind": "fill"
+    },
+    {
+      "kind": "settle"
+    },
+    {
+      "kind": "propose",
+      "source": {
+        "from": "manifest",
+        "proposal": {
+          "sell": "usdc",
+          "sell_amount": "500000",
+          "max_concession_bps": 30
+        }
+      },
+      "expect": "signed"
+    },
+    {
+      "kind": "withhold"
+    },
+    {
+      "kind": "revoke"
+    },
+    {
+      "kind": "relay_withheld",
+      "min_remaining_sec": 10
+    },
+    {
+      "kind": "recover",
+      "asset": "usdc"
+    },
+    {
+      "kind": "recover",
+      "asset": "wnear"
+    },
+    {
+      "kind": "check"
+    }
+  ]
+}

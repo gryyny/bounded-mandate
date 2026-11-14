@@ -1,0 +1,128 @@
+{
+  "approval": "Setup approval A given by the owner on 2026-11-14 after the filled record (readings at final block 224526578, setup/readings-a.json); S0, S12 and the owner account creation were approved one by one before it. Keyless mandate, minimal budget.",
+  "signers": {
+    "owner": "bmandate.near with the runner key ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN, except S0 (owner wallet key)",
+    "filler": "filler.bmandate.near, ed25519:7DZsKpJjvvRhmyQ5EjtMxo6bxtVTtLb83PwajJxAhFM7",
+    "funding": "implicit account 26c08a73\u2026dd7d, deleted by S13"
+  },
+  "before_approval_a": [
+    {
+      "step": "create owner",
+      "signer": "26c08a7383c459b7dd183c8751ca6b0bf13fd3f961a1ea38f115d59243badd7d",
+      "tx_hash": "HuVAfEsmU3ANX5aGXwqzkh8PLJ9XffvCp8uyqWFtUXGD",
+      "action": "near.create_account bmandate.near, 5.3 NEAR, owner wallet key ed25519:H7n3RoPMDHt76BwprqRYhiC1AGnoidi2LLn9vuh3rKiM"
+    },
+    {
+      "step": "S0",
+      "signer": "bmandate.near",
+      "tx_hash": "FmvncmJMVeuVutdxEtss72nM1UgaYMfa5tdvYWKqSxi7",
+      "action": "AddKey full access, runner key ed25519:HYsYCf5BxepbNeyiAscWhvX8jicji9z4EbH7yLt5YwMN"
+    },
+    {
+      "step": "S12",
+      "signer": "bmandate.near",
+      "tx_hash": "DmAWNi4yjaMBLDbdu4zh91brcaXd6J8KZDFXZJ8P8CAy",
+      "action": "USDC storage_deposit for bmandate.near, 0.00125 NEAR"
+    }
+  ],
+  "approved_record": [
+    {
+      "step": "S1",
+      "tx_hash": "9oAG7479Fugh7EGeGyTK27oeuvDPFVchLMrFEMjdQFrH",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "10765223037763299000000",
+      "at": "2026-11-14T14:39:04Z"
+    },
+    {
+      "step": "S2",
+      "tx_hash": "84J7tSMGSvpkwrSNsSEiQsZifgQahx4UpapKkNEwpL9P",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "7115149490164400000000",
+      "at": "2026-11-14T14:39:24Z"
+    },
+    {
+      "step": "S3",
+      "tx_hash": "6pkFSgJ4pooWPfUK6QzYWNSTUYRCgTGh9xinSofoeAdt",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "7114989537500000000000",
+      "at": "2026-11-14T14:39:30Z"
+    },
+    {
+      "step": "S4",
+      "tx_hash": "C6tAQTH8LJKSAG9awRQab6LSAtLWWam1i3U13mRrFXjr",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "372104539694300000000",
+      "at": "2026-11-14T14:39:36Z"
+    },
+    {
+      "step": "S5",
+      "tx_hash": "3NCBYaNijqvCU4bYRNnrxnpVwMPpFpuYm79hgGDnTR7G",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "189709093218400000000",
+      "at": "2026-11-14T14:39:42Z"
+    },
+    {
+      "step": "S6",
+      "tx_hash": "CNgSu9qEDbn1Wz1tZYZfHki1AismWDWf1zFgF1Wua7ww",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "189807281710700000000",
+      "at": "2026-11-14T14:39:48Z"
+    },
+    {
+      "step": "S7",
+      "tx_hash": "GjHfxcdTPnSH5ZypBP3qoxNPqgcoaW2UxdtDoSbJ1S53",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "800217751260100000000",
+      "at": "2026-11-14T14:39:56Z"
+    },
+    {
+      "step": "S8",
+      "tx_hash": "7rkC3txqh5SWMqLmpgqpQNPQrubb17z55d4QZJJFWbe3",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "903630953553700000000",
+      "at": "2026-11-14T14:40:13Z"
+    },
+    {
+      "step": "S10",
+      "tx_hash": "B5LENXj96h1hosvzFrW31B3Y4iGi9jzShsVMR11RvUhG",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "184662471606700000000",
+      "at": "2026-11-14T14:40:19Z"
+    },
+    {
+      "step": "S11",
+      "tx_hash": "8QdyY61P7X7NagL3CzzSEA3Fmxc7n59PrvUVs8y6MF6E",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "188493549576800000000",
+      "at": "2026-11-14T14:40:25Z"
+    },
+    {
+      "step": "S9",
+      "tx_hash": "AS9NiKmpXsR8NdgMAEekzcX26schPPQYTQmPujwpYqmH",
+      "final_status": "SuccessValue",
+      "failed_receipts": 0,
+      "tokens_burnt_yocto": "784968448717099900000",
+      "at": "2026-11-14T14:40:32Z"
+    },
+    {
+      "step": "S13",
+      "tx_hash": "Cg62Ang71WNr8JKA4Mj75gz3GQMtqqzyHrBgwa7vZRKN",
+      "final_status": "SuccessValue",
+      "failed_receipts": 1,
+      "tokens_burnt_yocto": "51109700000000000000",
+      "at": "2026-11-14T14:40:37Z",
+      "note": "note: DeleteAccount and the beneficiary transfer to bmandate.near succeeded; the failed receipt 9619WtWV is the gas refund to the deleted signer (AccountDoesNotExist), expected for DeleteAccount"
+    }
+  ],
+  "tool": "near-cli-rs 0.30.1, each transaction checked final with all receipts before the next was sent"
+}

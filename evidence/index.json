@@ -10,6 +10,15 @@
       "note": "Fresh local clone: macOS arm64, Node 24.22.1, cargo-nextest 0.9.150, empty target, cached registry/tool downloads, allowlisted environment (HOME, PATH, SHELL, TMPDIR, USER) without model, public-network or GitHub credentials. make test 1065 s with the Rust (119 tests, cargo-nextest) and TypeScript (993 tests) suites in parallel; run 20261114T110909353Z-4a25414a2c51, all 48 required cases passed. make demo 59/59 in 65 s; make page byte-identical; make quick and make example passed. Both cuts (85.9 s and 224 s) rendered from this clone's demo run. Two-repository secret scan, license, README link, site and wallet adapter (8/8) checks passed. Source changes since 66fe963: both mainnet templates charge proposal_charge_bps 1000 so a grant is bounded to 10 order records (the minimal 3.3 NEAR mandate meets the storage rule without a deviation); the example client attaches 150 TGas; superseded bundles archived; CI reduced to fast checks; parallel test execution. Contract source and deployment candidate are unchanged. This is the revision a mainnet run must use. A funded sign call from this mandate to the signer has not been made. No public-network transactions, paid inference, hosting or publication."
     },
     {
+      "path": "evidence/mainnet/attempt-1/831c6b1",
+      "revision": "831c6b1e6734779ec16169401b5718c02083a68d",
+      "status": "mainnet-run",
+      "run": "evidence/mainnet/attempt-1/831c6b1/run.json",
+      "certified_bundle": "evidence/831c6b1",
+      "manifest_sha256": "a79870a8b8f4bd8c9a8f19051abfd1f56d5413c1706e3b936cf05c933fd6447e",
+      "note": "Mainnet run attempt 1 (14 November 2026), scripted template, owner bmandate.near, keyless mandate mandate.bmandate.near. On chain: grant with the MPC-derived key, a policy refusal by the contract, one MPC-signed order filled on intents.near (1 USDC for 0.307338 wNEAR) and settled, a second signed order, revoke with the grant key removed at the verifier, and recovery of both assets to the owner's Intents account. The public RPC rate-limited the runner twice (HTTP 429); both stops were resumed under the same manifest without resubmission. The second order expired during the first stop, so the withheld-order relay was not sent: recorded inconclusive, and node verify.mjs --mainnet reports the relay NOT VERIFIED and the run incomplete."
+    },
+    {
       "path": "evidence/66fe963",
       "revision": "66fe9635f4dc0dd200f6a5e9ad1bee03f144964d",
       "status": "superseded",
