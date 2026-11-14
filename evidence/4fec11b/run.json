@@ -1,9 +1,0 @@
-{
-  "schema": "bounded-mandate/run/1",
-  "run_id": "20261107T111603772Z-24c65d876a11",
-  "revision": "4fec11b7a575079b488670f3ed3a36092a236dd2",
-  "dirty": false,
-  "spec_sha256": "c600da23efc95a10b72d2b6558b6e4eb58f8f2db5e1e1e4acbd4e74d7b6ea78c",
-  "fixture_manifest_sha256": "3ba4859ac51b29fe6a0a51b33fb2cffb9fafffc2cda0353678c8492d873f3a1c",
-  "started_at": "2026-11-07T11:16:03.772Z"
-}

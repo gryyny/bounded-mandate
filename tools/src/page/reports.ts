@@ -1,4 +1,4 @@
-// Legacy (envelope v1) gate reports, as kept in historical bundles such as evidence/426914d/tests.
+// Legacy (envelope v1) gate reports, as kept in the historical bundle evidence/426914d (archived; its test fixture copy is tools/test/fixtures/legacy-v1-426914d).
 // They are rendered only in a "legacy, uncertified by v2 rules" section and never mark a gate.
 // Current gate status comes exclusively from out/evidence/acceptance.json (see src/checks/acceptance.ts).
 import { existsSync, readFileSync, readdirSync } from "node:fs";

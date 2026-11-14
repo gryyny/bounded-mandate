@@ -23,6 +23,18 @@ const USDC = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
 /** 5.2 NEAR: above the full-bound rule for 310,100 bytes of storage, (310,100 + 2000 + 200 x 1000 + 4096) x 1e19 = 5.16196 NEAR. */
 const FUNDED = "5200000000000000000000000";
 const EXACT = (310_100n + 2_000n + 200n * 1_000n + 4_096n) * 10n ** 19n;
+/** A template copy whose grant charges `bps` per proposal; the bound is turnover_cap_bps / bps order records. */
+function withCharge(t: typeof live, bps: number): typeof live {
+  const copy = structuredClone(t) as typeof live & { steps: { kind: string; policy?: { proposal_charge_bps: number } }[] };
+  const g = copy.steps.find((x) => x.kind === "grant");
+  if (g?.policy === undefined) throw new Error("template has no grant policy");
+  g.policy.proposal_charge_bps = bps;
+  return copy;
+}
+/** The spec's proposed default charge (50 bps, Policy::DEMO): a 200-record bound for the funding rule and the deviation. */
+const spec50 = withCharge(live, 50);
+/** Both mainnet templates charge 1000 bps: 10 records, (310,100 + 2000 + 10 x 1000 + 4096) x 1e19 = 3.26196 NEAR. */
+const EXACT10 = (310_100n + 2_000n + 10n * 1_000n + 4_096n) * 10n ** 19n;
 const pk = (label: string) => sandboxKey(`prepare-test/${label}`).getPublicKey().toString();
 
 const dirs: string[] = [];
@@ -122,7 +134,7 @@ describe("R1: the post-setup state against the approved setup record", () => {
     ["a filler short of its spend cap", (s, i) => { i.setup.deposits.filler.wnear = "400000000000000000000000"; s.intents_balances.filler.wnear = "400000000000000000000000"; }, /below filler_spend_max/],
     ["a deposit above the inventory ceiling", (s, i) => { i.setup.deposits.mandate.wnear = "1300000000000000000000000"; s.intents_balances.mandate.wnear = "1300000000000000000000000"; }, /above owner_inventory_max/],
     ["an unregistered owner", (s) => (s.owner_registered.wnear = false), /not registered on the wnear token/],
-    ["the underfunded mandate against the full record bound", (s) => (s.accounts.mandate = account("3500000000000000000000000", 310_100, pins.mandate_code_hash)), /below the funding rule for 200 records/],
+    ["the underfunded mandate against the full record bound", (s) => (s.accounts.mandate = account((EXACT10 - 1n).toString(), 310_100, pins.mandate_code_hash)), /below the funding rule for 10 records/],
     ["another chain", (s) => (s.chain = { chain_id: "testnet", genesis_hash: "x" }), /not the template's mainnet/],
   ];
   for (const [name, mutate, problem] of cases) {
@@ -138,35 +150,47 @@ describe("R1: the post-setup state against the approved setup record", () => {
     const i = input();
     const s = matching(i);
     s.accounts.mandate = account(EXACT.toString(), 310_100, pins.mandate_code_hash);
-    expect(setupProblems(i, live, s, pins)).toEqual([]);
+    expect(setupProblems(i, spec50, s, pins)).toEqual([]);
     s.accounts.mandate = account((EXACT - 1n).toString(), 310_100, pins.mandate_code_hash);
-    expect(setupProblems(i, live, s, pins).join("\n")).toMatch(/below the funding rule for 200 records: \(2000 grant \+ 200 x 1000 \+ 4096\)/);
-    // The bound follows the template's own policy: turnover 10000 bps / charge 50 bps.
-    const halfCharge = structuredClone(live) as typeof live & { steps: { kind: string; policy?: { proposal_charge_bps: number } }[] };
-    const g = halfCharge.steps.find((x) => x.kind === "grant");
-    if (g?.policy !== undefined) g.policy.proposal_charge_bps = 100;
+    expect(setupProblems(i, spec50, s, pins).join("\n")).toMatch(/below the funding rule for 200 records: \(2000 grant \+ 200 x 1000 \+ 4096\)/);
+    // The bound follows the template's own policy: turnover 10000 bps / charge 100 bps.
     s.accounts.mandate = account((EXACT - 100n * 1_000n * 10n ** 19n).toString(), 310_100, pins.mandate_code_hash);
-    expect(setupProblems(i, halfCharge, s, pins)).toEqual([]);
+    expect(setupProblems(i, withCharge(live, 100), s, pins)).toEqual([]);
   });
 
   it("accepts the 3.5 NEAR mandate only with an explicit, referenced storage deviation, and reports it", () => {
     const i = input();
     const s = matching(i);
     s.accounts.mandate = account("3500000000000000000000000", 310_100, pins.mandate_code_hash);
-    expect(setupProblems(i, live, s, pins).join("\n")).toMatch(/funding rule for 200 records/);
+    expect(setupProblems(i, spec50, s, pins).join("\n")).toMatch(/funding rule for 200 records/);
     i.setup.storage_deviation = { records: 30, approved_reference: "A6 deviation (test)" };
-    expect(setupProblems(i, live, s, pins)).toEqual([]);
-    expect(specDeviations(i, live).join("\n")).toMatch(/STORAGE DEVIATION \(A6 deviation \(test\)\): .* 30 order records, below the grant's bound of 200/);
+    expect(setupProblems(i, spec50, s, pins)).toEqual([]);
+    expect(specDeviations(i, spec50).join("\n")).toMatch(/STORAGE DEVIATION \(A6 deviation \(test\)\): .* 30 order records, below the grant's bound of 200/);
     i.setup.storage_deviation = { records: 34, approved_reference: "too many for 3.5 NEAR" };
-    expect(setupProblems(i, live, s, pins).join("\n")).toMatch(/funding rule for 34 records/);
+    expect(setupProblems(i, spec50, s, pins).join("\n")).toMatch(/funding rule for 34 records/);
   });
 
   it("refuses a deviation that is not below the bound or below the run's own proposals", () => {
     const i = input();
     i.setup.storage_deviation = { records: 200, approved_reference: "x" };
-    expect(setupProblems(i, live, matching(i), pins).join("\n")).toMatch(/not below the bound 200/);
+    expect(setupProblems(i, spec50, matching(i), pins).join("\n")).toMatch(/not below the bound 200/);
+    i.setup.storage_deviation = { records: 10, approved_reference: "x" };
+    expect(setupProblems(i, live, matching(i), pins).join("\n")).toMatch(/not below the bound 10/);
     i.setup.storage_deviation = { records: 2, approved_reference: "x" };
-    expect(setupProblems(i, live, matching(i), pins).join("\n")).toMatch(/below the 3 proposals/);
+    expect(setupProblems(i, spec50, matching(i), pins).join("\n")).toMatch(/below the 3 proposals/);
+  });
+
+  it("funds both mainnet templates' 10-record bound with 3.3 NEAR and no storage deviation", () => {
+    for (const [t, i] of [[live, input()], [fallback as typeof live, input({ ownerExternal: null, model: false })]] as const) {
+      const s = matching(i);
+      s.accounts.mandate = account("3300000000000000000000000", 310_100, pins.mandate_code_hash);
+      expect(setupProblems(i, t, s, pins)).toEqual([]);
+      expect(specDeviations(i, t).join("\n")).not.toMatch(/STORAGE DEVIATION/);
+      s.accounts.mandate = account(EXACT10.toString(), 310_100, pins.mandate_code_hash);
+      expect(setupProblems(i, t, s, pins)).toEqual([]);
+      s.accounts.mandate = account((EXACT10 - 1n).toString(), 310_100, pins.mandate_code_hash);
+      expect(setupProblems(i, t, s, pins).join("\n")).toMatch(/below the funding rule for 10 records: \(2000 grant \+ 10 x 1000 \+ 4096\)/);
+    }
   });
 
   it("flags grant timing other than the spec's 60 s as a deviation, and nothing for 60/60", () => {

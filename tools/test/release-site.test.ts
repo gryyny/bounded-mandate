@@ -74,8 +74,9 @@ describe("CSP", () => {
     expect(checkCsp("/", html)).toEqual([]);
   });
 
-  it("accepts the certified f60f999 evidence page as committed", () => {
-    const certified = resolve(import.meta.dirname, "../../evidence/f60f999/page/index.html");
+  it("accepts the certified bundle's evidence page as committed", () => {
+    const repoRoot = resolve(import.meta.dirname, "../..");
+    const certified = join(repoRoot, (JSON.parse(readFileSync(join(repoRoot, "evidence/index.json"), "utf8")) as { bundles: { path: string; status: string }[] }).bundles.find((b) => b.status === "certified")?.path ?? "evidence/(none)", "page/index.html");
     expect(existsSync(certified)).toBe(true);
     expect(checkCsp("/", readFileSync(certified, "utf8"))).toEqual([]);
   });

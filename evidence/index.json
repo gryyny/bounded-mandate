@@ -15,7 +15,12 @@
       "status": "superseded",
       "rules": "48 required cases of 20 gates in one clean acceptance run, independently reproduced in a GitHub fresh clone and CI. Mainnet not run; REPLAY uses synthetic RPC cases, LAB/EXAMPLE and DAO execute in sandbox with labelled test doubles.",
       "run": "evidence/2d77c38/run.json",
-      "note": "Fresh GitHub clone: Node 24.22.1/macOS arm64, empty target, cached registry/tool downloads, allowlisted runtime environment without model, public-network or GitHub credentials. make test 1500.802 s: 198 Rust and 996 TypeScript tests; run 20261112T141251978Z-dc337e7cb4de, all 48 required cases passed. make demo 59/59 in 60.199 s; make quick 60/60 in 39.922 s; documented make example all three chain observations in 25.284 s; make page byte-identical. CI 43234752930: make test 2720 s, certified run 20261112T141704557Z-4338298300d3; demo 59/59 in 74 s; no-Rust quick 60/60 in 44 s and example in 22 s; Node 20 evidence reader. Both actual cuts (85.866667 s and 224 s) and final page inspected in Chrome desktop/mobile. Two independent AI-agent stranger tests; recorded DAO preset; measured hosting proposal and final local amd64 container 7/7. Original b480057 bundle and interrupted 6a3860f attempt preserved with their identities. b480057 was the original funded-run candidate; it pins signer 3.17.0 and cannot run since the 2026-11-09 upgrade (see docs/live-runner.md). 2d77c38 also pins 3.17.0 and is not the run revision. No public-network transactions, paid inference, hosting or publication in this batch."
+      "note": "Fresh GitHub clone: Node 24.22.1/macOS arm64, empty target, cached registry/tool downloads, allowlisted runtime environment without model, public-network or GitHub credentials. make test 1500.802 s: 198 Rust and 996 TypeScript tests; run 20261112T141251978Z-dc337e7cb4de, all 48 required cases passed. make demo 59/59 in 60.199 s; make quick 60/60 in 39.922 s; documented make example all three chain observations in 25.284 s; make page byte-identical. CI 43234752930: make test 2720 s, certified run 20261112T141704557Z-4338298300d3; demo 59/59 in 74 s; no-Rust quick 60/60 in 44 s and example in 22 s; Node 20 evidence reader. Both actual cuts (85.866667 s and 224 s) and final page inspected in Chrome desktop/mobile. Two independent AI-agent stranger tests; recorded DAO preset; measured hosting proposal and final local amd64 container 7/7. Original b480057 bundle and interrupted 6a3860f attempt preserved with their identities. b480057 was the original funded-run candidate; it pins signer 3.17.0 and cannot run since the 2026-11-09 upgrade (see docs/live-runner.md). 2d77c38 also pins 3.17.0 and is not the run revision. No public-network transactions, paid inference, hosting or publication in this batch.",
+      "archived": {
+        "commit": "8c6c1d2a5ae5cf760d71144add9395180602f116",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/8c6c1d2a5ae5cf760d71144add9395180602f116/evidence/2d77c38",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/b480057",
@@ -23,7 +28,12 @@
       "status": "superseded",
       "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/b480057/run.json",
-      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1507 s cold, 198 Rust and 823 TypeScript tests passed, acceptance run 20261110T231805526Z-2ca01ad9786c. make demo exit 0 in 60 s warm, 59/59 story checks (setup 15.6 s, story 20.0 s, browser start 0.4 s). make quick 60/60 in 39 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42922155040: make test exit 0 in 2137 s, acceptance run 20261110T232259961Z-b7537f7d5618, make demo 59/59 in 63 s (setup 12.8 s, story 19.9 s); a separate job with no Rust toolchain ran make quick 60/60 in 43 s (87 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Supersedes 348a14d after a second independent review: verify --mainnet now counts a fill as a trade only when it executed the mandate's proposed order and moved its amounts, a refreshed challenge record keeps its completed close, and the CI skip rule reads the changed-file list from a file; contract source and the deployment candidate did not change. Sandbox only; the mainnet paths are exercised against synthetic chain responses and sandbox runs, not mainnet. The expanded presentation/lab/example/proof reader is certified separately at 2d77c38 (48 cases). b480057 was the original funded-run candidate; it pins signer 3.17.0 and cannot run since the 2026-11-09 upgrade (see docs/live-runner.md); this original 37-case bundle is unchanged. Use the documented original-root later-reader compatibility path."
+      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1507 s cold, 198 Rust and 823 TypeScript tests passed, acceptance run 20261110T231805526Z-2ca01ad9786c. make demo exit 0 in 60 s warm, 59/59 story checks (setup 15.6 s, story 20.0 s, browser start 0.4 s). make quick 60/60 in 39 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42922155040: make test exit 0 in 2137 s, acceptance run 20261110T232259961Z-b7537f7d5618, make demo 59/59 in 63 s (setup 12.8 s, story 19.9 s); a separate job with no Rust toolchain ran make quick 60/60 in 43 s (87 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Supersedes 348a14d after a second independent review: verify --mainnet now counts a fill as a trade only when it executed the mandate's proposed order and moved its amounts, a refreshed challenge record keeps its completed close, and the CI skip rule reads the changed-file list from a file; contract source and the deployment candidate did not change. Sandbox only; the mainnet paths are exercised against synthetic chain responses and sandbox runs, not mainnet. The expanded presentation/lab/example/proof reader is certified separately at 2d77c38 (48 cases). b480057 was the original funded-run candidate; it pins signer 3.17.0 and cannot run since the 2026-11-09 upgrade (see docs/live-runner.md); this original 37-case bundle is unchanged. Use the documented original-root later-reader compatibility path.",
+      "archived": {
+        "commit": "1b9d2ea9e5fcbe282e86743a96513f63582e4b0c",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/1b9d2ea9e5fcbe282e86743a96513f63582e4b0c/evidence/b480057",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/348a14d",
@@ -31,7 +41,12 @@
       "status": "superseded",
       "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/348a14d/run.json",
-      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1499 s cold, 198 Rust and 813 TypeScript tests passed, acceptance run 20261110T195023440Z-276450991eb5. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.6 s, story 20.1 s, browser start 0.3 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42889198706: make test exit 0 in 2341 s, acceptance run 20261110T195328388Z-88b342ac651d, make demo 59/59 in 80 s (setup 14.4 s, story 20.5 s); a separate job with no Rust toolchain ran make quick 60/60 in 43 s (86 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Supersedes 173942f after an independent review: verify --mainnet, the live runner's reports, the challenge record, the mainnet page verdict and the CI skip rule changed; contract source and the deployment candidate did not. Sandbox only; the mainnet paths are exercised against synthetic chain responses and sandbox runs, not mainnet."
+      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1499 s cold, 198 Rust and 813 TypeScript tests passed, acceptance run 20261110T195023440Z-276450991eb5. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.6 s, story 20.1 s, browser start 0.3 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42889198706: make test exit 0 in 2341 s, acceptance run 20261110T195328388Z-88b342ac651d, make demo 59/59 in 80 s (setup 14.4 s, story 20.5 s); a separate job with no Rust toolchain ran make quick 60/60 in 43 s (86 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Supersedes 173942f after an independent review: verify --mainnet, the live runner's reports, the challenge record, the mainnet page verdict and the CI skip rule changed; contract source and the deployment candidate did not. Sandbox only; the mainnet paths are exercised against synthetic chain responses and sandbox runs, not mainnet.",
+      "archived": {
+        "commit": "c7484e0c754b811b6be3365d7b14f5e5a39bc237",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/c7484e0c754b811b6be3365d7b14f5e5a39bc237/evidence/348a14d",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/173942f",
@@ -39,7 +54,12 @@
       "status": "superseded",
       "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/173942f/run.json",
-      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1490 s cold, 198 Rust and 789 TypeScript tests passed, acceptance run 20261110T112642713Z-78a406f01e1d. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.8 s, story 20.4 s, browser start 0.4 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42806949311: make test exit 0 in 2257 s, acceptance run 20261110T112654590Z-a79b2ca819f0, make demo 59/59 in 72 s (setup 13.8 s, story 20.3 s); a separate job with no Rust toolchain ran make quick 60/60 in 44 s (82 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Sandbox only."
+      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1490 s cold, 198 Rust and 789 TypeScript tests passed, acceptance run 20261110T112642713Z-78a406f01e1d. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.8 s, story 20.4 s, browser start 0.4 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42806949311: make test exit 0 in 2257 s, acceptance run 20261110T112654590Z-a79b2ca819f0, make demo 59/59 in 72 s (setup 13.8 s, story 20.3 s); a separate job with no Rust toolchain ran make quick 60/60 in 44 s (82 s from job start); a Node 20 job ran verify.mjs on the previous bundle. Both MP4s (85.9 s and 217.1 s) bind to the same demo log and are committed under video/. Two-repo secret scan, site (with both cuts against the manifest), license, README link and wallet adapter (8/8) checks passed. In release/license-check.json the local cargo home was replaced by $CARGO_HOME after the check ran; nothing else was edited. Sandbox only.",
+      "archived": {
+        "commit": "cf348464a74995d149f121d1af0c42965a15193d",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/cf348464a74995d149f121d1af0c42965a15193d/evidence/173942f",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/0bcb3f4",
@@ -47,7 +67,12 @@
       "status": "superseded",
       "rules": "37 required cases of 17 gates in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/0bcb3f4/run.json",
-      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1503 s cold, 198 Rust and 705 TypeScript tests passed, acceptance run 20261110T005643437Z-552baa42cef7. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.8 s, story 20.5 s, browser start 0.3 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42731558576: make test exit 0 in 2328 s, acceptance run 20261110T005509987Z-2667735e21ac, make demo 59/59 in 81 s (setup 14.6 s, story 20.5 s); a separate job with no Rust toolchain ran make quick 60/60 in 41 s (73 s from job start). Both MP4s (85.9 s and 217.1 s) bind to the same demo log; MP4s are not committed. Two-repo secret scan, site, license, README link and wallet adapter (8/8) checks passed. Twelve duplicate gate reports written by a mistaken second cargo test in the certification clone after acceptance was evaluated were excluded from this bundle and are recorded in the meta status register. Sandbox only."
+      "note": "Fresh clone (macOS arm64, Node 24.22.1, no meta checkout, funds or provider credentials): make test exit 0 in 1503 s cold, 198 Rust and 705 TypeScript tests passed, acceptance run 20261110T005643437Z-552baa42cef7. make demo exit 0 in 59 s warm, 59/59 story checks (setup 15.8 s, story 20.5 s, browser start 0.3 s). make quick 60/60 in 40 s warm. make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42731558576: make test exit 0 in 2328 s, acceptance run 20261110T005509987Z-2667735e21ac, make demo 59/59 in 81 s (setup 14.6 s, story 20.5 s); a separate job with no Rust toolchain ran make quick 60/60 in 41 s (73 s from job start). Both MP4s (85.9 s and 217.1 s) bind to the same demo log; MP4s are not committed. Two-repo secret scan, site, license, README link and wallet adapter (8/8) checks passed. Twelve duplicate gate reports written by a mistaken second cargo test in the certification clone after acceptance was evaluated were excluded from this bundle and are recorded in the meta status register. Sandbox only.",
+      "archived": {
+        "commit": "fdadd3ef785fba3cba9460b95f260545083982e6",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/fdadd3ef785fba3cba9460b95f260545083982e6/evidence/0bcb3f4",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/51d2532",
@@ -55,7 +80,12 @@
       "status": "superseded",
       "rules": "35 required cases in one clean acceptance run. The offline replay, console and both cuts bind to the certified sandbox demo.",
       "run": "evidence/51d2532/run.json",
-      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1500 s cold, 197 Rust and 600 TypeScript tests passed, acceptance run 20261108T151902716Z-aade4380554e. make demo exit 0 in 60 s, 59/59 story checks (setup 16.2 s, story 20.2 s, browser start 0.4 s). make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42494181012: make test exit 0 in 2036 s, acceptance run 20261108T152353864Z-d1aac03b2207, make demo exit 0 in 72 s, 59/59 (setup 14.3 s, story 20.9 s, browser start 0.2 s). T1 matched two complete simulated bundles to four unexpired removed-key rejections. 15/15 selected legitimate trades settled and 39/39 hostile requests were refused. The comparison includes five paths. Both MP4s (85.0 s and 217.1 s) bind to the same demo log and played in the locally assembled site. All 40 frame layouts, eight pinned wallet adapters, link, license, disclosure and secret checks passed. Exact MP4s and the log are local under out/video-51d2532. Sandbox only."
+      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1500 s cold, 197 Rust and 600 TypeScript tests passed, acceptance run 20261108T151902716Z-aade4380554e. make demo exit 0 in 60 s, 59/59 story checks (setup 16.2 s, story 20.2 s, browser start 0.4 s). make page reproduced the evidence page byte for byte. GitHub Actions ubuntu-24.04 run 42494181012: make test exit 0 in 2036 s, acceptance run 20261108T152353864Z-d1aac03b2207, make demo exit 0 in 72 s, 59/59 (setup 14.3 s, story 20.9 s, browser start 0.2 s). T1 matched two complete simulated bundles to four unexpired removed-key rejections. 15/15 selected legitimate trades settled and 39/39 hostile requests were refused. The comparison includes five paths. Both MP4s (85.0 s and 217.1 s) bind to the same demo log and played in the locally assembled site. All 40 frame layouts, eight pinned wallet adapters, link, license, disclosure and secret checks passed. Exact MP4s and the log are local under out/video-51d2532. Sandbox only.",
+      "archived": {
+        "commit": "17af749da3f89ef8f341ceee1e7370eee1aaceae",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/17af749da3f89ef8f341ceee1e7370eee1aaceae/evidence/51d2532",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/2373d39",
@@ -63,7 +93,12 @@
       "status": "superseded",
       "rules": "35 required cases in one clean acceptance run. Both cuts, the page and the console bind to the certified sandbox demo.",
       "run": "evidence/2373d39/run.json",
-      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1488 s cold, 197 Rust and 597 TypeScript tests passed, acceptance run 20261108T093844482Z-effddf52e788. make demo exit 0 in 64 s, 59/59 story checks (setup 19.3 s, story 19.8 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42468021637: make test exit 0 in 1974 s, acceptance run 20261108T094358865Z-ab1727e4f779, make demo exit 0 in 68 s, 59/59 (setup 13.9 s, story 20.2 s, browser start 0.2 s). The short (85.0 s) and walkthrough (195.4 s) came from the same demo and log. All 39 refusals across five layers match the attack gate. Both MP4s played in Chrome and are local under out/video-2373d39. The site, manifest, captions, 37 frame layouts, license inventory and README references were checked. Eight pinned wallet adapters answered with matching hashes and no CSP violation. See release/ and console/wallet-adapter-check.json. Sandbox only. Superseded by 51d2532. This T1 acceptance test checked the mandate leg and re-signed the filler leg per relay. The demo used a single complete bundle."
+      "note": "Fresh clone (macOS arm64, Node 26.12.0, no meta checkout, funds or provider credentials): make test exit 0 in 1488 s cold, 197 Rust and 597 TypeScript tests passed, acceptance run 20261108T093844482Z-effddf52e788. make demo exit 0 in 64 s, 59/59 story checks (setup 19.3 s, story 19.8 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42468021637: make test exit 0 in 1974 s, acceptance run 20261108T094358865Z-ab1727e4f779, make demo exit 0 in 68 s, 59/59 (setup 13.9 s, story 20.2 s, browser start 0.2 s). The short (85.0 s) and walkthrough (195.4 s) came from the same demo and log. All 39 refusals across five layers match the attack gate. Both MP4s played in Chrome and are local under out/video-2373d39. The site, manifest, captions, 37 frame layouts, license inventory and README references were checked. Eight pinned wallet adapters answered with matching hashes and no CSP violation. See release/ and console/wallet-adapter-check.json. Sandbox only. Superseded by 51d2532. This T1 acceptance test checked the mandate leg and re-signed the filler leg per relay. The demo used a single complete bundle.",
+      "archived": {
+        "commit": "47c8e8c371030b0cd89a78308a02411b9c73f06c",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/47c8e8c371030b0cd89a78308a02411b9c73f06c/evidence/2373d39",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/72bf8c7",
@@ -71,7 +106,12 @@
       "status": "superseded",
       "rules": "35 required sandbox cases. Original artifacts preserved with the known short-cut presentation defect.",
       "run": "evidence/72bf8c7/run.json",
-      "note": "Fresh clone 20261107T213223255Z-0bf93e5a38f7 and GitHub Actions run 42416315462 (acceptance 20261107T213524291Z-c777bc56a4df) both certified 35/35 and passed the demo 59/59. The short cut omitted the verifier row so the displayed layers summed to 38 while the captions correctly said 39. Superseded by 2373d39. The archived video manifest and captions are historical."
+      "note": "Fresh clone 20261107T213223255Z-0bf93e5a38f7 and GitHub Actions run 42416315462 (acceptance 20261107T213524291Z-c777bc56a4df) both certified 35/35 and passed the demo 59/59. The short cut omitted the verifier row so the displayed layers summed to 38 while the captions correctly said 39. Superseded by 2373d39. The archived video manifest and captions are historical.",
+      "archived": {
+        "commit": "47c8e8c371030b0cd89a78308a02411b9c73f06c",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/47c8e8c371030b0cd89a78308a02411b9c73f06c/evidence/72bf8c7",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/958d411",
@@ -79,7 +119,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with 35 required cases (COMPARE.revocation-alternatives added); demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/958d411/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1496 s cold (TypeScript 543/543, Rust 197 passed), acceptance run 20261107T145659281Z-b7d707f889f0; make demo exit 0 in 60 s, 59/59 (setup 16.0 s, story 20.4 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42383961240: make test certified in 1941 s (acceptance run 20261107T150135938Z-b5c2d93063c1), make demo 65 s, 59/59 (setup 12.7 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 8b2bdda1..., walkthrough 179.7 s sha256 ae8896db...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed)."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1496 s cold (TypeScript 543/543, Rust 197 passed), acceptance run 20261107T145659281Z-b7d707f889f0; make demo exit 0 in 60 s, 59/59 (setup 16.0 s, story 20.4 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42383961240: make test certified in 1941 s (acceptance run 20261107T150135938Z-b5c2d93063c1), make demo 65 s, 59/59 (setup 12.7 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 8b2bdda1..., walkthrough 179.7 s sha256 ae8896db...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed).",
+      "archived": {
+        "commit": "e48a06d2c473719aab0469f67a735fe4e3856e63",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/e48a06d2c473719aab0469f67a735fe4e3856e63/evidence/958d411",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/bc3fed6",
@@ -87,7 +132,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with 34 required cases; demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/bc3fed6/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1455 s cold (TypeScript 543/543, Rust 196 passed), acceptance run 20261107T123537249Z-030ea9f58f07; make demo exit 0 in 62 s, 59/59 (setup 16.1 s, story 20.3 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42373163926: make test certified in 1941 s (acceptance run 20261107T123927987Z-adfcafbcec9b), make demo 65 s, 59/59 (setup 13.1 s, story 20.1 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 6e85f2ce..., walkthrough 179.7 s sha256 baf2cdc3...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed). Superseded on 7 November 2026 by 958d411, which adds the COMPARE gate and the revocation_window instrumentation."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1455 s cold (TypeScript 543/543, Rust 196 passed), acceptance run 20261107T123537249Z-030ea9f58f07; make demo exit 0 in 62 s, 59/59 (setup 16.1 s, story 20.3 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42373163926: make test certified in 1941 s (acceptance run 20261107T123927987Z-adfcafbcec9b), make demo 65 s, 59/59 (setup 13.1 s, story 20.1 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 6e85f2ce..., walkthrough 179.7 s sha256 baf2cdc3...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems. Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched, loaded and answered, 0 CSP violations (network-dependent, outside make test, no account, nothing signed). Superseded on 7 November 2026 by 958d411, which adds the COMPARE gate and the revocation_window instrumentation.",
+      "archived": {
+        "commit": "ed876358dff7ea86e58b5a3af7b9f2f03f898046",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/ed876358dff7ea86e58b5a3af7b9f2f03f898046/evidence/bc3fed6",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/4fec11b",
@@ -95,7 +145,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with 34 required cases (CONSOLE.wallet-sandbox added); demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/4fec11b/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1447 s cold (TypeScript 542/542, Rust 196 passed), acceptance run 20261107T111603772Z-24c65d876a11; make demo exit 0 in 62 s, 59/59 (setup 15.8 s, story 20.2 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42367428212: make test certified in 2014 s (acceptance run 20261107T112045344Z-82a1f9a9c4b4), make demo 73 s, 59/59 (setup 14.4 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 781793eb..., walkthrough 179.7 s sha256 1b38ee59...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched their sha256, loaded and answered, 0 CSP violations (console/wallet-adapter-check.json; network-dependent, outside make test, no account, nothing signed). An earlier fresh clone at 98cc5fe failed make test (exit 2 after 1444 s: license check, wallet fixture not named in NOTICE; fixed in 4fec11b); not certified. Superseded on 7 November 2026 by bc3fed6: the rehearsal used the inventory ceiling instead of the planned deposit."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1447 s cold (TypeScript 542/542, Rust 196 passed), acceptance run 20261107T111603772Z-24c65d876a11; make demo exit 0 in 62 s, 59/59 (setup 15.8 s, story 20.2 s, browser start 0.5 s). GitHub Actions ubuntu-24.04 run 42367428212: make test certified in 2014 s (acceptance run 20261107T112045344Z-82a1f9a9c4b4), make demo 73 s, 59/59 (setup 14.4 s, story 20.2 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 781793eb..., walkthrough 179.7 s sha256 1b38ee59...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. Wallet adapter check against this console page: 8/8 pinned adapters matched their sha256, loaded and answered, 0 CSP violations (console/wallet-adapter-check.json; network-dependent, outside make test, no account, nothing signed). An earlier fresh clone at 98cc5fe failed make test (exit 2 after 1444 s: license check, wallet fixture not named in NOTICE; fixed in 4fec11b); not certified. Superseded on 7 November 2026 by bc3fed6: the rehearsal used the inventory ceiling instead of the planned deposit.",
+      "archived": {
+        "commit": "b361c69d1c981b6101b4ea7dcc73ebfa073e9706",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/b361c69d1c981b6101b4ea7dcc73ebfa073e9706/evidence/4fec11b",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/f5e34f9",
@@ -103,7 +158,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with 33 required cases; demo bound to the acceptance run; no machine-local path in any report command",
       "run": "evidence/f5e34f9/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1452 s cold (TypeScript 528/528, Rust 196 passed), acceptance run 20261106T201821422Z-4d1bf9e7552e; make demo exit 0 in 60 s, 59/59 (setup 15.9 s, story 20.4 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42287182833: make test certified in 1873 s (acceptance run 20261106T202234672Z-79591c398dfb), make demo 64 s, 59/59 (setup 13.2 s, story 20.0 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 3b830e1b..., walkthrough 179.7 s sha256 e2f262f4...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. An earlier fresh-clone attempt at 3418307 failed (make test exit 2 after 1094 s: T5 test race, fixed in f5e34f9); not certified. Superseded on 7 November 2026 by 4fec11b, which adds the external-wallet connector, the pre-grant rehearsal and the corrected qualification rule."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1452 s cold (TypeScript 528/528, Rust 196 passed), acceptance run 20261106T201821422Z-4d1bf9e7552e; make demo exit 0 in 60 s, 59/59 (setup 15.9 s, story 20.4 s, browser start 0.3 s). GitHub Actions ubuntu-24.04 run 42287182833: make test certified in 1873 s (acceptance run 20261106T202234672Z-79591c398dfb), make demo 64 s, 59/59 (setup 13.2 s, story 20.0 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 3b830e1b..., walkthrough 179.7 s sha256 e2f262f4...); mp4 files not committed, see video.json. Site check over page, console and both cuts against video.json: 0 problems (release/site-check.json). Full-history secret scan of both repositories: 0 findings. An earlier fresh-clone attempt at 3418307 failed (make test exit 2 after 1094 s: T5 test race, fixed in f5e34f9); not certified. Superseded on 7 November 2026 by 4fec11b, which adds the external-wallet connector, the pre-grant rehearsal and the corrected qualification rule.",
+      "archived": {
+        "commit": "33187922bc001382e6b1026f0172b58fcfcc93e4",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/33187922bc001382e6b1026f0172b58fcfcc93e4/evidence/f5e34f9",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/0e915a2",
@@ -111,7 +171,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with 33 required cases; demo bound to the acceptance run",
       "run": "evidence/0e915a2/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1470 s cold (TypeScript 524/524, Rust 196 passed), acceptance run 20261106T154634365Z-5f0cee0f8fdb; make demo exit 0 in 62 s, 59/59 (setup 16.0 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42246105392: make test certified (acceptance run 20261106T154938701Z-c700d334eefe, about 2051 s), make demo 59/59 (setup 14.4 s, story 20.4 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 160e8378..., walkthrough 179.7 s sha256 ae66a665...); mp4 files not committed, see video.json. Site check over page and console: 0 problems. Correction (review of 6 Nov): the video URLs were not checked in this bundle (site-check.json has no video field), and its gate reports record machine-local paths in `command`; both fixed and certified at f5e34f9."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1470 s cold (TypeScript 524/524, Rust 196 passed), acceptance run 20261106T154634365Z-5f0cee0f8fdb; make demo exit 0 in 62 s, 59/59 (setup 16.0 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42246105392: make test certified (acceptance run 20261106T154938701Z-c700d334eefe, about 2051 s), make demo 59/59 (setup 14.4 s, story 20.4 s). Both video cuts rendered from the fresh-clone demo (Certified for this demo; short 85.8 s sha256 160e8378..., walkthrough 179.7 s sha256 ae66a665...); mp4 files not committed, see video.json. Site check over page and console: 0 problems. Correction (review of 6 Nov): the video URLs were not checked in this bundle (site-check.json has no video field), and its gate reports record machine-local paths in `command`; both fixed and certified at f5e34f9.",
+      "archived": {
+        "commit": "1068f087d28e25fbd686cb2ae9d9d9963c655574",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/1068f087d28e25fbd686cb2ae9d9d9963c655574/evidence/0e915a2",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/f01b496",
@@ -119,7 +184,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with 33 required cases (adds DAO, AGENT, HANDOFF, WITHDRAW, LIVE, CONSOLE); demo bound to the acceptance run",
       "run": "evidence/f01b496/run.json",
-      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1438 s cold, acceptance run 20261106T144554015Z-7e84a13280e1; make demo exit 0 in 62 s, 59/59 (setup 16.2 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42236754562: make test certified (acceptance run 20261106T145011163Z-ed47b181b44f), make demo 59/59. Both video cuts rendered from the fresh-clone demo (Certified for this demo); mp4 files are not committed, see video.json. Console index and the demo's console screenshots under console/; release-check reports under release/. Superseded by 0e915a2 (route-specific Agent API comparison on the page, planned video URLs, video directory in the site assembly). Contract source identical."
+      "note": "Fresh clone (macOS arm64, no meta repo, funds or model credentials): make test exit 0 in 1438 s cold, acceptance run 20261106T144554015Z-7e84a13280e1; make demo exit 0 in 62 s, 59/59 (setup 16.2 s, story 20.3 s, browser start 0.4 s). GitHub Actions ubuntu-24.04 run 42236754562: make test certified (acceptance run 20261106T145011163Z-ed47b181b44f), make demo 59/59. Both video cuts rendered from the fresh-clone demo (Certified for this demo); mp4 files are not committed, see video.json. Console index and the demo's console screenshots under console/; release-check reports under release/. Superseded by 0e915a2 (route-specific Agent API comparison on the page, planned video URLs, video directory in the site assembly). Contract source identical.",
+      "archived": {
+        "commit": "96b1485b02e8b46aa6853e832922efc0aec19f71",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/96b1485b02e8b46aa6853e832922efc0aec19f71/evidence/f01b496",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/f60f999",
@@ -127,7 +197,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
       "run": "evidence/f60f999/run.json",
-      "note": "certified; superseded by f01b496 (owner console, external owner-action import, owner withdrawals, Sputnik DAO owner, agent sale budgets and rehearsal, release checks). Contract source identical."
+      "note": "certified; superseded by f01b496 (owner console, external owner-action import, owner withdrawals, Sputnik DAO owner, agent sale budgets and rehearsal, release checks). Contract source identical.",
+      "archived": {
+        "commit": "a7d3cf44f30c8ea8de571399ee0ef7a86bb174ab",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/a7d3cf44f30c8ea8de571399ee0ef7a86bb174ab/evidence/f60f999",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/7fc3f90",
@@ -135,7 +210,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
       "run": "evidence/7fc3f90/run.json",
-      "note": "certified; superseded by f60f999 (evidence page outcome, verification panel, optional live agent, positioning). Contract source identical."
+      "note": "certified; superseded by f60f999 (evidence page outcome, verification panel, optional live agent, positioning). Contract source identical.",
+      "archived": {
+        "commit": "a95dab90c8e0b9081d611bcd6c754382a410b605",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/a95dab90c8e0b9081d611bcd6c754382a410b605/evidence/7fc3f90",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/7f280ca",
@@ -143,7 +223,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
       "run": "evidence/7f280ca/run.json",
-      "note": "certified; superseded by 7fc3f90 (deadline timeline times propose and revoke by verified completion). Contract source identical."
+      "note": "certified; superseded by 7fc3f90 (deadline timeline times propose and revoke by verified completion). Contract source identical.",
+      "archived": {
+        "commit": "28d81f0ab0de513a032f230646473ae6f62e5c27",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/28d81f0ab0de513a032f230646473ae6f62e5c27/evidence/7f280ca",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/9493549",
@@ -151,7 +236,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
       "run": "evidence/9493549/run.json",
-      "note": "certified; superseded by 7f280ca (story narration of failed checks, relay recheck before broadcast, deadline timeline). Contract source identical."
+      "note": "certified; superseded by 7f280ca (story narration of failed checks, relay recheck before broadcast, deadline timeline). Contract source identical.",
+      "archived": {
+        "commit": "24072beb2335f8ed5b01e1d11b9bc823e257047c",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/24072beb2335f8ed5b01e1d11b9bc823e257047c/evidence/9493549",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/34de374",
@@ -159,7 +249,12 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance with DEPLOY.candidate; demo bound to the acceptance run",
       "run": "evidence/34de374/run.json",
-      "note": "certified; superseded by 9493549 (live revocation sequence, seven-stage page, short video). Contract source identical."
+      "note": "certified; superseded by 9493549 (live revocation sequence, seven-stage page, short video). Contract source identical.",
+      "archived": {
+        "commit": "3846c02b999582320552bbe297f84045ffca608a",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/3846c02b999582320552bbe297f84045ffca608a/evidence/34de374",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/163ccfa",
@@ -167,14 +262,24 @@
       "status": "superseded",
       "rules": "gate-report/2 acceptance (all required cases, one clean run, hash-bound)",
       "run": "evidence/163ccfa/run.json",
-      "note": "certified under the rules at 163ccfa; superseded by 34de374 (binding, DEPLOY.candidate, deterministic T4 case). One CI run of e91c876 failed the then-flaky T4.open-order-limit."
+      "note": "certified under the rules at 163ccfa; superseded by 34de374 (binding, DEPLOY.candidate, deterministic T4 case). One CI run of e91c876 failed the then-flaky T4.open-order-limit.",
+      "archived": {
+        "commit": "e91c876a8799adbc0c761787c2ac159e8d79c593",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/e91c876a8799adbc0c761787c2ac159e8d79c593/evidence/163ccfa",
+        "note": "Removed from the current tree; preserved unchanged at this commit."
+      }
     },
     {
       "path": "evidence/426914d",
       "revision": "426914d534eaaec3a7167c9c23d2a898adcd7f42",
       "status": "legacy",
       "rules": "gate-report/1; not certified under current rules; kept unchanged",
-      "run": "evidence/426914d/run.json"
+      "run": "evidence/426914d/run.json",
+      "archived": {
+        "commit": "95c44938d7f2a5b9f236e5fcd34c4c2a52acb7d3",
+        "url": "https://github.com/gryyny/bounded-mandate/tree/95c44938d7f2a5b9f236e5fcd34c4c2a52acb7d3/evidence/426914d",
+        "note": "Removed from the current tree; preserved unchanged at this commit. A byte-identical copy is the legacy-format test fixture tools/test/fixtures/legacy-v1-426914d."
+      }
     }
   ]
 }

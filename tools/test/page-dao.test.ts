@@ -8,7 +8,9 @@ import { renderHtml } from "../src/page/render.js";
 import { sandboxResults } from "../src/page/results.js";
 import { Evidence } from "../src/types.js";
 
-const bundle = resolve(import.meta.dirname, "../../evidence/b480057");
+// The committed certified bundle (evidence/index.json): its own DAO report, demo and acceptance.
+const repoRoot = resolve(import.meta.dirname, "../..");
+const bundle = join(repoRoot, (JSON.parse(readFileSync(join(repoRoot, "evidence/index.json"), "utf8")) as { bundles: { path: string; status: string }[] }).bundles.find((b) => b.status === "certified")?.path ?? "evidence/(none)");
 const read = (path: string): unknown => JSON.parse(readFileSync(join(bundle, path), "utf8")) as unknown;
 const ev = Evidence.parse(read("demo.json"));
 const acc = Acceptance.parse(read("acceptance.json"));

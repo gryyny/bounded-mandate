@@ -79,10 +79,28 @@ jobs:
         run: command -v cargo-near || cargo install cargo-near --version 0.22.0 --locked
       - name: Headless Chromium and its system libraries for browser tests
         run: cd tools && npm ci --no-audit --no-fund --ignore-scripts && npx --no-install playwright install --with-deps chromium
+      # Logs are teed so the run's outputs can be curated into the evidence bundle; pipefail keeps make's exit status.
       - name: make test
-        run: make test
+        shell: bash
+        run: mkdir -p out/ci && make test 2>&1 | tee out/ci/test.log
       - name: make demo
-        run: make demo
+        shell: bash
+        run: mkdir -p out/video && make demo 2>&1 | tee out/video/demo.log
+      # The clean run's outputs (run record, acceptance, gate reports, demo, page, console, logs), kept for curation.
+      - name: Keep the run's outputs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-outputs
+          path: |
+            out/run
+            out/evidence
+            out/page
+            out/console
+            out/video/demo.log
+            out/ci
+          if-no-files-found: warn
+          retention-days: 30
 
   # The judge's quick path: no Rust or cargo-near, only Node 24, the sandbox binary and Chromium.
   quick:
@@ -109,9 +127,22 @@ jobs:
           fi
           ! command -v cargo && ! command -v rustc
       - name: make quick
-        run: make quick
+        shell: bash
+        run: mkdir -p out/ci && make quick 2>&1 | tee out/ci/quick.log
       - name: make example
-        run: make example
+        shell: bash
+        run: mkdir -p out/ci && make example 2>&1 | tee out/ci/example.log
+      - name: Keep the run's outputs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quick-outputs
+          path: |
+            out/quick
+            out/example
+            out/ci
+          if-no-files-found: warn
+          retention-days: 30
 
   # The evidence check on the oldest supported Node, with no install. On an evidence-only push the bundle is that of the
   # checked-out source, so the full checkout-bound check runs; on a source commit the newest bundle predates the

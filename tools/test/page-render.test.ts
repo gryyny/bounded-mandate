@@ -333,7 +333,8 @@ describe("evidence page: re-implemented baseline comparison", () => {
 });
 
 describe("evidence page: historical v1 bundle", () => {
-  const bundle = join(repo, "evidence/426914d");
+  // The one envelope-v1 bundle, evidence/426914d, kept byte for byte as a test fixture.
+  const bundle = join(repo, "tools/test/fixtures/legacy-v1-426914d");
   const digest = (dir: string): string => {
     const files = (d: string): string[] => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? files(join(d, n)) : [join(d, n)]));
     const h = createHash("sha256");
@@ -861,7 +862,7 @@ describe("evidence page: outcome, withheld identity and sandbox cases", () => {
   });
 
   it("reads the certified bundle's actual regrant and disclosure reports", () => {
-    const bundle = join(repo, "evidence/7fc3f90");
+    const bundle = join(repo, (JSON.parse(readFileSync(join(repo, "evidence/index.json"), "utf8")) as { bundles: { path: string; status: string }[] }).bundles.find((b) => b.status === "certified")?.path ?? "evidence/(none)");
     const acc = JSON.parse(readFileSync(join(bundle, "acceptance.json"), "utf8")) as Acceptance;
     const files = ["T1.withheld-regrant.json", "T2b.disclosed-relay.json", "T2b.callback-failed-after-disclosure.json"].map((file) => ({ file, text: readFileSync(join(bundle, "tests", file), "utf8") }));
     const ev = Evidence.parse(JSON.parse(readFileSync(join(bundle, "demo.json"), "utf8")));

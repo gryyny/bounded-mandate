@@ -1,7 +1,0 @@
-{
-  "source": "2d77c38b17da3f2611dbf9f4fb11f7952acb199c",
-  "original_command": "make demo",
-  "original_sha256": "4410a8c07f465a1c6adef87ddecee201b697c5a20b3d0aca61fd94315210ef39",
-  "video_input_sha256": "296837aa8d4a22b9da36cc3454ffcae41611caea4a4c741135afabd329d4f2f0",
-  "transformation": "Compiler machine-local user paths redacted only; story output and all results unchanged. Raw original retained locally. This derivative log is the exact input hashed in video.json."
-}

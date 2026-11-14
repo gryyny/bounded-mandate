@@ -256,7 +256,7 @@ const GrantPolicyBound = z.object({ kind: z.literal("grant"), policy: z.object({
 /**
  * The storage the mandate's free NEAR must cover before its first grant: the grant state plus the grant's order-record
  * bound (ceil(turnover_cap_bps / proposal_charge_bps), 200 for the template) plus the margin. Record bytes are the
- * template's storage.order_record_bytes (1000), not the 779 bytes measured in evidence/958d411/tests/T4.record-bound.json:
+ * template's storage.order_record_bytes (1000), not the 779 bytes measured in evidence/958d411/tests/T4.record-bound.json (archived at e48a06d):
  * that sandbox run used short test token ids, while every mainnet record stores a payload message naming the 64-character
  * USDC token id, so the measurement understates mainnet records; 1000 is the runner's own per-record figure and the
  * larger of the two. A smaller record count is accepted only as an explicit, referenced storage_deviation.

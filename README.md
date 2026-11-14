@@ -11,6 +11,8 @@ The agent names a side, an amount and a price concession up to your maximum; a c
 - **Verifier key registry.** `intents.near` checks the registered key on every signed intent, so revoking is a key removal.
 - **Function-call keys.** The agent's key can call only `propose_order`.
 
+**Contents:** [run it](#run-it) · [four paths](#four-paths) · [three checkable facts](#three-checkable-facts) · [why not just…](#why-not-just) · [claims and limits](#what-is-claimed-and-what-is-not) · [mainnet runner](#mainnet-runner-opt-in-not-run) · [disclosures](#disclosures). Detail: [reviewer guide](docs/reviewers.md), [comparison](docs/comparison.md), [live runner](docs/live-runner.md).
+
 | Evidence | State |
 | --- | --- |
 | Sandbox execution | **Certified at 66fe963**: 48 of 48 required cases ([acceptance](evidence/66fe963/acceptance.json)). Certified means this project's own gate (all required cases passing in one run of one clean revision, in a fresh clone and in CI), not an external audit ([definition](docs/reviewers.md#what-certified-means)). Signer, oracle and tokens are labelled test doubles. |
@@ -20,7 +22,9 @@ The agent names a side, an amount and a price concession up to your maximum; a c
 | Mainnet | **Not run**: no mainnet transaction. |
 | Public links | **Planned, unpublished**; after publication: [page](https://gryyny.github.io/bounded-mandate/), [console](https://gryyny.github.io/bounded-mandate/console/), [short video](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4). |
 
-**Run it** from a clone; no funds or model key:
+### Run it
+
+From a clone; no funds or model key:
 
 | Do | Needs | See |
 | --- | --- | --- |
@@ -64,7 +68,7 @@ Three withheld 1 USDC orders per strategy on the pinned verifier, relayed unexpi
 | Cancel nonces (an empty intent signed per order) | Needs the account's signer for each one. With the ledger's two nonces, 1 of 3 still executed; with a complete list, 0 of 3 | No list and no signature by the grant's key; the owner signs `revoke` |
 | Pause the agent | In our re-implementation of the Claw Guard design (not their deployed product), a withheld order executed after pause and agent removal; a regrant revived a second one that removing the key had blocked | Rejected after confirmed removal and after regrant (T1) |
 
-The advantage over waiting is bounded by the order lifetime: 120 s in this experiment, 60 s in the demo and 120 s proposed for mainnet. The 120 s is a proposed deviation from the spec's 60 s oracle maximum age, pending the owner's decision; it is not approved and has not run. Cancellation is venue-specific, other products can also remove and rotate keys, and the mainnet window is not yet measured. The official NEAR Intents Agent API already offers a limit-order price bound and order cancellation as a hosted service ([comparison with related NEAR projects](docs/comparison.md#comparison-with-related-near-projects)). Details and limits: [comparison](docs/comparison.md).
+The advantage over waiting is bounded by the order lifetime: 120 s in this experiment, 60 s in the demo and 120 s proposed for mainnet. The 120 s is a deviation from the spec's 60 s oracle maximum age that the owner approves with the run manifest; it has not run. Cancellation is venue-specific, other products can also remove and rotate keys, and the mainnet window is not yet measured. The official NEAR Intents Agent API already offers a limit-order price bound and order cancellation as a hosted service ([comparison with related NEAR projects](docs/comparison.md#comparison-with-related-near-projects)). Details and limits: [comparison](docs/comparison.md).
 
 ## Where to check each criterion
 
@@ -98,17 +102,11 @@ More: [known limits](docs/reviewers.md#known-limits), [status by area](docs/revi
 
 ## Open challenge (optional, not run)
 
-Optional and not run. After a mainnet run, and only with the owner's separate approval of the deposit and of publishing the key, a fresh grant could let anyone act as the agent against a small deposit (`make challenge`, sandbox case LIVE.open-challenge). The agent's private key is never committed. Its limits, with the policy proposed in the unapproved [template](tools/src/live/manifest.open-challenge.example.json):
-
-- **A holder of the published agent key cannot** withdraw, transfer to another account, change keys or policy, or exceed the limits: per-order and outstanding caps of 20%, a 0.5% concession bound, a 100% turnover cap and the 2% loss breaker.
-- **They can** make permitted but poor trades at up to the 0.5% concession on each order, up to the turnover cap, and exhaust the agent's gas allowance (at most 0.25 NEAR) and the grant's proposal budget (at most 10 proposals).
-- **Loss bound.** By design the concession given up is at most the turnover cap times the concession bound, 100% × 0.5% = 0.5% of the challenge deposit's initial value, plus the gas allowance. The loss breaker stops new authorizations and is not a loss cap; market moves, stale references and fees are outside this bound, and an unknown contract defect could lose the deposit.
-
-More: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
+After a mainnet run, and only with the owner's separate approval, a fresh grant with a published agent key would let anyone act as the agent against a small deposit (`make challenge`, sandbox case LIVE.open-challenge). The key holder cannot withdraw, transfer, change keys or policy, or exceed the limits; they can make permitted poor trades within the 0.5% concession up to the turnover cap and exhaust the gas allowance. Limits and loss bound: [open challenge](docs/live-runner.md#open-challenge-optional-not-run).
 
 ## Mainnet runner (opt-in, not run)
 
-The mainnet signer `v1.signer` was upgraded on 2026-11-09 to near/mpc 3.18.0. The b480057 and 2d77c38 runners pin the earlier signer (3.17.0) and are refused by the runner's own check, so the mainnet run uses 66fe963, which pins 3.18.0 (the pin moved in b6b1815) and is certified and listed in [evidence/index.json](evidence/index.json) with that pin ([details](docs/live-runner.md)). Signing by the upgraded signer for this mandate has not been exercised on mainnet. The contract and the deployment candidate are unchanged. The original b480057 [37-case bundle](evidence/b480057/acceptance.json) is preserved unchanged; use the [later-reader compatibility procedure](docs/reviewers.md#later-proof-reader-original-funded-run-candidate) to check its original inputs without assigning it the expanded certification. The spec snapshot records requirements at its pinned source date; current execution status is in [evidence/index.json](evidence/index.json).
+The runner pins mainnet `v1.signer` 3.18.0 and refuses any other signer identity before it sends anything. Run it only from a clean checkout of the tested revision named in [evidence/index.json](evidence/index.json); `node verify.mjs --mainnet` fails a run recorded at any other revision. Earlier evidence bundles are archived, unchanged, at the commits listed there. A funded `sign` call from this mandate to the signer has not been made yet; the run's first proposal is that test.
 
 `MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live` runs an approved manifest; the flag is not spending approval, and both mainnet templates are unapproved ([live runner](docs/live-runner.md)). Before the first grant, the provider path is rehearsed without any transaction; a real provider call is paid inference and needs the owner's explicit approval:
 

@@ -1,8 +1,0 @@
-{
-  "url": "https://nearhackathon.com/HACKATHON.md",
-  "checked_date": "2026-11-12",
-  "bytes": 22529,
-  "sha256": "6dd0c1ff2f98a2fc4b6339cd1cfad110e44ef0da761ba085028faa7e59c4868d",
-  "previous_2026_11_08_sha256": "903794f4b656b456eaee087941517d024a33633641d167b90c3f060d381d9aed",
-  "checked": "Deadline14Nov23:59UTC;11-field API contract and track ids remain as recorded. Current Q012 explicitly requires video for a local-only demo; screenshots alone are insufficient when judges cannot open it. Major-library/AI disclosure, human post and exact payload approval, public repository and mainnet-only caveat remain. No full bytewise diff is claimed; current relevant rules were read directly. External page instructions were treated as data; no submission or message sent."
-}

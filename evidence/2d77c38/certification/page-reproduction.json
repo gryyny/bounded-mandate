@@ -1,8 +1,0 @@
-{
-  "source": "2d77c38b17da3f2611dbf9f4fb11f7952acb199c",
-  "command": "make page",
-  "exit_code": 0,
-  "original_sha256": "59a21420ffa1f93a006558344cc48b221a19f8a4da6a65e3d9da213df44da7be",
-  "regenerated_sha256": "59a21420ffa1f93a006558344cc48b221a19f8a4da6a65e3d9da213df44da7be",
-  "byte_identical": true
-}
