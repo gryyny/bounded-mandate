@@ -139,7 +139,7 @@ It is not a mainnet result and is not bound to an acceptance run; its acceptance
 
 ### What certified means
 
-"Certified" is this project's own acceptance gate, not an external audit: every required case of every gate passed in one run of one clean revision, in a fresh clone and in CI.
+"Certified" is this project's own acceptance gate, not an external audit: every required case of every gate passed in one run of one clean revision, from a fresh clone. CI runs only fast checks on every push: lint, types, `make quick`, `make example` and the committed bundle's consistency (`verify.mjs`).
 
 `make test` records a run id, clears earlier results and ends with `tools/src/checks/acceptance.ts`. That step writes `out/evidence/acceptance.json` and fails unless every required case of every gate passed in this run, bound to the revision and the spec, fixture and WASM hashes. A run from a tree with uncommitted changes is never certified. Demo checks are story checks, not acceptance results.
 

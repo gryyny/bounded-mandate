@@ -15,7 +15,7 @@ The agent names a side, an amount and a price concession up to your maximum; a c
 
 | Evidence | State |
 | --- | --- |
-| Sandbox execution | **Certified at 66fe963**: 48 of 48 required cases ([acceptance](evidence/66fe963/acceptance.json)). Certified means this project's own gate (all required cases passing in one run of one clean revision, in a fresh clone and in CI), not an external audit ([definition](docs/reviewers.md#what-certified-means)). Signer, oracle and tokens are labelled test doubles. |
+| Sandbox execution | **Certified at 66fe963**: 48 of 48 required cases ([acceptance](evidence/66fe963/acceptance.json)). Certified means this project's own gate (all required cases passing in one run of one clean revision, from a fresh clone), not an external audit ([definition](docs/reviewers.md#what-certified-means)). Signer, oracle and tokens are labelled test doubles. |
 | Model output | Genuine recorded `claude-haiku-5-5` output, replayed ([MODEL](evidence/66fe963/tests/MODEL.recorded-proposal.json)); no gate or demo calls a model. |
 | Verifier code | The pinned WASM hashes to the code at `intents.near` ([check](docs/reviewers.md#verify-on-mainnet-read-only)). |
 | MPC signer response | A real mainnet `v1.signer` response, recorded read-only, verifies in the contract's decoder ([test](contract/tests/signer_conformance.rs)); not our own signing. |
@@ -78,7 +78,7 @@ The advantage over waiting is bounded by the order lifetime: 120 s in this exper
 | Design | [How it works](docs/reviewers.md#how-it-works), [mechanism](docs/reviewers.md#mechanism-in-detail), the [owner journey](docs/reviewers.md#what-the-owner-does) and the [evidence page](evidence/66fe963/page/index.html) and [owner console](evidence/66fe963/console/index.html) of the certified run |
 | Impact | [Who needs this](#who-needs-this-and-what-is-next). There are no users, customers, revenue or adoption today |
 | Originality | [Comparison](docs/comparison.md): the tested combination of limits, accounting, key-removal revocation and recovery, set against expiry, nonce cancellation, a guard design and related NEAR projects |
-| Sustainability | MIT; a fresh clone works without funds or keys; [CI-certified](evidence/index.json); reproducible deployment build ([DEPLOY](evidence/66fe963/tests/DEPLOY.candidate.json)); [libraries](#disclosures); next steps below |
+| Sustainability | MIT; a fresh clone works without funds or keys; certified from a fresh clone ([evidence/index.json](evidence/index.json)); reproducible deployment build ([DEPLOY](evidence/66fe963/tests/DEPLOY.candidate.json)); [libraries](#disclosures); next steps below |
 
 ## Who needs this and what is next
 

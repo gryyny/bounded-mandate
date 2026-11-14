@@ -3,7 +3,7 @@
 Back to the [README](../README.md). The provider-rehearsal commands are in the README's [mainnet runner section](../README.md#mainnet-runner-opt-in-not-run).
 
 ```sh
-make test   # all local gates (about 25 min on a laptop, about 45 min in CI)
+make test   # all local gates (about 25 min on a laptop)
 make demo   # unfunded sandbox scenario, out/evidence/demo.json, out/page/index.html and out/console/index.html (about 1 min after make test)
 MANDATE_LIVE=1 MANDATE_LIVE_MANIFEST=<approved manifest> make live   # opt-in; not spending approval
 ```

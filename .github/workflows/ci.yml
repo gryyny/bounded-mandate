@@ -8,106 +8,11 @@ on:
 permissions:
   contents: read
 
+# Fast checks only. The full gate (`make test`, `make demo`) runs locally from a fresh clone; its results are the
+# committed evidence bundle, which the verify job checks.
 jobs:
-  # Decides from the changed files, not the commit message, whether the push is evidence and documentation only.
-  # Anything it cannot establish (a pull request, a new branch, a rewritten history, a failed diff) runs every gate.
-  changes:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      evidence_only: ${{ steps.diff.outputs.evidence_only }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - id: diff
-        env:
-          EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
-        run: |
-          # The list is read from a file, never through a pipe: with pipefail, a grep -q that exits at its first match
-          # kills the writer of a long list (SIGPIPE) and the pipeline's status would no longer be grep's.
-          only=false
-          list=$(mktemp)
-          if [ "$EVENT" = "push" ] && git merge-base --is-ancestor "$BEFORE" "$AFTER" 2>/dev/null; then
-            if git diff --name-only --no-renames "$BEFORE" "$AFTER" > "$list" && [ -s "$list" ]; then
-              head -n 200 "$list"
-              if ! grep -qvE '^(evidence/|docs/|README\.md$)' "$list" && grep -q '^evidence/' "$list"; then only=true; fi
-            fi
-          fi
-          echo "evidence_only=$only" | tee -a "$GITHUB_OUTPUT"
-
-  test:
-    # Skipped only when the changes job found nothing outside evidence/, docs/ and README.md in the push.
-    # always(): a failed or cancelled changes job must run the gate, not skip it.
-    needs: changes
-    if: ${{ always() && needs.changes.outputs.evidence_only != 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-          # The release secret scan reads the full history.
-          fetch-depth: 0
-      # The Rust target directory, cargo cache, sandboxes and Chromium exceed the runner's free disk; drop unused preinstalled SDKs.
-      - name: Free runner disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
-          df -h /
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: tools/package-lock.json
-      - name: Rust toolchain
-        run: rustup show active-toolchain || rustup toolchain install
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin/cargo-near
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - name: System packages for cargo-near
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
-      - name: cargo-near
-        run: command -v cargo-near || cargo install cargo-near --version 0.22.0 --locked
-      - name: Headless Chromium and its system libraries for browser tests
-        run: cd tools && npm ci --no-audit --no-fund --ignore-scripts && npx --no-install playwright install --with-deps chromium
-      # Logs are teed so the run's outputs can be curated into the evidence bundle; pipefail keeps make's exit status.
-      - name: make test
-        shell: bash
-        run: mkdir -p out/ci && make test 2>&1 | tee out/ci/test.log
-      - name: make demo
-        shell: bash
-        run: mkdir -p out/video && make demo 2>&1 | tee out/video/demo.log
-      # The clean run's outputs (run record, acceptance, gate reports, demo, page, console, logs), kept for curation.
-      - name: Keep the run's outputs
-        if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: test-outputs
-          path: |
-            out/run
-            out/evidence
-            out/page
-            out/console
-            out/video/demo.log
-            out/ci
-          if-no-files-found: warn
-          retention-days: 30
-
-  # The judge's quick path: no Rust or cargo-near, only Node 24, the sandbox binary and Chromium.
+  # The judge's quick path plus lint and types: no Rust or cargo-near, only Node 24, the sandbox binary and Chromium.
   quick:
-    # Skipped only when the changes job found nothing outside evidence/, docs/ and README.md in the push.
-    # always(): a failed or cancelled changes job must run the gate, not skip it.
-    needs: changes
-    if: ${{ always() && needs.changes.outputs.evidence_only != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -119,6 +24,8 @@ jobs:
           node-version: "24"
       - name: Headless Chromium and its system libraries
         run: cd tools && npm ci --no-audit --no-fund --ignore-scripts && npx --no-install playwright install --with-deps chromium
+      - name: Lint and types
+        run: cd tools && npm run lint && npm run typecheck
       - name: No Rust toolchain on the path
         run: |
           if command -v cargo || command -v rustc; then
@@ -127,29 +34,12 @@ jobs:
           fi
           ! command -v cargo && ! command -v rustc
       - name: make quick
-        shell: bash
-        run: mkdir -p out/ci && make quick 2>&1 | tee out/ci/quick.log
+        run: make quick
       - name: make example
-        shell: bash
-        run: mkdir -p out/ci && make example 2>&1 | tee out/ci/example.log
-      - name: Keep the run's outputs
-        if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: quick-outputs
-          path: |
-            out/quick
-            out/example
-            out/ci
-          if-no-files-found: warn
-          retention-days: 30
+        run: make example
 
-  # The evidence check on the oldest supported Node, with no install. On an evidence-only push the bundle is that of the
-  # checked-out source, so the full checkout-bound check runs; on a source commit the newest bundle predates the
-  # source, so only its internal consistency is checked.
+  # The committed evidence bundle's internal consistency on the oldest supported Node, with no install.
   verify:
-    needs: changes
-    if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -160,7 +50,4 @@ jobs:
         with:
           node-version: "20"
       - name: node verify.mjs
-        env:
-          EVIDENCE_COMMIT: ${{ needs.changes.outputs.evidence_only }}
-        run: |
-          if [ "$EVIDENCE_COMMIT" = "true" ]; then node verify.mjs; else node verify.mjs --no-checkout --rules bundle; fi
+        run: node verify.mjs --no-checkout --rules bundle
