@@ -149,7 +149,7 @@ While editing, `make check` (about a minute) runs formatting, lint, types, the c
 
 - Rust via rustup; the toolchain (1.97.1, with the `wasm32-unknown-unknown` target) is pinned in `rust-toolchain.toml` and installs on first use.
 - `cargo-near` 0.22.0: `cargo install cargo-near --version 0.22.0 --locked`. On Linux install `libudev-dev` and `pkg-config` first.
-- Optional, recommended: `cargo-nextest` (`cargo install cargo-nextest --locked`). `make test` then runs every Rust test in its own process in parallel, alongside the TypeScript suite; without it, `cargo test` runs the test binaries one after another and the gate takes several times longer.
+- Optional, recommended: `cargo-nextest` 0.9.150 (`cargo install cargo-nextest --version 0.9.150 --locked`). `make test` then runs every Rust test in its own process in parallel, alongside the TypeScript suite; without it, `cargo test` runs the test binaries one after another and the gate takes several times longer.
 - Node.js 24 and npm.
 - Network access on the first run: crates, npm packages, the NEAR sandbox binary and Playwright's pinned headless Chromium, which both targets download once and reuse. No funds, model key or private repository access.
 - On Linux, Chromium's system libraries once: `cd tools && npm ci --ignore-scripts && npx --no-install playwright install --with-deps chromium` (as in CI; installing system packages needs root). This applies to `make quick` as well as `make test` and `make demo`.
