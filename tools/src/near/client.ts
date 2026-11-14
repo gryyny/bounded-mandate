@@ -188,6 +188,21 @@ export interface SignedInfo {
   nonce: string;
 }
 
+/**
+ * How `submit` waits. Some public RPCs answer a FINAL send long after the receipts finished (measured on mainnet:
+ * receipts done 4-8 s after inclusion, the response 88-92 s later), so after `responseMs` without a response the
+ * transaction is looked up by its hash every `pollMs` until it reaches the required status, for at most `deadlineMs`.
+ * It is never sent again.
+ */
+export interface SubmitTiming {
+  responseMs: number;
+  pollMs: number;
+  deadlineMs: number;
+}
+export const SUBMIT_TIMING: SubmitTiming = { responseMs: 10_000, pollMs: 1_000, deadlineMs: 180_000 };
+const REACHED: Record<"FINAL" | "EXECUTED_OPTIMISTIC", readonly string[]> = { FINAL: ["FINAL"], EXECUTED_OPTIMISTIC: ["EXECUTED_OPTIMISTIC", "EXECUTED", "FINAL"] };
+const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
 export class NearClient {
   readonly provider: Provider;
   private readonly heights = new Map<string, number>();
@@ -201,13 +216,14 @@ export class NearClient {
     provider?: Provider,
     readonly finality: "final" | "optimistic" = "optimistic",
     readonly waitUntil: "FINAL" | "EXECUTED_OPTIMISTIC" = "EXECUTED_OPTIMISTIC",
+    readonly timing: SubmitTiming = SUBMIT_TIMING,
   ) {
     this.provider = provider ?? new JsonRpcProvider({ url: rpcUrl });
   }
 
   /** Same transport, finalized reads and transactions awaited to FINAL. */
   final(): NearClient {
-    return new NearClient(this.rpcUrl, this.provider, "final", "FINAL");
+    return new NearClient(this.rpcUrl, this.provider, "final", "FINAL", this.timing);
   }
 
   account(accountId: string, key?: KeyPair): Account {
@@ -328,16 +344,44 @@ export class NearClient {
     const base = { label, signer_id: signer.accountId, receiver_id: receiverId, method, nonce: info.nonce, public_key: info.public_key };
     const empty = { final: false, success: false, any_receipt_failed: false, fee_yocto: "0", deposit_yocto: "0", receipts: [], logs: [], events: [], tx_hash: txHash };
     let response: unknown;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      response = await this.provider.sendTransactionUntil(signed, this.waitUntil);
+      const sending = this.provider.sendTransactionUntil(signed, this.waitUntil);
+      const late = new Promise<null>((done) => (timer = setTimeout(() => { done(null); }, this.timing.responseMs)));
+      const first = await Promise.race([sending.then((r) => ({ r })), late]);
+      if (first === null) {
+        // The send stays in flight; its response, if any, is no longer awaited.
+        sending.catch(() => undefined);
+        const found = await this.awaitStatus(label, signer.accountId, txHash, method);
+        if (found !== null) return { ...found, nonce: info.nonce, public_key: info.public_key };
+        return { ...base, ...empty, submitted: false, ambiguous: true, error: `ambiguous: no send response within ${this.timing.responseMs} ms and no ${this.waitUntil} status by hash within ${this.timing.deadlineMs} ms` };
+      }
+      response = first.r;
     } catch (error) {
       const message = errorMessage(error);
       if (DEFINITIVE_REJECTION.test(message)) return { ...base, ...empty, submitted: false, ambiguous: false, error: message };
       const found = await this.resolve(label, signer.accountId, txHash, method);
       if (found !== null) return { ...found, nonce: info.nonce, public_key: info.public_key };
       return { ...base, ...empty, submitted: false, ambiguous: true, error: `ambiguous: ${message}` };
+    } finally {
+      clearTimeout(timer);
     }
     return { ...(await this.toOutcome(base, TxResponse.parse(response))), nonce: info.nonce, public_key: info.public_key };
+  }
+
+  /** Polls the transaction's current status by hash (wait_until NONE) until it reaches this client's `waitUntil`. */
+  private async awaitStatus(label: string, signerId: string, txHash: string, method: string): Promise<Outcome | null> {
+    const end = Date.now() + this.timing.deadlineMs;
+    for (;;) {
+      try {
+        const tx = TxResponse.parse(await this.provider.viewTransactionStatusWithReceipts({ txHash, accountId: signerId, waitUntil: "NONE" }));
+        if (REACHED[this.waitUntil].includes(tx.final_execution_status ?? "")) return await this.toOutcome({ label, signer_id: signerId, receiver_id: tx.transaction.receiver_id, method }, tx);
+      } catch {
+        // Not known yet, not executed yet (no outcome to parse) or unreachable: keep polling until the deadline.
+      }
+      if (Date.now() + this.timing.pollMs > end) return null;
+      await pause(this.timing.pollMs);
+    }
   }
 
   /** Backwards-compatible single send for the filler: ambiguity as a separate result. */

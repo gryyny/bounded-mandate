@@ -213,6 +213,72 @@ describe("live requests are finalized", () => {
     expect(receiptTree(out)).toEqual([]);
   });
 
+  const fast = { responseMs: 50, pollMs: 10, deadlineMs: 1_000 };
+  const lateClient = (send: () => unknown, statuses: (() => unknown)[]) => {
+    const provider = new JsonRpcProvider({ url: "http://stub" });
+    let polls = 0;
+    const calls = stubRpc(provider, (method, params) => {
+      if (method === "send_tx") return send();
+      if (method === "EXPERIMENTAL_tx_status") {
+        const next = statuses[Math.min(polls++, statuses.length - 1)];
+        return next === undefined ? tx("FINAL") : next();
+      }
+      return handler("FINAL")(method, params);
+    });
+    return { client: new NearClient("http://stub", provider, "final", "FINAL", fast), calls };
+  };
+  const unknown = () => {
+    throw new Error("[-32000] UNKNOWN_TRANSACTION: Transaction doesn't exist");
+  };
+  const submitOnce = (client: NearClient) => client.submit("t", client.account("a.near", KeyPair.fromRandom("ed25519")), "b.near", [actions.functionCall("m", {}, 1n, 1n)], "m");
+
+  it("a send whose FINAL response is late is looked up by hash until FINAL, and is sent exactly once", async () => {
+    const { client, calls } = lateClient(() => new Promise(() => undefined), [unknown, () => tx("EXECUTED_OPTIMISTIC"), () => tx("FINAL")]);
+    const out = await submitOnce(client);
+    expect(out).toMatchObject({ final: true, submitted: true, success: true, ambiguous: false });
+    expect(calls.filter((c) => c.method === "send_tx")).toHaveLength(1);
+    const polls = calls.filter((c) => c.method === "EXPERIMENTAL_tx_status");
+    expect(polls).toHaveLength(3);
+    expect(polls.every((c) => (c.params as Record<string, unknown>).wait_until === "NONE")).toBe(true);
+    expect(receiptTree(out)).toEqual([]);
+  });
+
+  it("a late send that never reaches FINAL by the deadline is ambiguous, never resent and never a success", async () => {
+    const { client, calls } = lateClient(() => new Promise(() => undefined), [() => tx("EXECUTED_OPTIMISTIC")]);
+    const out = await submitOnce(client);
+    expect(out).toMatchObject({ final: false, submitted: false, success: false, ambiguous: true });
+    expect(out.error).toMatch(/no send response within 50 ms and no FINAL status by hash within 1000 ms/);
+    expect(calls.filter((c) => c.method === "send_tx")).toHaveLength(1);
+  });
+
+  it("a late send of an unknown transaction stays ambiguous until the deadline", async () => {
+    const { client, calls } = lateClient(() => new Promise(() => undefined), [unknown]);
+    const out = await submitOnce(client);
+    expect(out).toMatchObject({ final: false, ambiguous: true });
+    expect(calls.filter((c) => c.method === "send_tx")).toHaveLength(1);
+  });
+
+  it("a send response within the window is used as before, without a lookup", async () => {
+    const { client, calls } = lateClient(() => new Promise((done) => setTimeout(() => { done(tx("FINAL")); }, 10)), [unknown]);
+    const out = await submitOnce(client);
+    expect(out).toMatchObject({ final: true, success: true });
+    expect(calls.filter((c) => c.method === "EXPERIMENTAL_tx_status")).toEqual([]);
+  });
+
+  it("a definitive rejection is still final and not ambiguous; a transport error still resolves once by hash", async () => {
+    const rejected = lateClient(() => {
+      throw new Error("InvalidNonce: Transaction nonce 6 must be larger than nonce of the used access key 9");
+    }, [unknown]);
+    expect(await submitOnce(rejected.client)).toMatchObject({ submitted: false, ambiguous: false });
+    expect(rejected.calls.filter((c) => c.method === "EXPERIMENTAL_tx_status")).toEqual([]);
+    const lost = lateClient(() => {
+      throw new Error("fetch failed");
+    }, [() => tx("FINAL")]);
+    expect(await submitOnce(lost.client)).toMatchObject({ final: true, success: true });
+    expect(lost.calls.filter((c) => c.method === "send_tx")).toHaveLength(1);
+    expect(lost.calls.find((c) => c.method === "EXPERIMENTAL_tx_status")?.params).toMatchObject({ wait_until: "FINAL" });
+  });
+
   it("an outcome that is not FINAL fails the receipt-tree check", async () => {
     const provider = new JsonRpcProvider({ url: "http://stub" });
     stubRpc(provider, handler("EXECUTED_OPTIMISTIC"));
