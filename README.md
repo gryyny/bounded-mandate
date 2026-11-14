@@ -2,7 +2,7 @@
 
 Give an AI agent trading authority without unrestricted control of your treasury.
 
-A contract checks the owner's size, turnover and price limits before it signs any order. One revoke call removes the signing key; once removal is confirmed, signed orders that have not executed fail. The owner recovers the remaining assets without the agent.
+An agent trades within owner-defined limits: a contract builds each order and checks the owner's size, turnover and price limits before it requests the order's MPC signature. One revoke call removes the signing key; once removal is confirmed, signed orders that have not executed fail. The owner recovers the remaining assets without the agent.
 
 **[Overview](https://gryyny.github.io/bounded-mandate/overview/)** · [Narrated pitch](https://gryyny.github.io/bounded-mandate/pitch/bounded-mandate-pitch.mp4) · [Evidence page](https://gryyny.github.io/bounded-mandate/) · [Owner console (sandbox)](https://gryyny.github.io/bounded-mandate/console/) · [Mainnet receipts](evidence/mainnet/attempt-3/dd665d1) · [Verify in three minutes](#verify-in-three-minutes)
 
