@@ -6,7 +6,7 @@ A contract checks the owner's size, turnover and price limits before it signs an
 
 **[Overview](https://gryyny.github.io/bounded-mandate/overview/)** · [Narrated pitch](https://gryyny.github.io/bounded-mandate/pitch/bounded-mandate-pitch.mp4) · [Evidence page](https://gryyny.github.io/bounded-mandate/) · [Owner console (sandbox)](https://gryyny.github.io/bounded-mandate/console/) · [Mainnet receipts](evidence/mainnet/attempt-3/dd665d1) · [Verify in three minutes](#verify-in-three-minutes)
 
-Hosted site, or the same files in this repository: [presentation/overview/index.html](presentation/overview/index.html), [presentation/pitch/bounded-mandate-pitch.mp4](presentation/pitch/bounded-mandate-pitch.mp4) (narration script and captions beside it), [evidence/dd665d1/page/index.html](evidence/dd665d1/page/index.html) and [evidence/dd665d1/console/index.html](evidence/dd665d1/console/index.html).
+The same files in this repository: [presentation/overview/index.html](presentation/overview/index.html), [presentation/pitch/bounded-mandate-pitch.mp4](presentation/pitch/bounded-mandate-pitch.mp4) (narration script and captions beside it), [evidence/dd665d1/page/index.html](evidence/dd665d1/page/index.html) and [evidence/dd665d1/console/index.html](evidence/dd665d1/console/index.html).
 
 **Contents:** [mainnet run](#what-happened-on-mainnet) · [how it works](#how-it-works) · [verify](#verify-in-three-minutes) · [evidence status](#evidence-status) · [run it](#run-it) · [four paths](#four-paths) · [three checkable facts](#three-checkable-facts) · [why not just…](#why-not-just) · [criteria](#where-to-check-each-criterion) · [who needs this](#who-needs-this-and-what-is-next) · [claims and limits](#what-is-claimed-and-what-is-not) · [open challenge](#open-challenge-optional-not-run) · [mainnet runner](#mainnet-runner-opt-in) · [glossary](#glossary) · [disclosures](#disclosures). Detail: [reviewer guide](docs/reviewers.md), [comparison](docs/comparison.md), [live runner](docs/live-runner.md).
 
@@ -74,7 +74,7 @@ make quick                                             # sandbox replay; Node 24
 - **Verifier code: the mainnet code.** The pinned WASM hashes to the code at `intents.near` ([check](docs/reviewers.md#verify-on-mainnet-read-only)).
 - **MPC signer response: real, recorded read-only.** A mainnet `v1.signer` response verifies in the contract's decoder ([test](contract/tests/signer_conformance.rs)); that is not our own signing, which the mainnet run exercised.
 - **Mainnet: one complete run** of the scripted template, [above](#what-happened-on-mainnet) ([bundle](evidence/mainnet/attempt-3/dd665d1), [evidence page](evidence/dd665d1/page/index.html)).
-- **Public links: planned, unpublished.** After publication: [page](https://gryyny.github.io/bounded-mandate/), [console](https://gryyny.github.io/bounded-mandate/console/), [short video](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4).
+- **Hosted site: GitHub Pages since 14 November 2026.** [Overview](https://gryyny.github.io/bounded-mandate/overview/), [evidence page](https://gryyny.github.io/bounded-mandate/), [console](https://gryyny.github.io/bounded-mandate/console/), [short video](https://gryyny.github.io/bounded-mandate/video/bounded-mandate-short.mp4), [narrated pitch](https://gryyny.github.io/bounded-mandate/pitch/bounded-mandate-pitch.mp4). Each served file equals its certified file in `evidence/dd665d1/SHA256SUMS` or its hash in `presentation/provenance.json`.
 
 ## Run it
 
